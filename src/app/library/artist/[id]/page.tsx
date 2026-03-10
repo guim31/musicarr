@@ -13,9 +13,11 @@ import {
   Monitor,
   Heart,
   RefreshCw,
-  Search
+  Search,
+  Trash2
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import styles from './ArtistDetail.module.css';
 import SearchModal from '@/components/modals/SearchModal';
 import { useToast } from '@/context/ToastContext';
@@ -32,6 +34,12 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeAlbumId, setActiveAlbumId] = useState<number | undefined>();
+
+  // Delete state
+  const router = useRouter();
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteWithFiles, setDeleteWithFiles] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -78,6 +86,24 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
     setSearchQuery(albumName ? `${artist?.name} ${albumName}` : artist?.name || '');
     setActiveAlbumId(albumId);
     setIsModalOpen(true);
+  };
+
+  const handleDelete = async () => {
+    try {
+      setDeleting(true);
+      const res = await fetch(`/api/artists/${id}?deleteFiles=${deleteWithFiles}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur lors de la suppression');
+      
+      showToast('Artiste supprimé avec succès', 'success');
+      router.push('/library');
+    } catch (err: any) {
+      showToast(err.message, 'error');
+      console.error('Delete failed:', err);
+      setDeleting(false);
+    }
   };
 
   if (loading) {
@@ -130,6 +156,14 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
             <button className={styles.button} onClick={() => handleManualSearch()}>
               <Search size={18} />
               Tout rechercher
+            </button>
+            <button 
+              className={styles.iconButton} 
+              onClick={() => setIsDeleteModalOpen(true)}
+              title="Supprimer l'artiste"
+              style={{ color: 'var(--danger)', marginLeft: '8px' }}
+            >
+              <Trash2 size={20} />
             </button>
           </div>
         </div>
@@ -202,6 +236,53 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
         query={searchQuery}
         albumId={activeAlbumId}
       />
+
+      {isDeleteModalOpen && (
+        <div className={styles.modalOverlay}>
+          <div className={styles.modalContent}>
+            <h2 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--danger)' }}>
+              <AlertCircle size={24} />
+              Supprimer l'artiste
+            </h2>
+            <p style={{ marginBottom: '24px', color: 'var(--text-muted)' }}>
+              Êtes-vous sûr de vouloir supprimer <strong>{artist.name}</strong> ? Cette action est irréversible et supprimera la trace des albums depuis la base de données.
+            </p>
+            
+            <label style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', cursor: 'pointer', padding: '16px', backgroundColor: 'var(--bg-color)', borderRadius: 'var(--radius)' }}>
+              <input 
+                type="checkbox" 
+                checked={deleteWithFiles}
+                onChange={(e) => setDeleteWithFiles(e.target.checked)}
+                style={{ width: '18px', height: '18px', accentColor: 'var(--danger)' }}
+              />
+              <span style={{ display: 'flex', flexDirection: 'column' }}>
+                <strong>Supprimer les fichiers associés</strong>
+                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                  Supprime définitivement les pistes audio et dossiers de cet artiste du disque dur.
+                </span>
+              </span>
+            </label>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
+              <button 
+                className={`${styles.button} ${styles.outlineButton}`}
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={deleting}
+              >
+                Annuler
+              </button>
+              <button 
+                className={styles.button}
+                onClick={handleDelete}
+                disabled={deleting}
+                style={{ backgroundColor: 'var(--danger)' }}
+              >
+                {deleting ? 'Suppression...' : 'Oui, supprimer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

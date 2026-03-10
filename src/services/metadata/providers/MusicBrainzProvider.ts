@@ -34,7 +34,19 @@ export class MusicBrainzProvider implements MetadataProvider {
       limit: '100'
     });
 
-    return (data['release-groups'] || []).map((rg: any) => ({
+    const validReleaseGroups = (data['release-groups'] || []).filter((rg: any) => {
+      const primaryType = rg['primary-type']?.toLowerCase();
+      if (primaryType !== 'album' && primaryType !== 'ep') return false;
+
+      const secondaryTypes = rg['secondary-types'] || [];
+      const isInvalidSecondary = secondaryTypes.some((t: string) => 
+        ['Live', 'Compilation', 'Remix', 'Interview', 'Spokenword', 'Audiobook', 'Mixtape/Street'].includes(t)
+      );
+      
+      return !isInvalidSecondary;
+    });
+
+    return validReleaseGroups.map((rg: any) => ({
       name: rg.title,
       mbid: rg.id,
       releaseDate: rg['first-release-date'],

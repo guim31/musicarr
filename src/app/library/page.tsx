@@ -49,10 +49,12 @@ export default function LibraryPage() {
           <h1>Ma Collection</h1>
           <p style={{ color: 'var(--text-muted)' }}>Gérez vos artistes et albums favoris.</p>
         </div>
-        <button className={styles.button}>
-          <Plus size={20} />
-          Ajouter un artiste
-        </button>
+        <Link href="/library/add" style={{ textDecoration: 'none' }}>
+          <button className={styles.button}>
+            <Plus size={20} />
+            Ajouter un artiste
+          </button>
+        </Link>
       </header>
 
       <div className={styles.searchHeader}>

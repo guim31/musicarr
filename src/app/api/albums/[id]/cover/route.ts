@@ -10,7 +10,22 @@ export async function GET(
   const coverPath = path.join(process.cwd(), 'data', 'covers', `album_${albumId}.jpg`);
 
   if (!fs.existsSync(coverPath)) {
-    // Return a default placeholder or 404
+    // Fallback to metadata artworkUrl
+    const db = (await import('@/lib/db')).default;
+    const album = db.prepare('SELECT metadata FROM albums WHERE id = ?').get(albumId) as { metadata: string } | undefined;
+    
+    if (album?.metadata) {
+      try {
+        const metadata = JSON.parse(album.metadata);
+        if (metadata.artworkUrl) {
+          return NextResponse.redirect(metadata.artworkUrl);
+        }
+      } catch (e) {
+        // Ignore json parse error
+      }
+    }
+
+    // Return a 404 if really nothing
     return new NextResponse('Not Found', { status: 404 });
   }
 
