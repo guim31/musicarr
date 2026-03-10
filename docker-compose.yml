@@ -13,8 +13,7 @@ services:
       - ./next.config.ts:/app/next.config.ts
       - ./package.json:/app/package.json
       - ./data:/app/data
-      - /home/guilhem/Musique/:/app/music:ro # Modifiez le chemin de gauche par celui de votre NAS
-      #- /mnt/user/data/media/music:/app/music # Modifiez le chemin de gauche par celui de votre NAS
+      - ${MUSIC_DIR:-/home/guilhem/Musique/}:/app/music:ro
     environment:
       - NODE_ENV=development
       - PORT=3000
