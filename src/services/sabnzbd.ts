@@ -38,4 +38,17 @@ export class SabnzbdService {
       throw error;
     }
   }
+
+  static async getQueue() {
+    const { url, apiKey } = await this.getSettings();
+    if (!url || !apiKey) return { slots: [], speed: '0', mbleft: '0' };
+
+    try {
+      const response = await axios.get(`${url}/api?mode=queue&output=json&apikey=${apiKey}`);
+      return response.data.queue;
+    } catch (error) {
+      console.error('Failed to get SABnzbd queue:', error);
+      return { slots: [], speed: '0', mbleft: '0' };
+    }
+  }
 }

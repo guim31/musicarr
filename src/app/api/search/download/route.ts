@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ProwlarrService } from '@/services/prowlarr';
 import { SabnzbdService } from '@/services/sabnzbd';
+import db from '@/lib/db';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -29,6 +30,14 @@ export async function POST(request: Request) {
 
     if (protocol?.toLowerCase() === 'usenet') {
       const success = await SabnzbdService.addNzbFromUrl(url, title || 'Musicarr Download');
+      
+      if (success) {
+        db.prepare(`
+          INSERT INTO activity (type, status, title, message)
+          VALUES ('download', 'pending', ?, ?)
+        `).run(title, `Téléchargement NZB lancé : ${title}`);
+      }
+
       return NextResponse.json({ success });
     } else {
       // Torrent logic could go here (e.g., Transmission/qBittorrent)

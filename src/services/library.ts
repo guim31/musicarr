@@ -159,6 +159,11 @@ export class LibraryService {
       }
     }
 
+    db.prepare(`
+      INSERT INTO activity (type, status, title, message)
+      VALUES ('scan', 'completed', 'Scan Bibliothèque', ?)
+    `).run(`Fin de scan : ${processedCount} fichiers traités, ${files.length} trouvés.`);
+
     return processedCount;
   }
 }

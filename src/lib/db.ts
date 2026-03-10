@@ -71,6 +71,19 @@ db.exec(`
     FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE,
     UNIQUE(album_id, title, number, disc)
   );
+  CREATE TABLE IF NOT EXISTS activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    type TEXT NOT NULL, -- 'download', 'move', 'scan', 'sync'
+    status TEXT, -- 'pending', 'completed', 'failed', 'processing'
+    title TEXT, -- Album name or file name
+    artist_id INTEGER,
+    album_id INTEGER,
+    message TEXT, -- Friendly description
+    details TEXT, -- JSON blob for more info
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE SET NULL,
+    FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE SET NULL
+  );
 `);
 
 export default db;

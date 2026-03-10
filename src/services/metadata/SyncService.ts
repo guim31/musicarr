@@ -62,6 +62,11 @@ export class SyncService {
       }
     }
 
+    db.prepare(`
+      INSERT INTO activity (type, status, title, artist_id, message)
+      VALUES ('sync', 'completed', ?, ?, ?)
+    `).run(artist.name, artistId, `Sync terminée pour ${artist.name} : ${newFound} nouveaux albums trouvés.`);
+
     return newFound;
   }
 }
