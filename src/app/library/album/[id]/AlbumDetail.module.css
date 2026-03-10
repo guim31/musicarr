@@ -1,0 +1,187 @@
+.container {
+  max-width: var(--container-width);
+  margin: 0 auto;
+}
+
+.header {
+  margin-bottom: 64px;
+}
+
+.albumHeader {
+  display: flex;
+  align-items: flex-end;
+  gap: 32px;
+}
+
+.albumCover {
+  width: 232px;
+  height: 232px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+}
+
+.albumCover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+}
+
+.albumIntro {
+  flex: 1;
+}
+
+.artistLink {
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.artistLink:hover {
+  text-decoration: underline;
+}
+
+.albumIntro h1 {
+  font-size: 3.5rem;
+  margin-bottom: 16px;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+
+.albumMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  margin-bottom: 32px;
+}
+
+.dot {
+  opacity: 0.3;
+}
+
+.qualityBadge {
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 700;
+  color: var(--foreground);
+  text-transform: uppercase;
+  font-size: 0.8125rem;
+}
+
+.albumActions {
+  display: flex;
+  gap: 12px;
+}
+
+.button {
+  background-color: var(--accent);
+  color: white;
+  border: none;
+  padding: 12px 28px;
+  border-radius: var(--radius);
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: var(--transition);
+}
+
+.button:hover {
+  background-color: var(--accent-hover);
+  transform: translateY(-2px);
+}
+
+.outlineButton {
+  background-color: transparent;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+.outlineButton:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--text-muted);
+}
+
+/* Tracks Table */
+.tracksSection {
+  margin-top: 48px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.tracksTable {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.tracksTable th {
+  padding: 16px 20px;
+  background-color: var(--background);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.tracksTable td {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9375rem;
+  vertical-align: middle;
+}
+
+.tracksTable tr:last-child td {
+  border-bottom: none;
+}
+
+.tracksTable tr:hover td {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.trackNumber {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+
+.trackTitle {
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.trackMeta {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.formatTag {
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}

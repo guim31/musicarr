@@ -54,6 +54,21 @@ db.exec(`
     FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE,
     UNIQUE(artist_id, name)
   );
+
+  CREATE TABLE IF NOT EXISTS tracks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    album_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    number INTEGER,
+    disc INTEGER,
+    duration REAL,
+    quality TEXT,
+    bitrate INTEGER,
+    path TEXT,
+    metadata TEXT,
+    FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE,
+    UNIQUE(album_id, title, number, disc)
+  );
 `);
 
 export default db;

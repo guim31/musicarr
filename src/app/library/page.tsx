@@ -1,8 +1,21 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Library as LibraryIcon, Search, Plus, Filter, Music, Users, ArrowRight } from 'lucide-react';
+import { 
+  Search, 
+  Plus, 
+  Filter, 
+  Music, 
+  Users, 
+  ArrowRight, 
+  ExternalLink, 
+  ChevronRight,
+  Monitor,
+  CheckCircle2,
+  Clock
+} from 'lucide-react';
 import Link from 'next/link';
+import styles from './Library.module.css';
 
 export default function LibraryPage() {
   const [artists, setArtists] = useState<any[]>([]);
@@ -30,64 +43,30 @@ export default function LibraryPage() {
   );
 
   return (
-    <div>
-      <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px' }}>
+    <div className={styles.container}>
+      <header className={styles.header}>
         <div>
           <h1>Ma Collection</h1>
           <p style={{ color: 'var(--text-muted)' }}>Gérez vos artistes et albums favoris.</p>
         </div>
-        <button style={{ 
-          backgroundColor: 'var(--accent)', 
-          color: 'white', 
-          border: 'none', 
-          padding: '10px 20px', 
-          borderRadius: 'var(--radius)',
-          fontWeight: 600,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
-        }}>
+        <button className={styles.button}>
           <Plus size={20} />
           Ajouter un artiste
         </button>
       </header>
 
-      <div style={{ 
-        display: 'flex', 
-        gap: '16px', 
-        marginBottom: '24px',
-        padding: '16px',
-        backgroundColor: 'var(--card-bg)',
-        border: '1px solid var(--border)',
-        borderRadius: 'var(--radius)'
-      }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+      <div className={styles.searchHeader}>
+        <div className={styles.searchInputWrapper}>
+          <Search size={18} className={styles.searchIcon} />
           <input 
             type="text" 
             placeholder="Filtrer ma collection..." 
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            style={{ 
-              width: '100%', 
-              padding: '10px 10px 10px 40px', 
-              backgroundColor: 'var(--background)', 
-              border: '1px solid var(--border)', 
-              borderRadius: 'var(--radius)',
-              color: 'var(--foreground)'
-            }}
+            className={styles.searchInput}
           />
         </div>
-        <button style={{ 
-          background: 'none', 
-          border: '1px solid var(--border)', 
-          color: 'var(--foreground)',
-          padding: '0 16px',
-          borderRadius: 'var(--radius)',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '8px'
-        }}>
+        <button className={`${styles.button} ${styles.outlineButton}`}>
           <Filter size={18} />
           Filtres
         </button>
@@ -113,58 +92,75 @@ export default function LibraryPage() {
             <p>Commencez par ajouter des artistes ou scannez votre bibliothèque locale.</p>
           </div>
           <Link href="/settings">
-            <button style={{ 
-              marginTop: '16px',
-              backgroundColor: 'transparent', 
-              color: 'var(--accent)', 
-              border: '1px solid var(--accent)', 
-              padding: '10px 20px', 
-              borderRadius: 'var(--radius)',
-              fontWeight: 600,
-              cursor: 'pointer'
-            }}>
+            <button className={`${styles.button} ${styles.outlineButton}`} style={{ marginTop: '16px' }}>
               Configurer le dossier musique
             </button>
           </Link>
         </div>
       ) : (
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
-          gap: '24px' 
-        }}>
-          {filteredArtists.map((artist) => (
-            <div key={artist.id} style={{ 
-              backgroundColor: 'var(--card-bg)', 
-              border: '1px solid var(--border)', 
-              borderRadius: 'var(--radius)', 
-              overflow: 'hidden',
-              transition: 'var(--transition)',
-              cursor: 'pointer'
-            }}>
-              <div style={{ 
-                height: '180px', 
-                backgroundColor: 'var(--background)', 
-                display: 'flex', 
-                alignItems: 'center', 
-                justifyContent: 'center',
-                color: 'var(--text-muted)'
-              }}>
-                <Users size={64} strokeWidth={1} />
-              </div>
-              <div style={{ padding: '16px' }}>
-                <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {artist.name}
-                </h3>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    {artist.album_count} album{artist.album_count > 1 ? 's' : ''}
-                  </span>
-                  <ArrowRight size={16} color="var(--text-muted)" />
-                </div>
-              </div>
-            </div>
-          ))}
+        <div className={styles.tableWrapper}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Artiste</th>
+                <th>Albums</th>
+                <th>Collecté</th>
+                <th>Statut</th>
+                <th style={{ textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredArtists.map((artist) => (
+                <tr key={artist.id}>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ 
+                        width: '36px', 
+                        height: '36px', 
+                        backgroundColor: 'var(--background)', 
+                        borderRadius: '50%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'var(--text-muted)'
+                      }}>
+                        <Users size={18} />
+                      </div>
+                      <Link href={`/library/artist/${artist.id}`} className={styles.artistLink}>
+                        <span className={styles.artistName}>{artist.name}</span>
+                      </Link>
+                    </div>
+                  </td>
+                  <td>
+                    <span style={{ color: 'var(--text-muted)' }}>{artist.album_count} album{artist.album_count > 1 ? 's' : ''}</span>
+                  </td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span className={`${styles.statusBadge} ${artist.downloaded_count === artist.album_count ? styles.downloadedBadge : ''}`}>
+                        {artist.downloaded_count} / {artist.album_count}
+                      </span>
+                    </div>
+                  </td>
+                  <td>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--success)' }}>
+                      <Monitor size={14} />
+                      Surveillé
+                    </span>
+                  </td>
+                  <td>
+                    <div className={styles.actions}>
+                      <Link href={`/library/artist/${artist.id}`}>
+                        <button className={`${styles.button} ${styles.outlineButton}`} style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
+                          Détails
+                          <ChevronRight size={14} />
+                        </button>
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
