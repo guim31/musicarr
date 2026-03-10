@@ -114,18 +114,6 @@ export default function LibraryPage() {
                 <tr key={artist.id}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{ 
-                        width: '36px', 
-                        height: '36px', 
-                        backgroundColor: 'var(--background)', 
-                        borderRadius: '50%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--text-muted)'
-                      }}>
-                        <Users size={18} />
-                      </div>
                       <Link href={`/library/artist/${artist.id}`} className={styles.artistLink}>
                         <span className={styles.artistName}>{artist.name}</span>
                       </Link>

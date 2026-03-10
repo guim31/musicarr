@@ -12,6 +12,7 @@ import {
   Save
 } from 'lucide-react';
 import styles from './Settings.module.css';
+import { useToast } from '@/context/ToastContext';
 
 export default function SettingsPage() {
   // Prowlarr state
@@ -34,7 +35,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [scanning, setScanning] = useState(false);
-  const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const { showToast } = useToast();
 
   useEffect(() => {
     fetchConfig();
@@ -82,7 +83,6 @@ export default function SettingsPage() {
 
   const handleTestProwlarr = async () => {
     setLoading(true);
-    setStatus(null);
     try {
       const res = await fetch('/api/prowlarr', {
         method: 'POST',
@@ -91,12 +91,12 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setStatus({ type: 'success', message: 'Connexion réussie à Prowlarr !' });
+        showToast('Connexion réussie à Prowlarr !', 'success');
       } else {
-        setStatus({ type: 'error', message: 'Échec de la connexion Prowlarr. Vérifiez l\'URL et la clé API.' });
+        showToast('Échec de la connexion Prowlarr. Vérifiez l\'URL et la clé API.', 'error');
       }
     } catch (error) {
-      setStatus({ type: 'error', message: 'Erreur lors du test de connexion Prowlarr.' });
+      showToast('Erreur lors du test de connexion Prowlarr.', 'error');
     } finally {
       setLoading(false);
     }
@@ -112,11 +112,11 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setStatus({ type: 'success', message: `Configuration Prowlarr enregistrée ! ${data.indexersSynced || 0} indexeurs synchronisés.` });
+        showToast(`Configuration Prowlarr enregistrée ! ${data.indexersSynced || 0} indexeurs synchronisés.`, 'success');
         fetchConfig();
       }
     } catch (error) {
-      setStatus({ type: 'error', message: 'Erreur lors de l\'enregistrement Prowlarr.' });
+      showToast('Erreur lors de l\'enregistrement Prowlarr.', 'error');
     } finally {
       setLoading(false);
     }
@@ -124,7 +124,6 @@ export default function SettingsPage() {
 
   const handleTestSab = async () => {
     setLoading(true);
-    setStatus(null);
     try {
       const res = await fetch('/api/sabnzbd', {
         method: 'POST',
@@ -133,12 +132,12 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setStatus({ type: 'success', message: 'Connexion réussie à SABnzbd !' });
+        showToast('Connexion réussie à SABnzbd !', 'success');
       } else {
-        setStatus({ type: 'error', message: 'Échec de la connexion SABnzbd. Vérifiez l\'URL et la clé API.' });
+        showToast('Échec de la connexion SABnzbd. Vérifiez l\'URL et la clé API.', 'error');
       }
     } catch (error) {
-      setStatus({ type: 'error', message: 'Erreur lors du test de connexion SABnzbd.' });
+      showToast('Erreur lors du test de connexion SABnzbd.', 'error');
     } finally {
       setLoading(false);
     }
@@ -154,10 +153,10 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setStatus({ type: 'success', message: 'Configuration SABnzbd enregistrée !' });
+        showToast('Configuration SABnzbd enregistrée !', 'success');
       }
     } catch (error) {
-      setStatus({ type: 'error', message: 'Erreur lors de l\'enregistrement SABnzbd.' });
+      showToast('Erreur lors de l\'enregistrement SABnzbd.', 'error');
     } finally {
       setLoading(false);
     }
@@ -173,11 +172,11 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setStatus({ type: 'success', message: `${data.count} indexeurs synchronisés avec succès.` });
+        showToast(`${data.count} indexeurs synchronisés avec succès.`, 'success');
         fetchConfig();
       }
     } catch (error) {
-      setStatus({ type: 'error', message: 'Erreur lors de la synchronisation.' });
+      showToast('Erreur lors de la synchronisation.', 'error');
     } finally {
       setSyncing(false);
     }
@@ -192,10 +191,10 @@ export default function SettingsPage() {
         body: JSON.stringify({ action: 'save_path', path: libraryPath })
       });
       if (res.ok) {
-        setStatus({ type: 'success', message: 'Chemin de la bibliothèque enregistré.' });
+        showToast('Chemin de la bibliothèque enregistré.', 'success');
       }
     } catch (error) {
-      setStatus({ type: 'error', message: 'Erreur lors de l\'enregistrement de la bibliothèque.' });
+      showToast('Erreur lors de l\'enregistrement de la bibliothèque.', 'error');
     } finally {
       setLoading(false);
     }
@@ -203,7 +202,7 @@ export default function SettingsPage() {
 
   const handleScanLibrary = async () => {
     setScanning(true);
-    setStatus({ type: 'success', message: 'Scan de la bibliothèque en cours...' });
+    showToast('Scan de la bibliothèque en cours...', 'info');
     try {
       const res = await fetch('/api/library', {
         method: 'POST',
@@ -212,12 +211,12 @@ export default function SettingsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        setStatus({ type: 'success', message: `Scan terminé ! ${data.filesProcessed} fichiers traités.` });
+        showToast(`Scan terminé ! ${data.filesProcessed} fichiers traités.`, 'success');
         fetchConfig();
       }
     } catch (error) {
       console.error(error);
-      setStatus({ type: 'error', message: 'Erreur lors du scan de la bibliothèque.' });
+      showToast('Erreur lors du scan de la bibliothèque.', 'error');
     } finally {
       setScanning(false);
     }
@@ -232,10 +231,10 @@ export default function SettingsPage() {
         body: JSON.stringify({ discogsToken })
       });
       if (res.ok) {
-        setStatus({ type: 'success', message: 'Paramètres métadonnées enregistrés.' });
+        showToast('Paramètres métadonnées enregistrés.', 'success');
       }
     } catch (error) {
-      setStatus({ type: 'error', message: 'Erreur lors de l\'enregistrement des métadonnées.' });
+      showToast('Erreur lors de l\'enregistrement des métadonnées.', 'error');
     } finally {
       setLoading(false);
     }
@@ -247,23 +246,6 @@ export default function SettingsPage() {
         <h1>Configuration</h1>
         <p style={{ color: 'var(--text-muted)' }}>Gérez vos indexeurs et vos clients de téléchargement.</p>
       </header>
-
-      {status && (
-        <div style={{ 
-          padding: '16px', 
-          borderRadius: 'var(--radius)', 
-          marginBottom: '24px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          backgroundColor: status.type === 'success' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-          color: status.type === 'success' ? 'var(--success)' : 'var(--danger)',
-          border: `1px solid ${status.type === 'success' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'}`
-        }}>
-          {status.type === 'success' ? <CheckCircle2 size={20} /> : <XCircle size={20} />}
-          {status.message}
-        </div>
-      )}
 
       <div className={styles.section}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>

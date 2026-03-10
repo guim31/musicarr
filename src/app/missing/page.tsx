@@ -13,12 +13,18 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import styles from './Missing.module.css';
+import SearchModal from '@/components/modals/SearchModal';
 
 export default function MissingAlbumsPage() {
   const [albums, setAlbums] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState<Record<string, boolean>>({});
   const [filter, setFilter] = useState('');
+
+  // Modal state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeAlbumId, setActiveAlbumId] = useState<number | undefined>();
 
   const fetchMissing = async () => {
     try {
@@ -37,18 +43,10 @@ export default function MissingAlbumsPage() {
     fetchMissing();
   }, []);
 
-  const handleSearch = async (albumId: number, albumName: string, artistName: string) => {
-    setSearching(prev => ({ ...prev, [albumId]: true }));
-    try {
-      // Logic to initiate search (will need an API for this)
-      console.log(`Searching for ${albumName} by ${artistName}`);
-      // Simulating...
-      await new Promise(r => setTimeout(r, 2000));
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSearching(prev => ({ ...prev, [albumId]: false }));
-    }
+  const handleSearch = (albumId: number, albumName: string, artistName: string) => {
+    setSearchQuery(`${artistName} ${albumName}`);
+    setActiveAlbumId(albumId);
+    setIsModalOpen(true);
   };
 
   const filteredAlbums = albums.filter(a => 
@@ -153,6 +151,13 @@ export default function MissingAlbumsPage() {
           </table>
         </div>
       )}
+
+      <SearchModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        query={searchQuery}
+        albumId={activeAlbumId}
+      />
     </div>
   );
 }

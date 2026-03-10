@@ -116,8 +116,43 @@
 /* Albums grid */
 .albumsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 32px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 24px;
+}
+
+.albumCardWrapper {
+  position: relative;
+}
+
+.searchQuickBtn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: var(--accent);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10;
+}
+
+.albumCardWrapper:hover .searchQuickBtn {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.searchQuickBtn:hover {
+  background-color: var(--accent-hover);
+  transform: scale(1.1) !important;
 }
 
 .albumCardLink {

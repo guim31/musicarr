@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import styles from './ArtistDetail.module.css';
+import SearchModal from '@/components/modals/SearchModal';
+import { useToast } from '@/context/ToastContext';
 
 export default function ArtistDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
@@ -24,6 +26,12 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
   const [albums, setAlbums] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const { showToast } = useToast();
+
+  // Modal search state
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeAlbumId, setActiveAlbumId] = useState<number | undefined>();
 
   const fetchData = async () => {
     try {
@@ -55,13 +63,21 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
       const res = await fetch(`/api/sync/artist/${id}`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
+        showToast('Discographie actualisée !', 'success');
         await fetchData(); // Refresh list
       }
     } catch (err) {
+      showToast('Erreur lors de la synchronisation.', 'error');
       console.error('Sync failed:', err);
     } finally {
       setSyncing(false);
     }
+  };
+
+  const handleManualSearch = (albumId?: number, albumName?: string) => {
+    setSearchQuery(albumName ? `${artist?.name} ${albumName}` : artist?.name || '');
+    setActiveAlbumId(albumId);
+    setIsModalOpen(true);
   };
 
   if (loading) {
@@ -111,7 +127,7 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
               <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
               {syncing ? 'Synchronisation...' : 'Actualiser discographie'}
             </button>
-            <button className={styles.button}>
+            <button className={styles.button} onClick={() => handleManualSearch()}>
               <Search size={18} />
               Tout rechercher
             </button>
@@ -126,44 +142,66 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
 
         <div className={styles.albumsGrid}>
           {albums.map((album) => (
-            <Link key={album.id} href={`/library/album/${album.id}`} className={styles.albumCardLink}>
-              <div className={`${styles.albumCard} ${album.status !== 'downloaded' ? styles.missingAlbum : ''}`}>
-                <div className={styles.albumCover}>
-                  <img 
-                    src={`/api/albums/${album.id}/cover`} 
-                    alt={album.name} 
-                    onError={(e: any) => {
-                      e.target.style.display = 'none';
-                    }}
-                  />
-                  <div className={styles.coverOverlay}>
-                    <Disc size={48} strokeWidth={1} />
+            <div key={album.id} className={styles.albumCardWrapper}>
+              <Link href={`/library/album/${album.id}`} className={styles.albumCardLink}>
+                <div className={`${styles.albumCard} ${album.status !== 'downloaded' ? styles.missingAlbum : ''}`}>
+                  <div className={styles.albumCover}>
+                    <img 
+                      src={`/api/albums/${album.id}/cover`} 
+                      alt={album.name} 
+                      onError={(e: any) => {
+                        e.target.style.display = 'none';
+                      }}
+                    />
+                    <div className={styles.coverOverlay}>
+                      <Disc size={48} strokeWidth={1} />
+                    </div>
+                  </div>
+                  <div className={styles.albumInfo}>
+                    <h3 title={album.name}>{album.name}</h3>
+                    <div className={styles.albumMeta}>
+                      <span>{album.release_date || 'Année inconnue'}</span>
+                      <span className={styles.qualityBadge}>{album.quality || 'N/A'}</span>
+                    </div>
+                    <div className={styles.tagList}>
+                      {album.metadata?.bitrate && <span>{album.metadata.bitrate} kbps</span>}
+                      {album.metadata?.sampleRate && <span>{album.metadata.sampleRate / 1000} kHz</span>}
+                      {album.metadata?.genre && <span>{album.metadata.genre}</span>}
+                    </div>
+                    <div className={styles.albumStatus}>
+                      {album.status === 'downloaded' ? (
+                        <span className={styles.downloaded}><CheckCircle2 size={14} /> Collecté</span>
+                      ) : (
+                        <span className={styles.missing}><Clock size={14} /> Manquant</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className={styles.albumInfo}>
-                  <h3 title={album.name}>{album.name}</h3>
-                  <div className={styles.albumMeta}>
-                    <span>{album.release_date || 'Année inconnue'}</span>
-                    <span className={styles.qualityBadge}>{album.quality || 'N/A'}</span>
-                  </div>
-                  <div className={styles.tagList}>
-                    {album.metadata?.bitrate && <span>{album.metadata.bitrate} kbps</span>}
-                    {album.metadata?.sampleRate && <span>{album.metadata.sampleRate / 1000} kHz</span>}
-                    {album.metadata?.genre && <span>{album.metadata.genre}</span>}
-                  </div>
-                  <div className={styles.albumStatus}>
-                    {album.status === 'downloaded' ? (
-                      <span className={styles.downloaded}><CheckCircle2 size={14} /> Collecté</span>
-                    ) : (
-                      <span className={styles.missing}><Clock size={14} /> Manquant</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </Link>
+              </Link>
+              {album.status !== 'downloaded' && (
+                <button 
+                  className={styles.searchQuickBtn}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleManualSearch(album.id, album.name);
+                  }}
+                  title="Rechercher cet album"
+                >
+                  <Search size={16} />
+                </button>
+              )}
+            </div>
           ))}
         </div>
       </section>
+
+      <SearchModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        query={searchQuery}
+        albumId={activeAlbumId}
+      />
     </div>
   );
 }
