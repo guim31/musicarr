@@ -135,10 +135,15 @@ export default function LibraryPage() {
                     <span style={{ color: 'var(--text-muted)' }}>{artist.album_count} album{artist.album_count > 1 ? 's' : ''}</span>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span className={`${styles.statusBadge} ${artist.downloaded_count === artist.album_count ? styles.downloadedBadge : ''}`}>
-                        {artist.downloaded_count} / {artist.album_count}
-                      </span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      <div className={`${styles.statusBadge} ${artist.downloaded_count === artist.album_count ? styles.downloadedBadge : ''}`}>
+                        {artist.downloaded_count} collecté{artist.downloaded_count > 1 ? 's' : ''}
+                      </div>
+                      {artist.missing_count > 0 && (
+                        <span style={{ fontSize: '0.75rem', color: 'var(--warning)', fontWeight: 600 }}>
+                          {artist.missing_count} manquant{artist.missing_count > 1 ? 's' : ''}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td>

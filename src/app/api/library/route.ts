@@ -5,8 +5,8 @@ import { LibraryService } from '@/services/library';
 export async function GET() {
   try {
     const path = db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
-    const artistsCount = db.prepare('SELECT count(*) as count FROM artists').get() as { count: number };
-    const albumsCount = db.prepare('SELECT count(*) as count FROM albums').get() as { count: number };
+    const artistsCount = db.prepare('SELECT count(*) as count FROM artists WHERE id IN (SELECT DISTINCT artist_id FROM albums WHERE status = "downloaded")').get() as { count: number };
+    const albumsCount = db.prepare('SELECT count(*) as count FROM albums WHERE status = "downloaded"').get() as { count: number };
 
     return NextResponse.json({
       path: path?.value || '',

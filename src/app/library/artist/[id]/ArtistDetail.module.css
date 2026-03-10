@@ -139,6 +139,17 @@
   border-color: var(--text-muted);
 }
 
+.missingAlbum {
+  opacity: 0.6;
+  filter: grayscale(0.4);
+  border-style: dashed;
+}
+
+.missingAlbum:hover {
+  opacity: 0.9;
+  filter: grayscale(0);
+}
+
 .albumCover {
   height: 200px;
   background-color: var(--background);

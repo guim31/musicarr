@@ -34,6 +34,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL COLLATE NOCASE,
     mbid TEXT UNIQUE, -- MusicBrainz ID
+    discogs_id TEXT UNIQUE, -- Discogs ID
     image TEXT,
     monitored INTEGER DEFAULT 1,
     metadata TEXT, -- JSON blob for extra info
@@ -45,6 +46,7 @@ db.exec(`
     artist_id INTEGER NOT NULL,
     name TEXT NOT NULL COLLATE NOCASE,
     mbid TEXT UNIQUE, -- MusicBrainz ID
+    discogs_id TEXT UNIQUE, -- Discogs ID
     release_date TEXT,
     quality TEXT, -- FLAC, MP3, etc.
     path TEXT,

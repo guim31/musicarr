@@ -11,7 +11,9 @@ import {
   CheckCircle2, 
   AlertCircle,
   Monitor,
-  Heart
+  Heart,
+  RefreshCw,
+  Search
 } from 'lucide-react';
 import Link from 'next/link';
 import styles from './ArtistDetail.module.css';
@@ -21,28 +23,46 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
   const [artist, setArtist] = useState<any>(null);
   const [albums, setAlbums] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const [artistRes, albumsRes] = await Promise.all([
+        fetch(`/api/artists/${id}`),
+        fetch(`/api/artists/${id}/albums`)
+      ]);
+      
+      const artistData = await artistRes.json();
+      const albumsData = await albumsRes.json();
+      
+      setArtist(artistData);
+      setAlbums(albumsData);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [artistRes, albumsRes] = await Promise.all([
-          fetch(`/api/artists/${id}`),
-          fetch(`/api/artists/${id}/albums`)
-        ]);
-        
-        const artistData = await artistRes.json();
-        const albumsData = await albumsRes.json();
-        
-        setArtist(artistData);
-        setAlbums(albumsData);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchData();
   }, [id]);
+
+  const handleSync = async () => {
+    try {
+      setSyncing(true);
+      const res = await fetch(`/api/sync/artist/${id}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        await fetchData(); // Refresh list
+      }
+    } catch (err) {
+      console.error('Sync failed:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -83,7 +103,18 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
           </div>
           <div className={styles.artistActions}>
             <button className={styles.iconButton}><Heart size={20} /></button>
-            <button className={styles.button}>Tout rechercher</button>
+            <button 
+              className={`${styles.button} ${styles.outlineButton}`} 
+              onClick={handleSync}
+              disabled={syncing}
+            >
+              <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
+              {syncing ? 'Synchronisation...' : 'Actualiser discographie'}
+            </button>
+            <button className={styles.button}>
+              <Search size={18} />
+              Tout rechercher
+            </button>
           </div>
         </div>
       </header>
@@ -96,7 +127,7 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
         <div className={styles.albumsGrid}>
           {albums.map((album) => (
             <Link key={album.id} href={`/library/album/${album.id}`} className={styles.albumCardLink}>
-              <div className={styles.albumCard}>
+              <div className={`${styles.albumCard} ${album.status !== 'downloaded' ? styles.missingAlbum : ''}`}>
                 <div className={styles.albumCover}>
                   <img 
                     src={`/api/albums/${album.id}/cover`} 

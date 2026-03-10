@@ -33,6 +33,10 @@ export class LibraryService {
       fs.mkdirSync(dataDir, { recursive: true });
     }
 
+    // Keep track of found paths to clean up deleted ones later
+    const foundAlbumPaths = new Set<string>();
+    const foundTrackPaths = new Set<string>();
+
     for (const filePath of files) {
       try {
         const metadata = await mm.parseFile(filePath);
@@ -79,6 +83,8 @@ export class LibraryService {
             JSON.stringify(albumMeta)
           );
 
+          foundAlbumPaths.add(folderPath);
+
           // 5. Handle Cover Art
           const albumRecord = db.prepare('SELECT id FROM albums WHERE artist_id = ? AND name = ?').get(artistId, album) as any;
           if (!albumRecord) continue;
@@ -121,14 +127,35 @@ export class LibraryService {
             metadata.format.bitrate ? Math.round(metadata.format.bitrate / 1000) : null,
             filePath
           );
+          
+          foundTrackPaths.add(filePath);
         }
       } catch (err) {
         console.error(`Error parsing file ${filePath}:`, err);
       }
       
       processedCount++;
-      if (processedCount % 10 === 0) {
-        console.log(`Scan progress: ${processedCount}/${totalCount}`);
+    }
+
+    // 7. Cleanup: Set status to 'missing' for albums no longer found on disk
+    console.log('Cleaning up missing albums and tracks...');
+    
+    // For albums: if they were 'downloaded' but the path is not in our scan, they are now 'missing'
+    const downloadedAlbums = db.prepare("SELECT id, path FROM albums WHERE status = 'downloaded'").all() as { id: number, path: string }[];
+    for (const album of downloadedAlbums) {
+      if (album.path && !foundAlbumPaths.has(album.path)) {
+        console.log(`Album not found on disk, marking as missing: ${album.path}`);
+        db.prepare("UPDATE albums SET status = 'missing', path = NULL WHERE id = ?").run(album.id);
+        // Also delete associated tracks since the files are gone
+        db.prepare('DELETE FROM tracks WHERE album_id = ?').run(album.id);
+      }
+    }
+
+    // For tracks: delete any track whose file path was not found in this scan
+    const allTracks = db.prepare('SELECT id, path FROM tracks').all() as { id: number, path: string }[];
+    for (const track of allTracks) {
+      if (track.path && !foundTrackPaths.has(track.path)) {
+        db.prepare('DELETE FROM tracks WHERE id = ?').run(track.id);
       }
     }
 

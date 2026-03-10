@@ -1,0 +1,203 @@
+.container {
+  max-width: var(--container-width);
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 48px;
+}
+
+.titleArea h1 {
+  font-size: 2.5rem;
+  margin-bottom: 8px;
+  letter-spacing: -0.02em;
+}
+
+.titleArea p {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}
+
+.button {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  padding: 10px 20px;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: var(--transition);
+}
+
+.button:hover {
+  border-color: var(--text-muted);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.primaryButton {
+  background-color: var(--accent);
+  color: white;
+  border: none;
+}
+
+.primaryButton:hover {
+  background-color: var(--accent-hover);
+  transform: translateY(-2px);
+}
+
+.toolbar {
+  margin-bottom: 32px;
+  background-color: var(--card-bg);
+  padding: 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+}
+
+.searchBar input {
+  background-color: transparent;
+  border: none;
+  color: var(--foreground);
+  font-size: 1rem;
+  width: 100%;
+}
+
+.searchBar input:focus {
+  outline: none;
+}
+
+.tableWrapper {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.table th {
+  padding: 16px 20px;
+  background-color: var(--background);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+}
+
+.table td {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.9375rem;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.artistCell a {
+  font-weight: 700;
+  color: var(--foreground);
+  text-decoration: none;
+}
+
+.artistCell a:hover {
+  color: var(--accent);
+}
+
+.albumCell {
+  font-weight: 500;
+}
+
+.albumTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dateCell {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.statusBadge {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.searchBtn {
+  background-color: transparent;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: var(--transition);
+  margin-left: auto;
+}
+
+.searchBtn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 100px;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 100px 40px;
+  background-color: var(--card-bg);
+  border-radius: var(--radius);
+  border: 2px dashed var(--border);
+}
+
+.emptyState h2 {
+  margin: 24px 0 8px;
+  font-size: 1.5rem;
+}
+
+.emptyState p {
+  color: var(--text-muted);
+}

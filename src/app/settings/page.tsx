@@ -28,6 +28,9 @@ export default function SettingsPage() {
   const [libraryPath, setLibraryPath] = useState('');
   const [libraryStats, setLibraryStats] = useState({ artists: 0, albums: 0 });
 
+  // Metadata providers
+  const [discogsToken, setDiscogsToken] = useState('');
+
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [scanning, setScanning] = useState(false);
@@ -64,6 +67,13 @@ export default function SettingsPage() {
       if (libData) {
         setLibraryPath(libData.path || '');
         setLibraryStats(libData.stats || { artists: 0, albums: 0 });
+      }
+
+      // Fetch Metadata
+      const metaRes = await fetch('/api/metadata');
+      const metaData = await metaRes.json();
+      if (metaData) {
+        setDiscogsToken(metaData.discogsToken || '');
       }
     } catch (error) {
       console.error('Failed to fetch config', error);
@@ -210,6 +220,24 @@ export default function SettingsPage() {
       setStatus({ type: 'error', message: 'Erreur lors du scan de la bibliothèque.' });
     } finally {
       setScanning(false);
+    }
+  };
+
+  const handleSaveMetadata = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/metadata', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ discogsToken })
+      });
+      if (res.ok) {
+        setStatus({ type: 'success', message: 'Paramètres métadonnées enregistrés.' });
+      }
+    } catch (error) {
+      setStatus({ type: 'error', message: 'Erreur lors de l\'enregistrement des métadonnées.' });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -398,6 +426,30 @@ export default function SettingsPage() {
           >
             {scanning ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
             <span style={{ marginLeft: '8px' }}>Lancer le Scan</span>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.section}>
+        <h2 className={styles.title}><Server size={24} color="var(--accent)" /> Fournisseurs de Métadonnées</h2>
+        <div className={styles.formGroup}>
+          <label className={styles.label}>Discogs Personal Token</label>
+          <input 
+            className={styles.input} 
+            type="password" 
+            placeholder="Votre jeton Discogs" 
+            value={discogsToken}
+            onChange={(e) => setDiscogsToken(e.target.value)}
+          />
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+            📀 Pour de meilleurs résultats sur les releases spécifiques, créez un jeton dans vos <a href="https://www.discogs.com/settings/developers" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>paramètres Discogs</a>.
+          </p>
+        </div>
+        
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button className={styles.button} onClick={handleSaveMetadata} disabled={loading}>
+            <Save size={18} />
+            <span style={{ marginLeft: '8px' }}>Sauvegarder</span>
           </button>
         </div>
       </div>
