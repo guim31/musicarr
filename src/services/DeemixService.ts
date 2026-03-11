@@ -456,7 +456,10 @@ export class DeemixService {
     cmd += `-metadata album="${album.replace(/"/g, '\\"')}" `;
     cmd += `-metadata track="${trackNum}" `;
     cmd += `-metadata disc="${discNum}" `;
-    if (year) cmd += `-metadata date="${year}" `;
+    if (year) {
+      cmd += `-metadata date="${year}" `;
+      cmd += `-metadata year="${year}" `;
+    }
     
     // Injecter la cover si dispo dans le dossier
     const coverPath = path.join(path.dirname(filePath), 'folder.jpg');

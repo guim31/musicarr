@@ -31,20 +31,26 @@ export class TagService {
     const filePath = track.path;
     const tempPath = `${filePath}.tmp${path.extname(filePath)}`;
     
-    // Build metadata flags
+    const ext = path.extname(filePath).toLowerCase();
     const metadataFlags: string[] = [];
     if (update.title) metadataFlags.push(`-metadata title="${update.title.replace(/"/g, '\\"')}"`);
     if (update.artist) metadataFlags.push(`-metadata artist="${update.artist.replace(/"/g, '\\"')}"`);
     if (update.album) metadataFlags.push(`-metadata album="${update.album.replace(/"/g, '\\"')}"`);
     if (update.number) metadataFlags.push(`-metadata track="${update.number}"`);
     if (update.disc) metadataFlags.push(`-metadata disc="${update.disc}"`);
-    if (update.year) metadataFlags.push(`-metadata date="${update.year}"`);
+    if (update.year) {
+      metadataFlags.push(`-metadata date="${update.year}"`);
+      metadataFlags.push(`-metadata year="${update.year}"`);
+    }
     if (update.genre) metadataFlags.push(`-metadata genre="${update.genre.replace(/"/g, '\\"')}"`);
 
     if (metadataFlags.length === 0) return;
 
     // Use -map_metadata 0 to keep existing metadata not specified
-    const command = `ffmpeg -y -i "${filePath}" ${metadataFlags.join(' ')} -c copy "${tempPath}"`;
+    // -id3v2_version 3 is important for MP3 compatibility (Navidrome/Plex)
+    let command = `ffmpeg -y -i "${filePath}" ${metadataFlags.join(' ')} `;
+    if (ext === '.mp3') command += '-id3v2_version 3 ';
+    command += `-c copy "${tempPath}"`;
     
     try {
       await execAsync(command);
