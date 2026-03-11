@@ -5,16 +5,16 @@ import {
   ArrowLeft, 
   Disc, 
   Music, 
-  Clock, 
   Database, 
   FileAudio, 
-  CheckCircle2, 
   AlertCircle,
   Monitor,
   Heart,
   RefreshCw,
   Search,
-  Trash2
+  Trash2,
+  CheckCircle2,
+  Clock
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -174,11 +174,11 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
           <h2 style={{ fontSize: '1.25rem' }}>Albums</h2>
         </div>
 
-        <div className={styles.albumsGrid}>
+        <div className={styles.albumsList}>
           {albums.map((album) => (
-            <div key={album.id} className={styles.albumCardWrapper}>
-              <Link href={`/library/album/${album.id}`} className={styles.albumCardLink}>
-                <div className={`${styles.albumCard} ${album.status !== 'downloaded' ? styles.missingAlbum : ''}`}>
+            <div key={album.id} className={styles.albumListItemWrapper}>
+              <Link href={`/library/album/${album.id}`} className={styles.albumListItemLink}>
+                <div className={`${styles.albumListItem} ${album.status !== 'downloaded' ? styles.missingAlbum : ''}`}>
                   <div className={styles.albumCover}>
                     <img 
                       src={`/api/albums/${album.id}/cover`} 
@@ -191,23 +191,29 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
                       <Disc size={48} strokeWidth={1} />
                     </div>
                   </div>
+                  
                   <div className={styles.albumInfo}>
-                    <h3 title={album.name}>{album.name}</h3>
-                    <div className={styles.albumMeta}>
-                      <span>{album.release_date || 'Année inconnue'}</span>
-                      <span className={styles.qualityBadge}>{album.quality || 'N/A'}</span>
+                    <div className={styles.albumMainDetails}>
+                      <h3 title={album.name}>{album.name}</h3>
+                      <div className={styles.albumMeta}>
+                        <span>{album.release_date ? album.release_date.toString().substring(0, 4) : 'Année inconnue'}</span>
+                        {album.quality && <span className={styles.qualityBadge}>{album.quality}</span>}
+                      </div>
                     </div>
-                    <div className={styles.tagList}>
-                      {album.metadata?.bitrate && <span>{album.metadata.bitrate} kbps</span>}
-                      {album.metadata?.sampleRate && <span>{album.metadata.sampleRate / 1000} kHz</span>}
-                      {album.metadata?.genre && <span>{album.metadata.genre}</span>}
-                    </div>
-                    <div className={styles.albumStatus}>
-                      {album.status === 'downloaded' ? (
-                        <span className={styles.downloaded}><CheckCircle2 size={14} /> Collecté</span>
-                      ) : (
-                        <span className={styles.missing}><Clock size={14} /> Manquant</span>
-                      )}
+
+                    <div className={styles.albumSecondaryDetails}>
+                      <div className={styles.tagList}>
+                        {album.metadata?.bitrate && <span>{album.metadata.bitrate} kbps</span>}
+                        {album.metadata?.sampleRate && <span>{album.metadata.sampleRate / 1000} kHz</span>}
+                        {album.metadata?.genre && <span>{album.metadata.genre}</span>}
+                      </div>
+                      <div className={styles.albumStatus}>
+                        {album.status === 'downloaded' ? (
+                          <span className={styles.downloaded}><CheckCircle2 size={14} /> Collecté</span>
+                        ) : (
+                          <span className={styles.missing}><Clock size={14} /> Manquant</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
