@@ -36,7 +36,7 @@ export class SyncService {
       if (remote.type && remote.type !== 'album' && remote.type !== 'ep') continue;
 
       const existing = db.prepare(`
-        SELECT id, mbid, discogs_id FROM albums 
+        SELECT id, mbid, discogs_id, metadata FROM albums 
         WHERE artist_id = ? AND (
           (mbid IS NOT NULL AND mbid = ?) OR 
           (discogs_id IS NOT NULL AND discogs_id = ?) OR 
@@ -45,18 +45,29 @@ export class SyncService {
       `).get(artistId, remote.mbid, remote.discogsId, remote.name) as any;
 
       if (existing) {
-        db.prepare('UPDATE albums SET mbid = ?, discogs_id = ? WHERE id = ?')
-          .run(remote.mbid || existing.mbid, remote.discogsId || existing.discogs_id, existing.id);
+        let meta: any = {};
+        try { meta = existing.metadata ? JSON.parse(existing.metadata) : {}; } catch {}
+        if (remote.image && !meta.artworkUrl) meta.artworkUrl = remote.image;
+        
+        db.prepare('UPDATE albums SET mbid = ?, discogs_id = ?, metadata = ? WHERE id = ?')
+          .run(
+            remote.mbid || existing.mbid, 
+            remote.discogsId || existing.discogs_id, 
+            JSON.stringify(meta), 
+            existing.id
+          );
       } else {
+        const meta = remote.image ? { artworkUrl: remote.image } : {};
         db.prepare(`
-          INSERT INTO albums (artist_id, name, mbid, discogs_id, release_date, status)
-          VALUES (?, ?, ?, ?, ?, 'missing')
+          INSERT INTO albums (artist_id, name, mbid, discogs_id, release_date, status, metadata)
+          VALUES (?, ?, ?, ?, ?, 'missing', ?)
         `).run(
           artistId,
           remote.name,
           remote.mbid || null,
           remote.discogsId || null,
-          remote.releaseDate || null
+          remote.releaseDate || null,
+          JSON.stringify(meta)
         );
         newFound++;
       }
