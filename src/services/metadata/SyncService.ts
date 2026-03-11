@@ -10,9 +10,12 @@ export class SyncService {
 
     let mbid = artist.mbid;
     let discogsId = artist.discogs_id;
+    let meta: any = {};
+    try { meta = artist.metadata ? JSON.parse(artist.metadata) : {}; } catch {}
+    let deezerId = meta.deezerId;
 
     // 1. Search missing IDs if necessary
-    if (!mbid || !discogsId) {
+    if (!mbid || !discogsId || !deezerId) {
       console.log(`Searching IDs for artist: ${artist.name}`);
       const results = await this.engine.searchArtist(artist.name);
       const match = results.find(r => r.name.toLowerCase() === artist.name.toLowerCase()) || results[0];
@@ -20,15 +23,18 @@ export class SyncService {
       if (match) {
         mbid = mbid || match.mbid;
         discogsId = discogsId || match.discogsId;
+        deezerId = deezerId || match.deezerId;
         
-        db.prepare('UPDATE artists SET mbid = ?, discogs_id = ? WHERE id = ?')
-          .run(mbid || null, discogsId || null, artistId);
+        meta.deezerId = deezerId;
+        
+        db.prepare('UPDATE artists SET mbid = ?, discogs_id = ?, metadata = ? WHERE id = ?')
+          .run(mbid || null, discogsId || null, JSON.stringify(meta), artistId);
       }
     }
 
     // 2. Fetch discography from all available sources
     console.log(`Syncing discography for: ${artist.name}`);
-    const remoteAlbums = await this.engine.syncArtistDiscography(mbid, discogsId);
+    const remoteAlbums = await this.engine.syncArtistDiscography(mbid, discogsId, deezerId);
 
     // 3. Merge with local DB
     let newFound = 0;
@@ -48,6 +54,7 @@ export class SyncService {
         let meta: any = {};
         try { meta = existing.metadata ? JSON.parse(existing.metadata) : {}; } catch {}
         if (remote.image && !meta.artworkUrl) meta.artworkUrl = remote.image;
+        if (remote.deezerId && !meta.deezerId) meta.deezerId = remote.deezerId;
         
         db.prepare('UPDATE albums SET mbid = ?, discogs_id = ?, metadata = ? WHERE id = ?')
           .run(
@@ -57,7 +64,9 @@ export class SyncService {
             existing.id
           );
       } else {
-        const meta = remote.image ? { artworkUrl: remote.image } : {};
+        const meta: any = {};
+        if (remote.image) meta.artworkUrl = remote.image;
+        if (remote.deezerId) meta.deezerId = remote.deezerId;
         db.prepare(`
           INSERT INTO albums (artist_id, name, mbid, discogs_id, release_date, status, metadata)
           VALUES (?, ?, ?, ?, ?, 'missing', ?)

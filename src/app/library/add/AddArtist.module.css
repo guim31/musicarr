@@ -40,6 +40,39 @@
   margin-bottom: 32px;
 }
 
+.providerTabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  padding: 4px;
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: fit-content;
+}
+
+.providerTab {
+  padding: 8px 16px;
+  border-radius: calc(var(--radius) - 2px);
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.providerTab:hover {
+  color: var(--text);
+}
+
+.providerTab.active {
+  background-color: var(--accent);
+  color: white;
+}
+
+
 .searchInputWrapper {
   flex: 1;
   position: relative;

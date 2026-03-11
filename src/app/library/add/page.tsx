@@ -23,15 +23,26 @@ export default function AddArtistPage() {
   const [error, setError] = useState<string | null>(null);
   const [addingArtists, setAddingArtists] = useState<Record<string, boolean>>({});
   const [addedArtists, setAddedArtists] = useState<Record<string, boolean>>({});
+  const [selectedProvider, setSelectedProvider] = useState<string>('musicbrainz'); // 'musicbrainz' by default
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const providers = [
+    { id: 'musicbrainz', label: 'MusicBrainz' },
+    { id: 'deezer', label: 'Deezer' },
+    { id: 'discogs', label: 'Discogs' },
+    { id: 'itunes', label: 'iTunes' },
+  ];
+
+  const handleSearch = async (e?: React.FormEvent, forceProvider?: string) => {
+    if (e) e.preventDefault();
     if (!query.trim()) return;
+
+    const providerToUse = forceProvider !== undefined ? forceProvider : selectedProvider;
 
     setSearching(true);
     setError(null);
     try {
-      const res = await fetch(`/api/artists/search?q=${encodeURIComponent(query)}`);
+      const url = `/api/artists/search?q=${encodeURIComponent(query)}${providerToUse ? `&provider=${providerToUse}` : ''}`;
+      const res = await fetch(url);
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || 'Erreur lors de la recherche');
@@ -47,9 +58,16 @@ export default function AddArtistPage() {
     }
   };
 
+  const handleProviderChange = (providerId: string) => {
+    setSelectedProvider(providerId);
+    if (query.trim()) {
+      handleSearch(undefined, providerId);
+    }
+  };
+
   const handleAddArtist = async (artist: any) => {
-    const mbid = artist.mbid;
-    setAddingArtists(prev => ({ ...prev, [mbid]: true }));
+    const artistKey = artist.mbid || artist.deezerId || artist.discogsId || artist.name;
+    setAddingArtists(prev => ({ ...prev, [artistKey]: true }));
     setError(null);
 
     try {
@@ -59,6 +77,8 @@ export default function AddArtistPage() {
         body: JSON.stringify({ 
           name: artist.name,
           mbid: artist.mbid,
+          discogsId: artist.discogsId,
+          deezerId: artist.deezerId,
           image: artist.image,
           country: artist.country,
           genre: artist.genre
@@ -71,13 +91,13 @@ export default function AddArtistPage() {
         throw new Error(data.error || 'Erreur lors de l\'ajout de l\'artiste');
       }
       
-      setAddedArtists(prev => ({ ...prev, [mbid]: true }));
+      setAddedArtists(prev => ({ ...prev, [artistKey]: true }));
       // Optional: Show a toast here
     } catch (err: any) {
       console.error(err);
       setError(err.message);
     } finally {
-      setAddingArtists(prev => ({ ...prev, [mbid]: false }));
+      setAddingArtists(prev => ({ ...prev, [artistKey]: false }));
     }
   };
 
@@ -117,6 +137,18 @@ export default function AddArtistPage() {
         </button>
       </form>
 
+      <div className={styles.providerTabs}>
+        {providers.map(p => (
+          <button
+            key={p.id}
+            className={`${styles.providerTab} ${selectedProvider === p.id ? styles.active : ''}`}
+            onClick={() => handleProviderChange(p.id)}
+          >
+            {p.label}
+          </button>
+        ))}
+      </div>
+
       {error && (
         <div style={{ 
           padding: '16px', 
@@ -129,20 +161,20 @@ export default function AddArtistPage() {
           {error}
         </div>
       )}
-
       {searching ? (
         <div className={styles.loadingState}>
           <Loader2 size={48} className="animate-spin" color="var(--accent)" />
-          <p>Recherche sur iTunes en cours...</p>
+          <p>Recherche d'artistes en cours...</p>
         </div>
       ) : results.length > 0 ? (
         <div className={styles.resultsGrid}>
-          {results.map((artist) => {
-            const isAdding = addingArtists[artist.mbid];
-            const isAdded = addedArtists[artist.mbid];
+          {results.map((artist, idx) => {
+            const artistKey = artist.mbid || artist.deezerId || artist.discogsId || artist.name;
+            const isAdding = addingArtists[artistKey];
+            const isAdded = addedArtists[artistKey];
             
             return (
-              <div key={artist.mbid} className={styles.artistCard}>
+              <div key={artistKey + idx} className={styles.artistCard}>
                 {artist.image ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={artist.image} alt={artist.name} className={styles.artistImage} loading="lazy" />

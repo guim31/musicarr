@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { MetadataEngine } from '@/services/metadata/MetadataEngine';
 
 export async function GET() {
   try {
@@ -25,7 +26,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { name, mbid, image, country, genre } = await request.json();
+    const { name, mbid, discogsId, deezerId, image, country, genre } = await request.json();
 
     if (!name) {
       return NextResponse.json({ error: 'Le nom de l\'artiste est requis' }, { status: 400 });
@@ -40,16 +41,21 @@ export async function POST(request: Request) {
     const libraryPath = libraryPathRow?.value;
 
     if (libraryPath) {
-      const artistPath = path.join(libraryPath, folderName);
-      if (!fs.existsSync(artistPath)) {
-        fs.mkdirSync(artistPath, { recursive: true });
+      try {
+        const artistPath = path.join(libraryPath, folderName);
+        if (!fs.existsSync(artistPath)) {
+          fs.mkdirSync(artistPath, { recursive: true });
+        }
+      } catch (fsError: any) {
+        console.error('Failed to create artist folder:', fsError.message);
+        // On continue même si la création du dossier échoue (ex: filesystem en lecture seule)
       }
     }
 
     // Insert artist
     const insertArtist = db.prepare(`
-      INSERT INTO artists (name, mbid, image, metadata)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO artists (name, mbid, discogs_id, image, metadata)
+      VALUES (?, ?, ?, ?, ?)
     `);
     
     let artistId;
@@ -57,8 +63,9 @@ export async function POST(request: Request) {
       const result = insertArtist.run(
         name, 
         mbid || null, 
+        discogsId || null,
         image || null, 
-        JSON.stringify({ country, genre, folderName })
+        JSON.stringify({ country, genre, folderName, deezerId })
       );
       artistId = result.lastInsertRowid;
     } catch (e: any) {
@@ -70,58 +77,37 @@ export async function POST(request: Request) {
       }
     }
 
-    // Fetch albums from MusicBrainz
-    if (mbid) {
-      const albumsRes = await fetch(`https://musicbrainz.org/ws/2/release-group?artist=${mbid}&fmt=json&limit=100`, {
-        headers: {
-          'User-Agent': 'Musicarr/0.1.0'
-        }
-      });
-      const albumsData = await albumsRes.json();
+    // Fetch albums
+    const engine = new MetadataEngine();
+    const albums = await engine.syncArtistDiscography(mbid, discogsId, deezerId);
       
-      if (albumsData['release-groups']) {
-        const insertAlbum = db.prepare(`
-          INSERT OR IGNORE INTO albums (artist_id, name, release_date, status, metadata)
-          VALUES (?, ?, ?, 'missing', ?)
-        `);
+    if (albums.length > 0) {
+      const insertAlbum = db.prepare(`
+        INSERT OR IGNORE INTO albums (artist_id, name, release_date, status, metadata)
+        VALUES (?, ?, ?, 'missing', ?)
+      `);
 
-        albumsData['release-groups'].forEach((item: any) => {
-          // Filtrer les types primaires (Album, EP)
-          const primaryType = item['primary-type'];
-          if (primaryType !== 'Album' && primaryType !== 'EP') {
-            return;
-          }
-          
-          // Filtrer les types secondaires indésirables (Live, Compilation, etc.)
-          const secondaryTypes = item['secondary-types'] || [];
-          const isInvalidSecondary = secondaryTypes.some((t: string) => 
-            ['Live', 'Compilation', 'Remix', 'Interview', 'Spokenword', 'Audiobook', 'Mixtape/Street'].includes(t)
-          );
-          
-          if (isInvalidSecondary) {
-            return;
-          }
-
-          // Generate cover image via Cover Art Archive
-          const artworkUrl = `https://coverartarchive.org/release-group/${item.id}/front`;
-
-          insertAlbum.run(
-            artistId,
-            item.title,
-            item['first-release-date'] || null,
-            JSON.stringify({
-              mbid: item.id,
-              artworkUrl: artworkUrl,
-              primaryType: primaryType
-            })
-          );
-        });
-      }
+      albums.forEach(album => {
+        // Here album type is already filtered mostly by providers, but we can trust MetadataEngine
+        // However Deezer might include some singles if we let them.
+        insertAlbum.run(
+          artistId,
+          album.name,
+          album.releaseDate || null,
+          JSON.stringify({
+            mbid: album.mbid,
+            discogsId: album.discogsId,
+            deezerId: album.deezerId,
+            artworkUrl: album.image,
+            primaryType: album.type
+          })
+        );
+      });
     }
 
     // Add activity log
     db.prepare('INSERT INTO activity (type, status, title, artist_id, message) VALUES (?, ?, ?, ?, ?)')
-      .run('scan', 'completed', name, artistId, 'Artiste ajouté et albums synchronisés via MusicBrainz');
+      .run('scan', 'completed', name, artistId, 'Artiste ajouté et albums synchronisés avec la base de données');
 
     return NextResponse.json({ success: true, id: artistId });
   } catch (error: any) {
