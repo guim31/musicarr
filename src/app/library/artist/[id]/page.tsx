@@ -139,7 +139,7 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
           <div className={styles.artistInfo}>
             <h1>{artist.name}</h1>
             <div className={styles.artistMeta}>
-              <span>{albums.length} Album{albums.length > 1 ? 's' : ''}</span>
+              <span>{albums.filter(a => a.status === 'downloaded').length} / {albums.length} Album{albums.length > 1 ? 's' : ''}</span>
               <span className={styles.badge}><Monitor size={14} /> Surveillé</span>
             </div>
           </div>
