@@ -66,7 +66,6 @@ export default function SettingsPage() {
               setScanning(false);
               setScanProgress(null);
               if (data.stats) setLibraryStats(data.stats);
-              showToast('Scan de la bibliothèque terminé !', 'success');
               clearInterval(interval);
             }
           }

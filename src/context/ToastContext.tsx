@@ -1,9 +1,9 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { CheckCircle2, XCircle, Info, AlertCircle, X, Download } from 'lucide-react';
+import { CheckCircle2, XCircle, Info, AlertCircle, X, Download, Loader2 } from 'lucide-react';
 
-export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'download';
+export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'download' | 'scan';
 
 interface Toast {
   id: string;
@@ -122,6 +122,59 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
     return () => clearInterval(interval);
   }, []);
 
+  // Poll for library scan progress
+  React.useEffect(() => {
+    let interval: NodeJS.Timeout;
+    let wasScanning = false;
+
+    const pollScan = async () => {
+      try {
+        const res = await fetch(`/api/library?t=${Date.now()}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        
+        if (data.progress) {
+          wasScanning = true;
+          const { processed, total } = data.progress;
+          const isInitializing = total === -1;
+          const progress = isInitializing ? 0 : (total > 0 ? (processed / total) * 100 : 0);
+          const details = isInitializing ? 'Initialisation...' : `${processed} / ${total} fichiers`;
+          
+          setToasts((prev) => {
+            const scanToast = prev.find(t => t.id === 'library-scan');
+            if (scanToast) {
+              return prev.map(t => t.id === 'library-scan' ? {
+                ...t,
+                progress,
+                details,
+                message: isInitializing ? 'Calcul de la taille de la bibliothèque...' : 'Analyse des fichiers musicaux...'
+              } : t);
+            } else {
+              return [...prev, {
+                id: 'library-scan',
+                type: 'scan',
+                title: 'Scan de la bibliothèque',
+                message: 'Démarrage du scan...',
+                progress,
+                details
+              }];
+            }
+          });
+        } else if (wasScanning) {
+          // Scan just finished
+          wasScanning = false;
+          removeToast('library-scan');
+          showToast('Scan de la bibliothèque terminé !', 'success');
+        }
+      } catch (err) {
+        console.error('Scan polling error:', err);
+      }
+    };
+
+    interval = setInterval(pollScan, 2000);
+    return () => clearInterval(interval);
+  }, [showToast, removeToast]);
+
   return (
     <ToastContext.Provider value={{ showToast, updateToast, removeToast }}>
       {children}
@@ -175,7 +228,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
               </button>
             </div>
             
-            {toast.type === 'download' && typeof toast.progress === 'number' && (
+            {(toast.type === 'download' || toast.type === 'scan') && typeof toast.progress === 'number' && (
               <div style={{ width: '100%', marginTop: '4px' }}>
                 <div style={{ 
                   height: '8px', 
@@ -188,7 +241,9 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                   <div style={{ 
                     width: `${toast.progress}%`, 
                     height: '100%', 
-                    background: 'linear-gradient(90deg, #a238ff, #ff3bce)',
+                    background: toast.type === 'download' 
+                      ? 'linear-gradient(90deg, #a238ff, #ff3bce)'
+                      : 'linear-gradient(90deg, var(--accent), #00d2ff)',
                     transition: 'width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1)',
                     position: 'relative',
                     borderRadius: '4px'
@@ -211,7 +266,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                   color: 'var(--text-muted)'
                 }}>
                   <span style={{ color: 'var(--accent)' }}>{toast.details || 'Progression...'}</span>
-                  <span style={{ color: '#ff3bce' }}>{Math.round(toast.progress)}%</span>
+                  <span style={{ color: toast.type === 'download' ? '#ff3bce' : 'var(--accent)' }}>{Math.round(toast.progress)}%</span>
                 </div>
               </div>
             )}
@@ -229,12 +284,22 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
           0% { transform: translateX(-100%); }
           100% { transform: translateX(100%); }
         }
+
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .animate-spin {
+          animation: spin 1s linear infinite;
+        }
         
         .toast-success { border-left: 4px solid var(--success) !important; }
         .toast-error { border-left: 4px solid var(--danger) !important; }
         .toast-info { border-left: 4px solid var(--accent) !important; }
         .toast-warning { border-left: 4px solid var(--warning) !important; }
         .toast-download { border-left: 4px solid #a238ff !important; }
+        .toast-scan { border-left: 4px solid var(--accent) !important; }
       `}</style>
     </ToastContext.Provider>
   );
@@ -246,6 +311,7 @@ const ToastIcon = ({ type }: { type: ToastType }) => {
     case 'error': return <XCircle size={20} color="var(--danger)" />;
     case 'warning': return <AlertCircle size={20} color="var(--warning)" />;
     case 'download': return <Download size={20} color="#a238ff" />;
+    case 'scan': return <Loader2 size={20} color="var(--accent)" className="animate-spin" />;
     default: return <Info size={20} color="var(--accent)" />;
   }
 };

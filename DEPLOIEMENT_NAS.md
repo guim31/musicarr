@@ -8,7 +8,12 @@ Depuis le terminal de votre ordinateur de développement, placez-vous à la raci
 *Note : Adaptez `root` à votre utilisateur NAS et `/mnt/user/appdata/musicarr/` au chemin de destination sur votre serveur. Pour corriger les problèmes de permissions sur Unraid, on utilise `--chown=99:100` afin que les fichiers appartiennent à `nobody:users`.*
 
 ```bash
-rsync -avz --chown=99:100 --exclude 'node_modules' --exclude '.next' --exclude '.git' ./ root@192.168.100.150:/mnt/user/appdata/musicarr/
+rsync -avz --chown=99:100 \
+  --exclude 'node_modules' \
+  --exclude '.next' \
+  --exclude '.git' \
+  --exclude 'data' \
+  ./ root@192.168.100.150:/mnt/user/appdata/musicarr/
 ```
 
 ## 2. Se connecter au NAS
