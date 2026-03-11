@@ -55,6 +55,16 @@ export class TagService {
         fs.unlinkSync(filePath);
         fs.renameSync(tempPath, filePath);
         
+        // Fix permissions and ownership
+        try {
+          const musicPathSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
+          if (musicPathSetting?.value) {
+            const stats = fs.statSync(musicPathSetting.value);
+            fs.chmodSync(filePath, 0o666);
+            if (stats.uid !== 0) fs.chownSync(filePath, stats.uid, stats.gid);
+          }
+        } catch (e) {}
+
         // Update DB
         if (update.title) {
           db.prepare('UPDATE tracks SET title = ? WHERE id = ?').run(update.title, update.trackId);
@@ -165,6 +175,16 @@ export class TagService {
 
     const coverPath = path.join(album.path, 'folder.jpg');
     fs.writeFileSync(coverPath, buffer);
+    
+    // Fix permissions and ownership for cover
+    try {
+      const musicPathSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
+      if (musicPathSetting?.value) {
+        const stats = fs.statSync(musicPathSetting.value);
+        fs.chmodSync(coverPath, 0o666);
+        if (stats.uid !== 0) fs.chownSync(coverPath, stats.uid, stats.gid);
+      }
+    } catch (e) {}
 
     // Update tracks
     const tracks = db.prepare('SELECT id, path FROM tracks WHERE album_id = ?').all(albumId) as { id: number, path: string }[];
@@ -191,6 +211,16 @@ export class TagService {
         if (fs.existsSync(tempPath)) {
           fs.unlinkSync(track.path);
           fs.renameSync(tempPath, track.path);
+          
+          // Fix permissions and ownership
+          try {
+            const musicPathSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
+            if (musicPathSetting?.value) {
+              const stats = fs.statSync(musicPathSetting.value);
+              fs.chmodSync(track.path, 0o666);
+              if (stats.uid !== 0) fs.chownSync(track.path, stats.uid, stats.gid);
+            }
+          } catch (e) {}
         }
       } catch (err) {
         if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);

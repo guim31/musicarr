@@ -2,10 +2,14 @@ import axios from 'axios';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import * as mm from 'music-metadata';
 import db from '@/lib/db';
 import { DeezerProvider } from './metadata/providers/DeezerProvider';
 import { LibraryService } from './library';
+
+const execAsync = promisify(exec);
 
 export class DeemixService {
   private static deezer = new DeezerProvider();
@@ -100,12 +104,17 @@ export class DeemixService {
 
     if (!fs.existsSync(albumDir)) {
       fs.mkdirSync(albumDir, { recursive: true });
-      // Forcer les permissions pour éviter les problèmes d'accès root
+      // Forcer les permissions et le propriétaire pour éviter les problèmes d'accès root sur NAS
       try {
+        const stats = fs.statSync(musicPath);
+        // Tenter de répliquer le propriétaire du dossier parent (souvent nobody/users sur NAS)
+        try { fs.chownSync(artistDir, stats.uid, stats.gid); } catch(e) {}
+        try { fs.chownSync(albumDir, stats.uid, stats.gid); } catch(e) {}
+        
         fs.chmodSync(artistDir, 0o777);
         fs.chmodSync(albumDir, 0o777);
       } catch (e) {
-        console.error('Erreur chmod:', e);
+        console.error('Erreur chmod/chown:', e);
       }
     }
 
@@ -129,11 +138,24 @@ export class DeemixService {
     try {
       // 1. Download Album Cover
       const albumData = await (this.deezer as any).fetchDeezer(`album/${deezerAlbumId}`);
+      
+      const musicPath = this.getMusicPath();
+      const stats = musicPath ? fs.statSync(musicPath) : { uid: 0, gid: 0 };
+      const ownership = { uid: stats.uid, gid: stats.gid };
+
       if (albumData?.cover_xl || albumData?.cover_big || albumData?.cover_medium) {
         const coverUrl = albumData.cover_xl || albumData.cover_big || albumData.cover_medium;
         try {
           const coverRes = await axios.get(coverUrl, { responseType: 'arraybuffer' });
-          fs.writeFileSync(path.join(albumDir, 'folder.jpg'), Buffer.from(coverRes.data));
+          const coverPath = path.join(albumDir, 'folder.jpg');
+          fs.writeFileSync(coverPath, Buffer.from(coverRes.data));
+          
+          // Appliquer permissions et proprio à la cover
+          try {
+            fs.chmodSync(coverPath, 0o666);
+            fs.chownSync(coverPath, ownership.uid, ownership.gid);
+          } catch(e) {}
+          
           console.log(`Cover downloaded for album: ${albumName}`);
         } catch (e) {
           console.error('Failed to download cover:', e);
@@ -145,9 +167,10 @@ export class DeemixService {
       for (const track of tracks) {
         let retries = 3;
         let success = false;
+        let downloadedPath = '';
         while (retries > 0 && !success) {
           try {
-            await this.downloadTrack(track.deezerId!, albumDir, track, session);
+            downloadedPath = await this.downloadTrack(track.deezerId!, albumDir, track, session);
             success = true;
           } catch (e: any) {
             retries--;
@@ -156,6 +179,12 @@ export class DeemixService {
             else throw e;
           }
         }
+
+        // Finaliser le fichier : injection de tags et remuxing avec FFmpeg pour compatibilité Navidrome
+        if (success && downloadedPath) {
+          await this.finalizeTrack(downloadedPath, track, albumData, ownership);
+        }
+
         completed++;
         
         db.prepare("UPDATE activity SET details = ? WHERE id = ?")
@@ -172,7 +201,7 @@ export class DeemixService {
     }
   }
 
-  private static async downloadTrack(trackId: string, destDir: string, trackInfo: any, session: any) {
+  private static async downloadTrack(trackId: string, destDir: string, trackInfo: any, session: any): Promise<string> {
     const quality = this.getPreferredQuality();
     const extension = quality === 'FLAC' ? 'flac' : 'mp3';
     
@@ -347,7 +376,7 @@ export class DeemixService {
           } catch (e) {
             console.warn(`Impossible de changer les permissions du fichier ${filePath}:`, e);
           }
-          resolve(undefined);
+          resolve(filePath);
         });
 
         writer.on('error', (err) => {
@@ -359,6 +388,66 @@ export class DeemixService {
     } catch (error) {
       console.error(`Erreur téléchargement piste ${trackId}:`, error);
       throw error;
+    }
+  }
+
+  private static async finalizeTrack(filePath: string, trackInfo: any, albumData: any, ownership: { uid: number, gid: number }) {
+    const ext = path.extname(filePath);
+    const tempPath = `${filePath}.tmp_final${ext}`;
+    
+    const title = trackInfo.name;
+    const artist = trackInfo.artistName;
+    const album = albumData.title;
+    const year = albumData.release_date ? albumData.release_date.split('-')[0] : '';
+    const trackNum = trackInfo.number;
+    const discNum = trackInfo.disc || 1;
+
+    // FFmpeg : Injecter les tags et assurer un conteneur propre (notamment pour les FLAC streamés)
+    let cmd = `ffmpeg -y -i "${filePath}" `;
+    
+    // Tags basiques
+    cmd += `-metadata title="${title.replace(/"/g, '\\"')}" `;
+    cmd += `-metadata artist="${artist.replace(/"/g, '\\"')}" `;
+    cmd += `-metadata album="${album.replace(/"/g, '\\"')}" `;
+    cmd += `-metadata track="${trackNum}" `;
+    cmd += `-metadata disc="${discNum}" `;
+    if (year) cmd += `-metadata date="${year}" `;
+    
+    // Injecter la cover si dispo dans le dossier
+    const coverPath = path.join(path.dirname(filePath), 'folder.jpg');
+    if (fs.existsSync(coverPath)) {
+      cmd += `-i "${coverPath}" -map 0 -map 1:0 -c copy -disposition:v:0 attached_pic `;
+      if (ext.toLowerCase() === '.mp3') {
+        cmd += '-id3v2_version 3 '; // Important pour Navidrome (ID3v2.3)
+      }
+    } else {
+      cmd += '-c copy ';
+    }
+    
+    cmd += `"${tempPath}"`;
+
+    try {
+      await execAsync(cmd);
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(filePath);
+        fs.renameSync(tempPath, filePath);
+        
+        // Appliquer permissions (666) et proprio (identique au dossier parent)
+        try {
+          fs.chmodSync(filePath, 0o666);
+          if (ownership.uid !== 0) {
+            fs.chownSync(filePath, ownership.uid, ownership.gid);
+          }
+        } catch (e) {}
+      }
+    } catch (e) {
+      console.error(`Erreur finalisation ffmpeg pour ${filePath}:`, e);
+      if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+      // Fallback : au moins tenter les permissions sur l'original
+      try {
+        fs.chmodSync(filePath, 0o666);
+        if (ownership.uid !== 0) fs.chownSync(filePath, ownership.uid, ownership.gid);
+      } catch (e2) {}
     }
   }
 
