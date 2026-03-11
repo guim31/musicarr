@@ -16,18 +16,22 @@ export class LibraryService {
     return db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
   }
 
-  static async scan() {
-    const musicPath = this.getMusicPath();
-    if (!musicPath?.value) throw new Error('Le chemin de la bibliothèque n\'est pas configuré');
+  static async scan(targetPath?: string) {
+    const musicPathRes = this.getMusicPath();
+    if (!musicPathRes?.value) throw new Error('Le chemin de la bibliothèque n\'est pas configuré');
+    const musicPath = musicPathRes.value;
 
-    console.log(`Scanning library at: ${musicPath.value}`);
+    console.log(`Scanning library at: ${targetPath || musicPath}`);
 
-    // Indiquer immédiatement que le scan commence (total à -1 signifie "calcul en cours")
-    db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('scan_progress', JSON.stringify({ processed: 0, total: -1 }));
+    // Indiquer immédiatement que le scan commence (seulement si scan complet)
+    if (!targetPath) {
+      db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('scan_progress', JSON.stringify({ processed: 0, total: -1 }));
+    }
 
     try {
-      // Support multiple formats
-      const files = await glob('**/*.{flac,mp3,m4a,wav}', { cwd: musicPath.value, absolute: true });
+      // Si targetPath est fourni, on scanne RECURSIVEMENT ce dossier. Sinon toute la lib.
+      const scanDir = targetPath || musicPath;
+      const files = await glob('**/*.{flac,mp3,m4a,wav}', { cwd: scanDir, absolute: true });
       
       let processedCount = 0;
       const totalCount = files.length;
@@ -37,13 +41,14 @@ export class LibraryService {
         fs.mkdirSync(dataDir, { recursive: true });
       }
 
-      // Mise à jour avec le vrai total
-      db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('scan_progress', JSON.stringify({ processed: 0, total: totalCount }));
+      // Mise à jour de la progression (seulement si scan complet)
+      if (!targetPath) {
+        db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('scan_progress', JSON.stringify({ processed: 0, total: totalCount }));
+      }
 
       const foundAlbumPaths = new Set<string>();
       const foundTrackPaths = new Set<string>();
       
-      // Opti: grouper les fichiers par dossier pour éviter les requêtes glob massives
       const filesByDir = new Map<string, string[]>();
       for (const f of files) {
         const dir = path.dirname(f);
@@ -59,7 +64,6 @@ export class LibraryService {
           const metadata = await mm.parseFile(filePath);
           let { artist, album, date, genre, year } = metadata.common;
 
-          // Fallback sur la structure des dossiers si les tags sont manquants
           if (!artist || !album) {
             const folderPath = path.dirname(filePath);
             const albumFolderName = path.basename(folderPath);
@@ -70,8 +74,7 @@ export class LibraryService {
           }
 
           if (artist && album) {
-            artist = artist.toUpperCase(); // Force uppercase for consistency
-            // 1. Artist Upsert (cached)
+            artist = artist.toUpperCase();
             let artistId = artistIdCache.get(artist);
             if (!artistId) {
               const artistResult = db.prepare('INSERT OR IGNORE INTO artists (name) VALUES (?)').run(artist);
@@ -84,7 +87,6 @@ export class LibraryService {
               artistIdCache.set(artist, artistId);
             }
 
-            // 2. Prepare rich metadata (cached per album)
             const folderPath = path.dirname(filePath);
             const cacheKey = `${artistId}-${album}`;
             let albumInfo = albumCache.get(cacheKey);
@@ -100,13 +102,14 @@ export class LibraryService {
                 hasCover: metadata.common.picture && metadata.common.picture.length > 0
               };
 
-              // 3. Album Upsert
               db.prepare(`
                 INSERT INTO albums (artist_id, name, release_date, quality, path, status, metadata)
                 VALUES (?, ?, ?, ?, ?, 'downloaded', ?)
                 ON CONFLICT(artist_id, name) DO UPDATE SET
                   path = excluded.path,
                   status = 'downloaded',
+                  quality = excluded.quality,
+                  release_date = excluded.release_date,
                   metadata = excluded.metadata
               `).run(
                 artistId, 
@@ -128,16 +131,13 @@ export class LibraryService {
               foundAlbumPaths.add(folderPath);
               const albumId = albumInfo.id;
               
-              // 5. Handle Cover Art - UNIQUEMENT UNE FOIS PAR ALBUM
               if (!albumInfo.coverHandled) {
                 const coverPath = path.join(dataDir, `album_${albumId}.jpg`);
-                
                 if (!fs.existsSync(coverPath)) {
                   if (metadata.common.picture && metadata.common.picture.length > 0) {
                     const picture = metadata.common.picture[0];
                     fs.writeFileSync(coverPath, picture.data);
                   } else {
-                    // Opti: fs.readdirSync au lieu de glob
                     try {
                       const localFiles = fs.readdirSync(folderPath);
                       const coverRegex = /^(cover|folder|front)\.(png|jpe?g)$/i;
@@ -146,23 +146,18 @@ export class LibraryService {
                         const localPath = path.join(folderPath, localCover);
                         fs.copyFileSync(localPath, coverPath);
                       }
-                    } catch (e) {
-                      // Ignorer les erreurs d'accès dossier
-                    }
+                    } catch (e) {}
                   }
                 }
                 albumInfo.coverHandled = true;
               }
 
-              // 6. Track Upsert
               let trackTitle = metadata.common.title;
               let trackNumber = metadata.common.track.no || 0;
 
               if (!trackTitle || trackNumber === 0) {
-                // Nettoyage et extraction depuis le nom de fichier : "01-Calling_Her_Name.flac"
                 const fileName = path.basename(filePath, path.extname(filePath));
                 const fileMatch = fileName.match(/^([0-9]+)[\s-_.]+(.*)/);
-                
                 if (fileMatch) {
                   if (trackNumber === 0) trackNumber = parseInt(fileMatch[1]);
                   if (!trackTitle) trackTitle = fileMatch[2].replace(/_/g, ' ').trim();
@@ -197,40 +192,50 @@ export class LibraryService {
         }
         
         processedCount++;
-        if (processedCount % 10 === 0 || processedCount === totalCount) {
+        // Mise à jour de la progression UI seulement si scan complet
+        if (!targetPath && (processedCount % 10 === 0 || processedCount === totalCount)) {
           db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('scan_progress', JSON.stringify({ processed: processedCount, total: totalCount }));
         }
       }
 
       // 7. Cleanup
-      console.log('Cleaning up missing albums and tracks...');
-      
-      // albums
-      const downloadedAlbums = db.prepare("SELECT id, path FROM albums WHERE status = 'downloaded'").all() as { id: number, path: string }[];
-      for (const album of downloadedAlbums) {
-        if (album.path && !foundAlbumPaths.has(album.path)) {
-          console.log(`Album not found on disk, marking as missing: ${album.path}`);
-          db.prepare("UPDATE albums SET status = 'missing', path = NULL WHERE id = ?").run(album.id);
-          db.prepare('DELETE FROM tracks WHERE album_id = ?').run(album.id);
+      if (!targetPath) {
+        console.log('Cleaning up missing albums and tracks...');
+        const downloadedAlbums = db.prepare("SELECT id, path FROM albums WHERE status = 'downloaded'").all() as { id: number, path: string }[];
+        for (const album of downloadedAlbums) {
+          if (album.path && !foundAlbumPaths.has(album.path)) {
+            db.prepare("UPDATE albums SET status = 'missing', path = NULL WHERE id = ?").run(album.id);
+            db.prepare('DELETE FROM tracks WHERE album_id = ?').run(album.id);
+          }
+        }
+        const allTracks = db.prepare('SELECT id, path FROM tracks').all() as { id: number, path: string }[];
+        for (const track of allTracks) {
+          if (track.path && !foundTrackPaths.has(track.path)) {
+            db.prepare('DELETE FROM tracks WHERE id = ?').run(track.id);
+          }
+        }
+      } else {
+        // En cas de scan partiel, on ne nettoie que les fichiers disparus DANS ce dossier
+        const tracksInDir = db.prepare("SELECT id, path FROM tracks WHERE path LIKE ?").all(targetPath + '%') as { id: number, path: string }[];
+        for (const track of tracksInDir) {
+          if (track.path && !foundTrackPaths.has(track.path)) {
+            db.prepare('DELETE FROM tracks WHERE id = ?').run(track.id);
+          }
         }
       }
 
-      // tracks
-      const allTracks = db.prepare('SELECT id, path FROM tracks').all() as { id: number, path: string }[];
-      for (const track of allTracks) {
-        if (track.path && !foundTrackPaths.has(track.path)) {
-          db.prepare('DELETE FROM tracks WHERE id = ?').run(track.id);
-        }
+      if (!targetPath) {
+        db.prepare(`
+          INSERT INTO activity (type, status, title, message)
+          VALUES ('scan', 'completed', 'Scan Bibliothèque', ?)
+        `).run(`Fin de scan complet : ${processedCount} fichiers traités.`);
       }
-
-      db.prepare(`
-        INSERT INTO activity (type, status, title, message)
-        VALUES ('scan', 'completed', 'Scan Bibliothèque', ?)
-      `).run(`Fin de scan : ${processedCount} fichiers traités, ${totalCount} trouvés.`);
 
       return processedCount;
     } finally {
-      db.prepare('DELETE FROM settings WHERE key = ?').run('scan_progress');
+      if (!targetPath) {
+        db.prepare('DELETE FROM settings WHERE key = ?').run('scan_progress');
+      }
     }
   }
 }

@@ -222,7 +222,7 @@ export class DeemixService {
         } catch (e) { console.error('Erreur lors du nettoyage des backups:', e); }
       }
       
-      await LibraryService.scan().catch(e => console.error('Erreur scan post-download:', e));
+      await LibraryService.scan(albumDir).catch(e => console.error('Erreur scan post-download:', e));
     } catch (error: any) {
       // Échec : Restaurer les backups
       if (fs.existsSync(albumDir)) {
@@ -569,8 +569,8 @@ export class DeemixService {
       }
     }
 
-    // 4. Lancer un scan pour mettre à jour la base de données
-    await LibraryService.scan();
+    // 4. Lancer un scan partiel pour mettre à jour la base de données
+    await LibraryService.scan(finalAlbumPath);
     
     return true;
   }
