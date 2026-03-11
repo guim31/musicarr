@@ -300,9 +300,10 @@ export class DeemixService {
     const extension = quality === 'FLAC' ? 'flac' : 'mp3';
     
     // Format attendu : NN-Titre_Avec_Underscores.ext
-    const cleanTitle = trackInfo.name.replace(/\s+/g, '_');
+    // Sanitization plus stricte pour éviter les problèmes shell et filesystem
+    const cleanTitle = trackInfo.name.replace(/[\s\?*:"<>|\\\/]+/g, '_');
     const fileName = `${trackInfo.number.toString().padStart(2, '0')}-${cleanTitle}.${extension}`;
-    const filePath = path.join(destDir, fileName);
+    let filePath = path.join(destDir, fileName);
 
     console.log(`Downloading track ${trackId} to ${filePath} (Quality: ${quality})`);
     
@@ -375,7 +376,8 @@ export class DeemixService {
           }, { headers, timeout: 10000 });
           
           if (mp3Res.data?.data?.[0]?.media?.[0]?.sources?.[0]?.url) {
-            return this.processDownloadStream(mp3Res.data.data[0].media[0].sources[0].url, filePath, trackInfo, actualTrackId, headers);
+            const mp3Path = filePath.replace(/\.flac$/i, '.mp3');
+            return this.processDownloadStream(mp3Res.data.data[0].media[0].sources[0].url, mp3Path, trackInfo, actualTrackId, headers);
           }
         }
         throw new Error(`Erreur Media API: ${mediaData.errors[0].message}`);
@@ -396,7 +398,8 @@ export class DeemixService {
          }, { headers, timeout: 10000 });
          
          if (mp3Res.data?.data?.[0]?.media?.[0]?.sources?.[0]?.url) {
-           return this.processDownloadStream(mp3Res.data.data[0].media[0].sources[0].url, filePath, trackInfo, actualTrackId, headers);
+           const mp3Path = filePath.replace(/\.flac$/i, '.mp3');
+           return this.processDownloadStream(mp3Res.data.data[0].media[0].sources[0].url, mp3Path, trackInfo, actualTrackId, headers);
          }
        }
         throw new Error(`Structure Media API inattendue: ${JSON.stringify(mediaData)}`);
@@ -520,10 +523,26 @@ export class DeemixService {
     const trackNum = trackInfo.number;
     const discNum = trackInfo.disc || 1;
 
-    // FFmpeg : Injecter les tags et assurer un conteneur propre (notamment pour les FLAC streamés)
+    // FFmpeg : Injecter les tags et assurer un conteneur propre
+    // L'ordre est CRUCIAL : entrées d'abord (-i), puis métadonnées, puis sortie
     let cmd = `ffmpeg -y -i "${filePath}" `;
     
-    // Tags basiques
+    // Deuxième entrée (cover) si dispo
+    const coverPath = path.join(path.dirname(filePath), 'folder.jpg');
+    const hasCover = fs.existsSync(coverPath);
+    if (hasCover) {
+      cmd += `-i "${coverPath}" `;
+    }
+
+    // Paramètres de mapping et codec
+    if (hasCover) {
+      cmd += `-map 0:a -map 1:0 -disposition:v:0 attached_pic `;
+    } else {
+      cmd += `-map 0:a `;
+    }
+    cmd += `-c:a copy `;
+
+    // Tags (doivent être placés après les inputs)
     cmd += `-metadata title="${title.replace(/"/g, '\\"')}" `;
     cmd += `-metadata artist="${artist.replace(/"/g, '\\"')}" `;
     cmd += `-metadata album="${album.replace(/"/g, '\\"')}" `;
@@ -533,16 +552,9 @@ export class DeemixService {
       cmd += `-metadata date="${year}" `;
       cmd += `-metadata year="${year}" `;
     }
-    
-    // Injecter la cover si dispo dans le dossier
-    const coverPath = path.join(path.dirname(filePath), 'folder.jpg');
-    if (fs.existsSync(coverPath)) {
-      cmd += `-i "${coverPath}" -map 0 -map 1:0 -c copy -disposition:v:0 attached_pic `;
-      if (ext.toLowerCase() === '.mp3') {
-        cmd += '-id3v2_version 3 '; // Important pour Navidrome (ID3v2.3)
-      }
-    } else {
-      cmd += '-c copy ';
+
+    if (ext.toLowerCase() === '.mp3') {
+      cmd += '-id3v2_version 3 ';
     }
     
     cmd += `"${tempPath}"`;
