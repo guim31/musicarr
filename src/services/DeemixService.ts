@@ -86,7 +86,7 @@ export class DeemixService {
     return path.join(parent, normalizedName);
   }
 
-  static async downloadAlbum(deezerAlbumId: string) {
+  static async downloadAlbum(deezerAlbumId: string, albumId?: number) {
     const arl = this.getArl();
     const musicPath = this.getMusicPath();
     if (!arl) throw new Error('ARL Deezer non configuré');
@@ -125,8 +125,24 @@ export class DeemixService {
       albumName, 
       `Téléchargement de l'album ${albumName} depuis Deezer`, 
       JSON.stringify({ deezerId: deezerAlbumId, current: 0, total: tracks.length }),
-      null // Optionnellement passer l'albumId si dispo
+      albumId || null
     ).lastInsertRowid;
+
+    // Sauvegarder temporairement (backup) si c'est une mise à niveau
+    if (albumId && fs.existsSync(albumDir)) {
+      try {
+        const files = fs.readdirSync(albumDir);
+        for (const file of files) {
+          if (file.match(/\.(mp3|flac|m4a|wav)$/i)) {
+            const oldPath = path.join(albumDir, file);
+            fs.renameSync(oldPath, oldPath + '.upgrade_backup');
+          }
+        }
+        console.log(`Fichiers originaux mis en backup (.upgrade_backup) pour mise à niveau dans : ${albumDir}`);
+      } catch (e) {
+        console.error('Erreur lors du backup pour mise à niveau:', e);
+      }
+    }
 
     // Lancer le téléchargement en arrière-plan
     this.runDownloadInBackground(deezerAlbumId, tracks, albumName, albumDir, activityId);
@@ -194,8 +210,37 @@ export class DeemixService {
       db.prepare("UPDATE activity SET status = 'completed', message = ? WHERE id = ?")
         .run(`Album ${albumName} téléchargé avec succès (${tracks.length} pistes)`, activityId);
       
+      // Succès : Nettoyer les backups
+      if (fs.existsSync(albumDir)) {
+        try {
+          const files = fs.readdirSync(albumDir);
+          for (const file of files) {
+            if (file.endsWith('.upgrade_backup')) {
+              fs.unlinkSync(path.join(albumDir, file));
+            }
+          }
+        } catch (e) { console.error('Erreur lors du nettoyage des backups:', e); }
+      }
+      
       await LibraryService.scan().catch(e => console.error('Erreur scan post-download:', e));
     } catch (error: any) {
+      // Échec : Restaurer les backups
+      if (fs.existsSync(albumDir)) {
+        try {
+          const files = fs.readdirSync(albumDir);
+          for (const file of files) {
+            if (file.endsWith('.upgrade_backup')) {
+              const backupPath = path.join(albumDir, file);
+              const originalPath = backupPath.replace('.upgrade_backup', '');
+              // Si un nouveau fichier a été créé mais que le download a échoué, on le supprime pour remettre l'original
+              if (fs.existsSync(originalPath)) fs.unlinkSync(originalPath);
+              fs.renameSync(backupPath, originalPath);
+            }
+          }
+          console.log(`Restauration des fichiers originaux terminée suite à l'échec pour l'album : ${albumName}`);
+        } catch (re) { console.error('Erreur lors de la restauration des backups:', re); }
+      }
+
       db.prepare("UPDATE activity SET status = 'failed', message = ? WHERE id = ?")
         .run(`Erreur: ${error.message}`, activityId);
     }

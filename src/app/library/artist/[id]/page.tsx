@@ -218,19 +218,17 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
                   </div>
                 </div>
               </Link>
-              {album.status !== 'downloaded' && (
-                <button 
-                  className={styles.searchQuickBtn}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleManualSearch(album.id, album.name);
-                  }}
-                  title="Rechercher cet album"
-                >
-                  <Search size={16} />
-                </button>
-              )}
+              <button 
+                className={styles.searchQuickBtn}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleManualSearch(album.id, album.name);
+                }}
+                title="Rechercher / Mettre à jour cet album"
+              >
+                <Search size={16} />
+              </button>
             </div>
           ))}
         </div>

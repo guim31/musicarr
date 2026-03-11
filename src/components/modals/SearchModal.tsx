@@ -29,6 +29,7 @@ interface SearchResult {
   age: number;
   ageInDays: number;
   infoUrl?: string;
+  isUpgrade?: boolean;
 }
 
 interface SearchModalProps {
@@ -55,7 +56,8 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
     setLoading(true);
     setStatus(null);
     try {
-      const res = await fetch(`/api/search/download?query=${encodeURIComponent(query)}`);
+      const url = `/api/search/download?query=${encodeURIComponent(query)}${albumId ? `&albumId=${albumId}` : ''}`;
+      const res = await fetch(url);
       if (!res.ok) throw new Error('Erreur lors de la recherche');
       const data = await res.json();
       setResults(data);
@@ -158,16 +160,16 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
                         <HardDrive size={14} />
                         {formatSize(res.size)}
                       </span>
-                      {res.title.toLowerCase().includes('flac') && (
-                        <span className={`${styles.metaItem} ${styles.highQuality}`}>
-                          <ShieldCheck size={14} />
-                          FLAC
+                      {res.isUpgrade && (
+                        <span className={`${styles.metaItem} ${styles.upgradeBadge}`}>
+                          <RefreshCw size={14} className="animate-spin-slow" />
+                          Mise à niveau
                         </span>
                       )}
                     </div>
                   </div>
                   <button 
-                    className={styles.downloadBtn} 
+                    className={`${styles.downloadBtn} ${res.isUpgrade ? styles.upgradeBtn : ''}`} 
                     onClick={() => handleDownload(res)}
                     disabled={downloading === res.guid}
                   >

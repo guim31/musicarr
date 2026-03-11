@@ -71,8 +71,48 @@ export async function GET(request: Request) {
     }
 
     const mappedDeezer = Array.from(allDeezerAlbumsMap.values());
+    const albumId = searchParams.get('albumId');
 
-    return NextResponse.json([...mappedDeezer, ...mappedProwlarr]);
+    // 3. Enrichir avec les informations de mise à niveau si albumId est présent
+    let currentAlbum: any = null;
+    if (albumId) {
+      currentAlbum = db.prepare(`
+        SELECT a.quality, a.metadata
+        FROM albums a
+        WHERE a.id = ?
+      `).get(albumId) as any;
+      if (currentAlbum && currentAlbum.metadata) {
+        currentAlbum.metadata = JSON.parse(currentAlbum.metadata);
+      }
+    }
+
+    const isUpgradeFlag = (resQuality: string) => {
+      if (!currentAlbum) return false;
+      const currQ = (currentAlbum.quality || '').toLowerCase();
+      const currB = currentAlbum.metadata?.bitrate || 0;
+      
+      const targetQ = resQuality.toLowerCase();
+
+      // Si le résultat est FLAC et qu'on a du MP3/MPEG
+      if (targetQ.includes('flac')) {
+        return !currQ.includes('flac');
+      }
+      
+      // Si le résultat est du 320 et qu'on a moins
+      if (targetQ.includes('320')) {
+        if (currQ.includes('flac')) return false;
+        return currB < 310; // Marge pour les bitrates variables
+      }
+
+      return false;
+    };
+
+    const results = [
+      ...mappedDeezer.map((r: any) => ({ ...r, isUpgrade: isUpgradeFlag('FLAC/320') })), 
+      ...mappedProwlarr.map((r: any) => ({ ...r, isUpgrade: isUpgradeFlag(r.title) }))
+    ];
+
+    return NextResponse.json(results);
   } catch (error: any) {
     console.error('Search API Error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -88,7 +128,7 @@ export async function POST(request: Request) {
     }
 
     if (protocol?.toLowerCase() === 'deemix') {
-      const response = await DeemixService.downloadAlbum(url);
+      const response = await DeemixService.downloadAlbum(url, albumId ? parseInt(albumId) : undefined);
       return NextResponse.json({ 
         success: response.success, 
         activityId: `local-${response.activityId}` 
