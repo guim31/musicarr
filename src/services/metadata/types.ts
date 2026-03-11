@@ -19,6 +19,7 @@ export interface RemoteAlbum {
   type?: 'album' | 'single' | 'ep' | 'compilation';
   image?: string;
   trackCount?: number;
+  qualities?: string[];
 }
 
 export interface RemoteTrack {

@@ -13,6 +13,8 @@ const execAsync = promisify(exec);
 
 export class DeemixService {
   private static deezer = new DeezerProvider();
+  private static sessionCache: any = null;
+
 
   private static getArl() {
     const setting = db.prepare('SELECT value FROM settings WHERE key = ?').get('deezer_arl') as { value: string } | undefined;
@@ -46,11 +48,49 @@ export class DeemixService {
 
     if (!res.data || !res.data.results) throw new Error('Échec du handshake Deezer');
     
-    return {
+    const session = {
       sid: res.headers['set-cookie']?.find(c => c.startsWith('sid='))?.split(';')[0].split('=')[1] || '',
       api_token: res.data.results.checkForm,
       license_token: res.data.results.USER.OPTIONS.license_token
     };
+    this.sessionCache = session;
+    return session;
+  }
+
+  static async searchAlbumWithQuality(query: string) {
+    try {
+      const session = await this.getSession();
+      const res = await axios.post('https://www.deezer.com/ajax/gw-light.php', 
+        { query, start: 0, nb: 20, type: 'album' },
+        { 
+          params: { method: 'deezer.pageSearch', api_version: '1.0', api_token: session.api_token },
+          headers: { Cookie: `arl=${this.getArl()}; sid=${session.sid}` }
+        }
+      );
+
+      if (!res.data?.results?.ALBUM?.data) return [];
+
+      return res.data.results.ALBUM.data.map((album: any) => {
+        const formats = album.EXPLICIT_ALBUM_CONTENT?.POSSIBLE_TRACK_FORMATS || [];
+        const qualities = [];
+        // Deezer formats: 1=MP3_128, 3=MP3_320, 9=FLAC
+        if (formats.includes(9)) qualities.push('FLAC');
+        if (formats.includes(3)) qualities.push('320');
+        if (formats.includes(1)) qualities.push('128');
+
+        return {
+          name: album.ALB_TITLE,
+          deezerId: album.ALB_ID,
+          releaseDate: album.ALB_RELEASE_DATE,
+          artistName: album.ART_NAME,
+          image: `https://e-cdns-images.dzcdn.net/images/cover/${album.ALB_PICTURE}/1000x1000-000000-80-0-0.jpg`,
+          qualities
+        };
+      });
+    } catch (e) {
+      console.error('Erreur searchAlbumWithQuality:', e);
+      return [];
+    }
   }
 
   /**
@@ -321,130 +361,153 @@ export class DeemixService {
       const mediaData = mediaRes.data.data[0];
 
       if (mediaData.errors && mediaData.errors.length > 0) {
+        // Fallback automatique si FLAC non dispo
+        if (quality === 'FLAC') {
+           console.log(`FLAC non disponible pour ${trackId}, tentative en MP3_320...`);
+           const mp3Res = await axios.post('https://media.deezer.com/v1/get_url', {
+            license_token: session.license_token,
+            media: [{
+              type: "FULL",
+              id: actualTrackId,
+              formats: [{ format: 'MP3_320', cipher: "BF_CBC_STRIPE" }]
+            }],
+            track_tokens: [trackToken]
+          }, { headers, timeout: 10000 });
+          
+          if (mp3Res.data?.data?.[0]?.media?.[0]?.sources?.[0]?.url) {
+            return this.processDownloadStream(mp3Res.data.data[0].media[0].sources[0].url, filePath, trackInfo, actualTrackId, headers);
+          }
+        }
         throw new Error(`Erreur Media API: ${mediaData.errors[0].message}`);
       }
 
       if (!mediaData.media || !mediaData.media[0] || !mediaData.media[0].sources || !mediaData.media[0].sources[0]) {
+        // Fallback également ici pour le tableau vide
+        if (quality === 'FLAC') {
+          console.log(`Média vide pour ${trackId} en FLAC, tentative en MP3_320...`);
+          const mp3Res = await axios.post('https://media.deezer.com/v1/get_url', {
+           license_token: session.license_token,
+           media: [{
+             type: "FULL",
+             id: actualTrackId,
+             formats: [{ format: 'MP3_320', cipher: "BF_CBC_STRIPE" }]
+           }],
+           track_tokens: [trackToken]
+         }, { headers, timeout: 10000 });
+         
+         if (mp3Res.data?.data?.[0]?.media?.[0]?.sources?.[0]?.url) {
+           return this.processDownloadStream(mp3Res.data.data[0].media[0].sources[0].url, filePath, trackInfo, actualTrackId, headers);
+         }
+       }
         throw new Error(`Structure Media API inattendue: ${JSON.stringify(mediaData)}`);
       }
 
       const streamUrl = mediaData.media[0].sources[0].url;
-      if (!streamUrl) throw new Error('URL de stream non trouvée dans la réponse Media API');
-
-      // Fonction de calcul de clé Blowfish pour Deezer
-      const getDecryptionKey = (id: string) => {
-        const crypto = require('crypto');
-        const secret = 'g4el58wc0zvf9na1';
-        const idMd5 = crypto.createHash('md5').update(id.toString(), 'ascii').digest('hex');
-        const bfKey = Buffer.alloc(16);
-        for (let i = 0; i < 16; i++) {
-          bfKey[i] = idMd5.charCodeAt(i) ^ idMd5.charCodeAt(i + 16) ^ secret.charCodeAt(i);
-        }
-        return bfKey;
-      };
-
-      const bfKey = getDecryptionKey(actualTrackId);
-      const Blowfish = require('blowfish-node');
-      const bf = new Blowfish(bfKey, Blowfish.MODE.CBC, Blowfish.PADDING.NULL);
-      bf.setIv(Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]));
-
-      // 3. Télécharger le flux chiffré
-      const response = await axios({
-        method: 'GET',
-        url: streamUrl,
-        responseType: 'stream',
-        headers,
-        timeout: 30000 // 30s timeout pour le début du flux
-      });
-
-      const totalLengthRaw = response.headers['content-length'];
-      const totalLength = totalLengthRaw ? parseInt(totalLengthRaw, 10) : 0;
-      let downloadedLength = 0;
-      let activityIdToUpdate = 0;
-
-      // Retrouver l'ID d'activité si l'albumName est connu
-      // On le passera différemment dans un vrai refactoring, mais ici un lookup rapide
-      try {
-        const row = db.prepare("SELECT id FROM activity WHERE status = 'processing' AND title LIKE ? ORDER BY timestamp DESC LIMIT 1").get(`Téléchargement de l'album ${trackInfo.albumName || '%'}%`) as { id: number };
-        if (row) activityIdToUpdate = row.id;
-      } catch (e) { /* ignore */ }
-
-      let lastReportedProgress = 0;
-      const CHUNK_SIZE = 2048;
-
-      return new Promise((resolve, reject) => {
-        const writer = fs.createWriteStream(filePath);
-        let buffer = Buffer.alloc(0);
-        let chunkIndex = 0;
-
-        response.data.on('data', (chunk: Buffer) => {
-          buffer = Buffer.concat([buffer, chunk]);
-          downloadedLength += chunk.length;
-
-          // Mettre à jour la progression du titre courant (si on a un total)
-          if (totalLength > 0 && activityIdToUpdate > 0) {
-            const currentProgress = Math.floor((downloadedLength / totalLength) * 100);
-            if (currentProgress - lastReportedProgress >= 5 || currentProgress === 100) {
-                lastReportedProgress = currentProgress;
-                // Lecture des détails actuels pour ne pas écraser current/total
-                try {
-                  const currentActivity = db.prepare("SELECT details FROM activity WHERE id = ?").get(activityIdToUpdate) as any;
-                  if (currentActivity?.details) {
-                    const detailsObj = JSON.parse(currentActivity.details);
-                    // On combine mode Piste (Deemix) et Pourcentage (Sabnzbd) dans le même objet
-                    detailsObj.percentage = currentProgress;
-                    db.prepare("UPDATE activity SET details = ? WHERE id = ?").run(JSON.stringify(detailsObj), activityIdToUpdate);
-                  }
-                } catch(e) {}
-            }
-          }
-
-          // Traitement des blocs de 2048 bytes
-          while (buffer.length >= CHUNK_SIZE) {
-            let processChunk = buffer.subarray(0, CHUNK_SIZE);
-            buffer = buffer.subarray(CHUNK_SIZE);
-
-            if (chunkIndex % 3 === 0 && processChunk.length === CHUNK_SIZE) {
-              bf.setIv(Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]));
-              // Use internal _decodeCBC to avoid arbitrary padding stripping by blowfish-node
-              const decrypted = (bf as any)._decodeCBC(processChunk);
-              writer.write(Buffer.from(decrypted));
-            } else {
-              writer.write(processChunk);
-            }
-            chunkIndex++;
-          }
-        });
-
-        response.data.on('end', () => {
-          // Écrire le reste du buffer s'il y a lieu
-          if (buffer.length > 0) {
-            writer.write(buffer);
-          }
-          writer.end();
-        });
-
-        writer.on('finish', () => {
-          try {
-            fs.chmodSync(filePath, 0o666);
-          } catch (e) {
-            console.warn(`Impossible de changer les permissions du fichier ${filePath}:`, e);
-          }
-          resolve(filePath);
-        });
-
-        writer.on('error', (err) => {
-          fs.unlink(filePath, () => {});
-          reject(err);
-        });
-      });
-      
+      return this.processDownloadStream(streamUrl, filePath, trackInfo, actualTrackId, headers);
     } catch (error) {
       console.error(`Erreur téléchargement piste ${trackId}:`, error);
       throw error;
     }
   }
 
+  private static async processDownloadStream(streamUrl: string, filePath: string, trackInfo: any, actualTrackId: string, headers: any): Promise<string> {
+    // Fonction de calcul de clé Blowfish pour Deezer
+    const getDecryptionKey = (id: string) => {
+      const crypto = require('crypto');
+      const secret = 'g4el58wc0zvf9na1';
+      const idMd5 = crypto.createHash('md5').update(id.toString(), 'ascii').digest('hex');
+      const bfKey = Buffer.alloc(16);
+      for (let i = 0; i < 16; i++) {
+        bfKey[i] = idMd5.charCodeAt(i) ^ idMd5.charCodeAt(i + 16) ^ secret.charCodeAt(i);
+      }
+      return bfKey;
+    };
+
+    const bfKey = getDecryptionKey(actualTrackId);
+    const Blowfish = require('blowfish-node');
+    const bf = new Blowfish(bfKey, Blowfish.MODE.CBC, Blowfish.PADDING.NULL);
+    bf.setIv(Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]));
+
+    // 3. Télécharger le flux chiffré
+    const response = await axios({
+      method: 'GET',
+      url: streamUrl,
+      responseType: 'stream',
+      headers,
+      timeout: 30000 // 30s timeout pour le début du flux
+    });
+
+    const totalLengthRaw = response.headers['content-length'];
+    const totalLength = totalLengthRaw ? parseInt(totalLengthRaw, 10) : 0;
+    let downloadedLength = 0;
+    let activityIdToUpdate = 0;
+
+    // Retrouver l'ID d'activité si l'albumName est connu
+    try {
+      const row = db.prepare("SELECT id FROM activity WHERE status = 'processing' AND title LIKE ? ORDER BY timestamp DESC LIMIT 1").get(`Téléchargement de l'album ${trackInfo.albumName || '%'}%`) as { id: number };
+      if (row) activityIdToUpdate = row.id;
+    } catch (e) { /* ignore */ }
+
+    let lastReportedProgress = 0;
+    const CHUNK_SIZE = 2048;
+
+    return new Promise((resolve, reject) => {
+      const writer = fs.createWriteStream(filePath);
+      let buffer = Buffer.alloc(0);
+      let chunkIndex = 0;
+
+      response.data.on('data', (chunk: Buffer) => {
+        buffer = Buffer.concat([buffer, chunk]);
+        downloadedLength += chunk.length;
+
+        // Mettre à jour la progression du titre courant (si on a un total)
+        if (totalLength > 0 && activityIdToUpdate > 0) {
+          const currentProgress = Math.floor((downloadedLength / totalLength) * 100);
+          if (currentProgress - lastReportedProgress >= 5 || currentProgress === 100) {
+              lastReportedProgress = currentProgress;
+              try {
+                const currentActivity = db.prepare("SELECT details FROM activity WHERE id = ?").get(activityIdToUpdate) as any;
+                if (currentActivity?.details) {
+                  const detailsObj = JSON.parse(currentActivity.details);
+                  detailsObj.percentage = currentProgress;
+                  db.prepare("UPDATE activity SET details = ? WHERE id = ?").run(JSON.stringify(detailsObj), activityIdToUpdate);
+                }
+              } catch(e) {}
+          }
+        }
+
+        // Traitement des blocs de 2048 bytes
+        while (buffer.length >= CHUNK_SIZE) {
+          let processChunk = buffer.subarray(0, CHUNK_SIZE);
+          buffer = buffer.subarray(CHUNK_SIZE);
+
+          if (chunkIndex % 3 === 0 && processChunk.length === CHUNK_SIZE) {
+            bf.setIv(Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]));
+            const decrypted = (bf as any)._decodeCBC(processChunk);
+            writer.write(Buffer.from(decrypted));
+          } else {
+            writer.write(processChunk);
+          }
+          chunkIndex++;
+        }
+      });
+
+      response.data.on('end', () => {
+        if (buffer.length > 0) writer.write(buffer);
+        writer.end();
+      });
+
+      writer.on('finish', () => {
+        try { fs.chmodSync(filePath, 0o666); } catch (e) {}
+        resolve(filePath);
+      });
+
+      writer.on('error', (err) => {
+        fs.unlink(filePath, () => {});
+        reject(err);
+      });
+    });
+  }
   private static async finalizeTrack(filePath: string, trackInfo: any, albumData: any, ownership: { uid: number, gid: number }, fallbackYear?: string) {
     const ext = path.extname(filePath);
     const tempPath = `${filePath}.tmp_final${ext}`;

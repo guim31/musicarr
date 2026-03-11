@@ -30,6 +30,7 @@ interface SearchResult {
   ageInDays: number;
   infoUrl?: string;
   isUpgrade?: boolean;
+  qualities?: string[];
 }
 
 interface SearchModalProps {
@@ -160,6 +161,15 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
                         <HardDrive size={14} />
                         {formatSize(res.size)}
                       </span>
+                      {res.qualities && res.qualities.length > 0 && (
+                        <div className={styles.qualityContainer}>
+                          {res.qualities.map(q => (
+                            <span key={q} className={styles.qualityBadge} data-quality={q.toLowerCase()}>
+                              {q}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {res.isUpgrade && (
                         <span className={`${styles.metaItem} ${styles.upgradeBadge}`}>
                           <RefreshCw size={14} className="animate-spin-slow" />

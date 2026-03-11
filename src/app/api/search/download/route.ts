@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     const [prowlarrResults, deezerArtists, deezerAlbums] = await Promise.all([
       ProwlarrService.search(query).catch(e => { console.error(e); return []; }),
       deezer.searchArtist(query).catch(e => { console.error(e); return []; }),
-      deezer.searchAlbum(query).catch(e => { console.error(e); return []; })
+      DeemixService.searchAlbumWithQuality(query).catch(e => { console.error(e); return []; })
     ]);
 
     // Mapper Prowlarr
@@ -36,7 +36,7 @@ export async function GET(request: Request) {
 
     // Mapper Deezer
     const allDeezerAlbumsMap = new Map<string, any>();
-    deezerAlbums.forEach(album => {
+    deezerAlbums.forEach((album: any) => {
       allDeezerAlbumsMap.set(album.deezerId!, {
         guid: `deezer-${album.deezerId}`,
         title: `[Deezer] ${(album as any).artistName || 'Artiste inconnu'} - ${album.name}`,
@@ -46,7 +46,8 @@ export async function GET(request: Request) {
         downloadUrl: album.deezerId,
         infoUrl: `https://www.deezer.com/album/${album.deezerId}`,
         protocol: 'deemix',
-        ageInDays: 0
+        ageInDays: 0,
+        qualities: (album as any).qualities
       });
     });
 
