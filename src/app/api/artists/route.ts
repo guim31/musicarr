@@ -39,8 +39,10 @@ export async function POST(request: Request) {
     const folderName = name.toUpperCase().replace(/\s+/g, '_');
     const libraryPathRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
     const libraryPath = libraryPathRow?.value;
+    const readOnlyRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('read_only_mode') as { value: string } | undefined;
+    const isReadOnly = readOnlyRow ? readOnlyRow.value === 'true' : true;
 
-    if (libraryPath) {
+    if (libraryPath && !isReadOnly) {
       try {
         const artistPath = path.join(libraryPath, folderName);
         if (!fs.existsSync(artistPath)) {

@@ -10,9 +10,27 @@ export async function GET() {
     const progressRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('scan_progress') as { value: string } | undefined;
     const artistsCount = db.prepare("SELECT count(*) as count FROM artists WHERE id IN (SELECT DISTINCT artist_id FROM albums WHERE status = 'downloaded')").get() as { count: number };
     const albumsCount = db.prepare("SELECT count(*) as count FROM albums WHERE status = 'downloaded'").get() as { count: number };
+    const readOnlyRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('read_only_mode') as { value: string } | undefined;
+
+    // Check if filesystem is actually writable
+    let isWritable = false;
+    if (path?.value) {
+      try {
+        const fs = await import('fs');
+        const pathLib = await import('path');
+        const testFile = pathLib.join(path.value, '.write_test');
+        fs.writeFileSync(testFile, 'test');
+        fs.unlinkSync(testFile);
+        isWritable = true;
+      } catch (e) {
+        isWritable = false;
+      }
+    }
 
     return NextResponse.json({
       path: path?.value || '',
+      readOnly: readOnlyRow ? readOnlyRow.value === 'true' : true, // Default to true for safety
+      isWritable,
       stats: {
         artists: artistsCount.count,
         albums: albumsCount.count
@@ -31,6 +49,13 @@ export async function POST(request: Request) {
     if (action === 'save_path') {
       db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
         .run('library_path', newPath);
+      return NextResponse.json({ success: true });
+    }
+
+    if (action === 'save_read_only') {
+      const { value } = await request.json();
+      db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
+        .run('read_only_mode', value ? 'true' : 'false');
       return NextResponse.json({ success: true });
     }
 

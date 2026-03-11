@@ -28,6 +28,8 @@ export default function SettingsPage() {
   // Library state
   const [libraryPath, setLibraryPath] = useState('');
   const [libraryStats, setLibraryStats] = useState({ artists: 0, albums: 0 });
+  const [readOnly, setReadOnly] = useState(true);
+  const [isWritable, setIsWritable] = useState(false);
   const [previewFolders, setPreviewFolders] = useState<string[]>([]);
   const [previewTotal, setPreviewTotal] = useState(0);
   const [previewError, setPreviewError] = useState('');
@@ -101,6 +103,8 @@ export default function SettingsPage() {
       if (libData) {
         setLibraryPath(libData.path || '');
         setLibraryStats(libData.stats || { artists: 0, albums: 0 });
+        setReadOnly(libData.readOnly ?? true);
+        setIsWritable(libData.isWritable || false);
         if (libData.progress) {
           setScanning(true);
           setScanProgress(libData.progress);
@@ -234,6 +238,22 @@ export default function SettingsPage() {
       showToast('Erreur lors de l\'enregistrement de la bibliothèque.', 'error');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleToggleReadOnly = async (value: boolean) => {
+    setReadOnly(value);
+    try {
+      const res = await fetch('/api/library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save_read_only', value })
+      });
+      if (res.ok) {
+        showToast(value ? 'Mode lecture seule activé.' : 'Mode écriture activé.', 'info');
+      }
+    } catch (e) {
+      showToast('Erreur lors du changement de mode.', 'error');
     }
   };
 
@@ -403,6 +423,52 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+
+        <div style={{ marginTop: '24px', borderTop: '1px solid var(--border)', paddingTop: '24px' }}>
+          <h3 style={{ fontSize: '0.9rem', marginBottom: '16px', fontWeight: 600 }}>Gestion des fichiers</h3>
+          
+          <div className={styles.switchContainer}>
+            <div>
+              <div style={{ fontWeight: 500, fontSize: '0.9375rem' }}>Mode Lecture Seule</div>
+              <div style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                Empêche l'application de créer des dossiers ou de modifier les tags.
+              </div>
+            </div>
+            <label className={styles.switch}>
+              <input 
+                type="checkbox" 
+                checked={readOnly} 
+                onChange={(e) => handleToggleReadOnly(e.target.checked)}
+              />
+              <span className={styles.slider}></span>
+            </label>
+          </div>
+
+          {!readOnly && !isWritable && (
+            <div className={`${styles.infoBox} ${styles.infoBoxWarning}`}>
+              <XCircle size={18} style={{ flexShrink: 0 }} />
+              <div>
+                <strong>Accès écriture impossible</strong>
+                <p style={{ marginTop: '4px', opacity: 0.9 }}>
+                  Bien que le mode écriture soit activé dans l'application, le système de fichiers (Docker) bloque l'écriture. 
+                  Vérifiez vos permissions ou retirez le flag <code>:ro</code> dans votre docker-compose.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {!readOnly && isWritable && (
+            <div className={`${styles.infoBox} ${styles.infoBoxSuccess}`}>
+              <CheckCircle2 size={18} style={{ flexShrink: 0 }} />
+              <div>
+                <strong>Mode écriture opérationnel</strong>
+                <p style={{ marginTop: '4px', opacity: 0.9 }}>
+                  L'application a les permissions nécessaires pour modifier vos fichiers.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
 
