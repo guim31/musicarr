@@ -32,7 +32,7 @@ export class SabnzbdService {
 
     try {
       const response = await axios.get(`${url}/api?mode=addurl&name=${encodeURIComponent(nzbUrl)}&nzbname=${encodeURIComponent(name)}&cat=${category}&output=json&apikey=${apiKey}`);
-      return response.data.status === true;
+      return { success: response.data.status === true, ids: response.data.nzo_ids || [] };
     } catch (error) {
       console.error('Failed to add NZB to SABnzbd:', error);
       throw error;
@@ -49,6 +49,19 @@ export class SabnzbdService {
     } catch (error) {
       console.error('Failed to get SABnzbd queue:', error);
       return { slots: [], speed: '0', mbleft: '0' };
+    }
+  }
+
+  static async getHistory() {
+    const { url, apiKey } = await this.getSettings();
+    if (!url || !apiKey) return [];
+
+    try {
+      const response = await axios.get(`${url}/api?mode=history&output=json&apikey=${apiKey}`);
+      return response.data.history?.slots || [];
+    } catch (error) {
+      console.error('Failed to get SABnzbd history:', error);
+      return [];
     }
   }
 }

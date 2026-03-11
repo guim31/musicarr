@@ -137,14 +137,15 @@ export async function POST(request: Request) {
     }
 
     if (protocol?.toLowerCase() === 'usenet') {
-      const success = await SabnzbdService.addNzbFromUrl(url, title || 'Musicarr Download');
+      const { success, ids } = await SabnzbdService.addNzbFromUrl(url, title || 'Musicarr Download');
       
       let activityId = null;
       if (success) {
+        const details = JSON.stringify({ nzo_id: ids[0] });
         activityId = db.prepare(`
-          INSERT INTO activity (type, status, title, message, album_id)
-          VALUES ('download', 'pending', ?, ?, ?)
-        `).run(title, `Téléchargement NZB lancé : ${title}`, albumId || null).lastInsertRowid;
+          INSERT INTO activity (type, status, title, message, album_id, details)
+          VALUES ('download', 'pending', ?, ?, ?, ?)
+        `).run(title, `Téléchargement NZB lancé : ${title}`, albumId || null, details).lastInsertRowid;
       }
 
       return NextResponse.json({ 
