@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { LibraryService } from '@/services/library';
+import fs from 'fs';
+import pathLib from 'path';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,8 +18,6 @@ export async function GET() {
     let isWritable = false;
     if (path?.value) {
       try {
-        const fs = await import('fs');
-        const pathLib = await import('path');
         const testFile = pathLib.join(path.value, '.write_test');
         fs.writeFileSync(testFile, 'test');
         fs.unlinkSync(testFile);
@@ -44,7 +44,8 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { action, path: newPath } = await request.json();
+    const body = await request.json();
+    const { action, path: newPath, value } = body;
 
     if (action === 'save_path') {
       db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
@@ -53,7 +54,6 @@ export async function POST(request: Request) {
     }
 
     if (action === 'save_read_only') {
-      const { value } = await request.json();
       db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
         .run('read_only_mode', value ? 'true' : 'false');
       return NextResponse.json({ success: true });
@@ -61,7 +61,6 @@ export async function POST(request: Request) {
 
     if (action === 'preview_path') {
       try {
-        const fs = await import('fs');
         if (!fs.existsSync(newPath)) {
           return NextResponse.json({ folders: [], error: "Le chemin n'existe pas." });
         }
@@ -80,13 +79,12 @@ export async function POST(request: Request) {
           success: true
         });
       } catch (e: any) {
-        return NextResponse.json({ folders: [], error: "Dossier inaccessible." });
+        return NextResponse.json({ folders: [], error: "Dossier inaccessible : " + e.message });
       }
     }
 
     if (action === 'scan') {
       console.log('Starting scan (async)...');
-      // Lancer en arrière-plan
       LibraryService.scan().catch(err => console.error('Erreur scan:', err));
       return NextResponse.json({ success: true, message: 'Scan démarré' });
     }

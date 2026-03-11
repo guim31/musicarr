@@ -275,6 +275,9 @@ export default function SettingsPage() {
       if (data.success) {
         setPreviewFolders(data.folders || []);
         setPreviewTotal(data.total || 0);
+        if (data.total === 0) {
+          showToast('Chemin valide, mais aucun sous-dossier trouvé.', 'info');
+        }
       } else {
         setPreviewError(data.error || 'Erreur de prévisualisation');
       }
@@ -356,6 +359,13 @@ export default function SettingsPage() {
           </div>
         )}
         
+        {previewFolders.length === 0 && previewTotal === 0 && !previewError && !previewing && libraryPath && (
+           <div style={{ marginBottom: '20px', padding: '16px', backgroundColor: 'var(--background)', borderRadius: 'var(--radius)', border: '1px solid var(--border)', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+             <CheckCircle2 size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '6px', color: 'var(--success)' }}/>
+             Chemin accessible, mais aucun sous-dossier (artistes) n'a été détecté directement à la racine.
+           </div>
+        )}
+
         {previewFolders.length > 0 && (
           <div style={{ marginBottom: '20px', padding: '16px', backgroundColor: 'var(--background)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
              <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 500 }}>
