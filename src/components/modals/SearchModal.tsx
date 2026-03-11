@@ -81,11 +81,14 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
       });
       const data = await res.json();
       if (data.success) {
-        const message = result.protocol?.toLowerCase() === 'deemix' 
-          ? `🎵 Téléchargement depuis Deezer démarré pour :\n${result.title}`
-          : 'Ajouté à SABnzbd avec succès !';
-        showToast(message, 'success');
-        onClose(); // Close modal on success if preferred
+        const isDeemix = result.protocol?.toLowerCase() === 'deemix';
+        const message = isDeemix 
+          ? `Préparation du téléchargement : ${result.title}`
+          : `Ajout à SABnzbd : ${result.title}`;
+        
+        // On affiche un toast de type download immédiatement avec l'ID du backend
+        showToast(message, 'download', `dl-${data.activityId}`);
+        onClose();
       } else {
         throw new Error(data.error || 'Erreur lors de l’envoi au client de téléchargement');
       }

@@ -60,21 +60,26 @@ export class DeemixService {
     return buffer;
   }
 
+  private static normalizeFolderName(s: string) {
+    return s.replace(/\s+/g, '_');
+  }
+
   private static findExistingPath(parent: string, name: string): string {
-    if (!fs.existsSync(parent)) return path.join(parent, name);
+    const normalizedName = this.normalizeFolderName(name);
+    if (!fs.existsSync(parent)) return path.join(parent, normalizedName);
     
     const items = fs.readdirSync(parent);
-    // Normalisation : minuscule et suppression des caractères non-alphanumériques
-    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-    const normalizedTarget = normalize(name);
+    // Normalisation pour la recherche : minuscule et suppression des caractères non-alphanumériques
+    const searchNormalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const searchTarget = searchNormalize(name);
     
     for (const item of items) {
-      if (normalize(item) === normalizedTarget) {
+      if (searchNormalize(item) === searchTarget) {
         return path.join(parent, item);
       }
     }
     
-    return path.join(parent, name);
+    return path.join(parent, normalizedName);
   }
 
   static async downloadAlbum(deezerAlbumId: string) {
@@ -104,16 +109,23 @@ export class DeemixService {
       }
     }
 
-    // Log Activity
     const activityId = db.prepare(`
-      INSERT INTO activity (type, status, title, message, details)
-      VALUES ('download', 'processing', ?, ?, ?)
+      INSERT INTO activity (type, status, title, message, details, album_id)
+      VALUES ('download', 'processing', ?, ?, ?, ?)
     `).run(
       albumName, 
       `Téléchargement de l'album ${albumName} depuis Deezer`, 
-      JSON.stringify({ deezerId: deezerAlbumId, current: 0, total: tracks.length })
+      JSON.stringify({ deezerId: deezerAlbumId, current: 0, total: tracks.length }),
+      null // Optionnellement passer l'albumId si dispo
     ).lastInsertRowid;
 
+    // Lancer le téléchargement en arrière-plan
+    this.runDownloadInBackground(deezerAlbumId, tracks, albumName, albumDir, activityId);
+
+    return { success: true, activityId };
+  }
+
+  private static async runDownloadInBackground(deezerAlbumId: string, tracks: any[], albumName: string, albumDir: string, activityId: number | bigint) {
     try {
       const session = await this.getSession();
       
@@ -128,13 +140,12 @@ export class DeemixService {
           } catch (e: any) {
             retries--;
             console.error(`Tentative échouée pour ${track.name} (${retries} restantes) : ${e.message}`);
-            if (retries > 0) await new Promise(r => setTimeout(r, 2000)); // Attendre 2s avant de réessayer
+            if (retries > 0) await new Promise(r => setTimeout(r, 2000));
             else throw e;
           }
         }
         completed++;
         
-        // Mettre à jour la progression
         db.prepare("UPDATE activity SET details = ? WHERE id = ?")
           .run(JSON.stringify({ deezerId: deezerAlbumId, current: completed, total: tracks.length }), activityId);
       }
@@ -142,14 +153,10 @@ export class DeemixService {
       db.prepare("UPDATE activity SET status = 'completed', message = ? WHERE id = ?")
         .run(`Album ${albumName} téléchargé avec succès (${tracks.length} pistes)`, activityId);
       
-      // Attendre le scan pour que l'album apparaisse immédiatement dans l'UI
       await LibraryService.scan().catch(e => console.error('Erreur scan post-download:', e));
-      
-      return true;
     } catch (error: any) {
       db.prepare("UPDATE activity SET status = 'failed', message = ? WHERE id = ?")
         .run(`Erreur: ${error.message}`, activityId);
-      throw error;
     }
   }
 

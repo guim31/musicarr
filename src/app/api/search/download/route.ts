@@ -88,21 +88,28 @@ export async function POST(request: Request) {
     }
 
     if (protocol?.toLowerCase() === 'deemix') {
-      const success = await DeemixService.downloadAlbum(url);
-      return NextResponse.json({ success });
+      const response = await DeemixService.downloadAlbum(url);
+      return NextResponse.json({ 
+        success: response.success, 
+        activityId: `local-${response.activityId}` 
+      });
     }
 
     if (protocol?.toLowerCase() === 'usenet') {
       const success = await SabnzbdService.addNzbFromUrl(url, title || 'Musicarr Download');
       
+      let activityId = null;
       if (success) {
-        db.prepare(`
+        activityId = db.prepare(`
           INSERT INTO activity (type, status, title, message, album_id)
           VALUES ('download', 'pending', ?, ?, ?)
-        `).run(title, `Téléchargement NZB lancé : ${title}`, albumId || null);
+        `).run(title, `Téléchargement NZB lancé : ${title}`, albumId || null).lastInsertRowid;
       }
 
-      return NextResponse.json({ success });
+      return NextResponse.json({ 
+        success, 
+        activityId: activityId ? `local-${activityId}` : null 
+      });
     } else {
       return NextResponse.json({ error: 'Protocol non supporté pour le moment (Usenet ou Deezer seulement)' }, { status: 400 });
     }
