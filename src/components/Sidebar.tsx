@@ -27,7 +27,6 @@ const Sidebar = () => {
 
   const configItems = [
     { name: 'Manquants', href: '/missing', icon: AlertCircle },
-    { name: 'Téléchargements', href: '/downloads', icon: Download },
     { name: 'Configuration', href: '/settings', icon: Settings },
   ];
 

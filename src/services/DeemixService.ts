@@ -127,8 +127,20 @@ export class DeemixService {
 
   private static async runDownloadInBackground(deezerAlbumId: string, tracks: any[], albumName: string, albumDir: string, activityId: number | bigint) {
     try {
+      // 1. Download Album Cover
+      const albumData = await (this.deezer as any).fetchDeezer(`album/${deezerAlbumId}`);
+      if (albumData?.cover_xl || albumData?.cover_big || albumData?.cover_medium) {
+        const coverUrl = albumData.cover_xl || albumData.cover_big || albumData.cover_medium;
+        try {
+          const coverRes = await axios.get(coverUrl, { responseType: 'arraybuffer' });
+          fs.writeFileSync(path.join(albumDir, 'folder.jpg'), Buffer.from(coverRes.data));
+          console.log(`Cover downloaded for album: ${albumName}`);
+        } catch (e) {
+          console.error('Failed to download cover:', e);
+        }
+      }
+
       const session = await this.getSession();
-      
       let completed = 0;
       for (const track of tracks) {
         let retries = 3;
@@ -407,20 +419,18 @@ export class DeemixService {
       db.prepare("UPDATE albums SET path = ? WHERE id = ?").run(newAlbumPath, albumId);
     }
 
-    // 3. Renommer le dossier de l'artiste si nécessaire
+    // 3. Renommer le dossier de l'artiste si nécessaire (Force UPPERCASE)
     const artistPath = path.dirname(finalAlbumPath);
     const currentArtistDirName = path.basename(artistPath);
-    const newArtistDirName = normalize(currentArtistDirName);
+    const newArtistDirName = normalize(currentArtistDirName).toUpperCase();
 
     if (currentArtistDirName !== newArtistDirName && artistPath !== musicPath) {
       const parentDir = path.dirname(artistPath);
       const newArtistPath = path.join(parentDir, newArtistDirName);
       
-      // On ne peut renommer l'artiste que si le dossier cible n'existe pas déjà
-      // ou on devrait fusionner. Pour faire simple ici, on renomme si possible.
       if (!fs.existsSync(newArtistPath)) {
         fs.renameSync(artistPath, newArtistPath);
-        const updatedAlbumPath = path.join(newArtistPath, newAlbumDirName);
+        const updatedAlbumPath = path.join(newArtistPath, path.basename(finalAlbumPath));
         db.prepare("UPDATE albums SET path = ? WHERE id = ?").run(updatedAlbumPath, albumId);
       }
     }

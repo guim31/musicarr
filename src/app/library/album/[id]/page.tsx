@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   ArrowLeft, 
   Music, 
@@ -13,11 +13,13 @@ import {
   Volume2,
   HardDrive,
   Type,
-  RefreshCw
+  RefreshCw,
+  Tags
 } from 'lucide-react';
 import Link from 'next/link';
 import styles from './AlbumDetail.module.css';
 import { useToast } from '@/context/ToastContext';
+import TagEditorModal from '@/components/modals/TagEditorModal';
 
 export default function AlbumDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
@@ -25,29 +27,31 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
   const [tracks, setTracks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [renaming, setRenaming] = useState(false);
+  const [tagModalOpen, setTagModalOpen] = useState(false);
   const { showToast } = useToast();
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [albumRes, tracksRes] = await Promise.all([
-          fetch(`/api/albums/${id}`),
-          fetch(`/api/albums/${id}/tracks`)
-        ]);
-        
-        const albumData = await albumRes.json();
-        const tracksData = await tracksRes.json();
-        
-        setAlbum(albumData);
-        setTracks(tracksData);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
+  const fetchData = useCallback(async () => {
+    try {
+      const [albumRes, tracksRes] = await Promise.all([
+        fetch(`/api/albums/${id}`),
+        fetch(`/api/albums/${id}/tracks`)
+      ]);
+      
+      const albumData = await albumRes.json();
+      const tracksData = await tracksRes.json();
+      
+      setAlbum(albumData);
+      setTracks(tracksData);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }, [id]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -130,6 +134,13 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
                 {renaming ? <RefreshCw className="animate-spin" size={18} /> : <Type size={18} />}
                 {renaming ? 'Renommage...' : 'Normaliser noms'}
               </button>
+              <button 
+                className={`${styles.button} ${styles.outlineButton}`}
+                onClick={() => setTagModalOpen(true)}
+              >
+                <Tags size={18} />
+                Éditer les Tags
+              </button>
             </div>
           </div>
         </div>
@@ -167,6 +178,14 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
           </tbody>
         </table>
       </section>
+
+      <TagEditorModal 
+        isOpen={tagModalOpen}
+        onClose={() => setTagModalOpen(false)}
+        album={album}
+        tracks={tracks}
+        onSaveSuccess={fetchData}
+      />
     </div>
   );
 }

@@ -2,18 +2,27 @@ import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { SabnzbdService } from '@/services/sabnzbd';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    // 1. Get History from local DB
+    const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const pageSize = parseInt(searchParams.get('pageSize') || '20');
+    const offset = (page - 1) * pageSize;
+
+    // 1. Get History count
+    const totalRow = db.prepare('SELECT COUNT(*) as total FROM activity').get() as { total: number };
+    const total = totalRow.total;
+
+    // 2. Get History from local DB with pagination
     const history = db.prepare(`
       SELECT a.*, ar.name as artist_name 
       FROM activity a
       LEFT JOIN artists ar ON a.artist_id = ar.id
       ORDER BY a.timestamp DESC
-      LIMIT 100
-    `).all();
+      LIMIT ? OFFSET ?
+    `).all(pageSize, offset);
 
-    // 2. Get Active Queue from SABnzbd
+    // 3. Get Active Queue from SABnzbd
     let active: any[] = [];
     try {
       const queue = await SabnzbdService.getQueue();
@@ -38,7 +47,7 @@ export async function GET() {
       console.error('Error polling SABnzbd queue:', e);
     }
 
-    // 3. Get local processing activities (Deemix, Scan, etc.)
+    // 4. Get local processing activities (Deemix, Scan, etc.)
     const localActive = db.prepare(`
       SELECT id, type, status, title, message, details, timestamp
       FROM activity
@@ -51,7 +60,10 @@ export async function GET() {
 
     return NextResponse.json({
       active: [...localActive, ...active],
-      history
+      history,
+      total,
+      page,
+      pageSize
     });
   } catch (error: any) {
     console.error('Activity API Error:', error);

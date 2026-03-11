@@ -13,7 +13,9 @@ import {
   Clock,
   ArrowRight,
   Database,
-  Move
+  Move,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import styles from './Activity.module.css';
 import { useToast } from '@/context/ToastContext';
@@ -22,16 +24,19 @@ export default function ActivityPage() {
   const [active, setActive] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [polling, setPolling] = useState(false);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const pageSize = 20;
   const { showToast } = useToast();
 
-  const fetchActivity = async (showLoading = true) => {
+  const fetchActivity = async (showLoading = true, targetPage = page) => {
     if (showLoading) setLoading(true);
     try {
-      const res = await fetch('/api/activity');
+      const res = await fetch(`/api/activity?page=${targetPage}&pageSize=${pageSize}`);
       const data = await res.json();
       setActive(data.active || []);
       setHistory(data.history || []);
+      setTotal(data.total || 0);
     } catch (err) {
       console.error('Failed to fetch activity:', err);
     } finally {
@@ -40,10 +45,13 @@ export default function ActivityPage() {
   };
 
   useEffect(() => {
-    fetchActivity();
-    const interval = setInterval(() => fetchActivity(false), 3000); // Poll every 3 seconds for active downloads
+    fetchActivity(true, page);
+    // Poll only for ACTIVE section if we are on page 1 of history, otherwise we might 
+    // keep refreshing history while someone is looking at old logs.
+    // Actually, it's simpler to poll everything but only show loading on first fetch.
+    const interval = setInterval(() => fetchActivity(false, page), 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [page]);
 
   const handleClearHistory = async () => {
     if (!confirm('Voulez-vous vraiment effacer tout l\'historique ?')) return;
@@ -55,7 +63,8 @@ export default function ActivityPage() {
       });
       if (res.ok) {
         showToast('Historique effacé.', 'success');
-        fetchActivity();
+        setPage(1);
+        fetchActivity(true, 1);
       }
     } catch (err) {
       showToast('Erreur lors de l\'effacement.', 'error');
@@ -223,6 +232,31 @@ export default function ActivityPage() {
               )}
             </tbody>
           </table>
+          
+          {history.length > 0 && (
+            <div className={styles.pagination}>
+              <button 
+                className={styles.paginationBtn}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+              >
+                <ChevronLeft size={20} />
+              </button>
+              
+              <div className={styles.pageInfo}>
+                Page <strong>{page}</strong> sur <strong>{Math.ceil(total / pageSize) || 1}</strong>
+                <span className={styles.totalCount}> ({total} opérations)</span>
+              </div>
+
+              <button 
+                className={styles.paginationBtn}
+                onClick={() => setPage(p => p + 1)}
+                disabled={page >= Math.ceil(total / pageSize)}
+              >
+                <ChevronRight size={20} />
+              </button>
+            </div>
+          )}
         </div>
       </section>
     </div>

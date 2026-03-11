@@ -70,6 +70,7 @@ export class LibraryService {
           }
 
           if (artist && album) {
+            artist = artist.toUpperCase(); // Force uppercase for consistency
             // 1. Artist Upsert (cached)
             let artistId = artistIdCache.get(artist);
             if (!artistId) {
@@ -154,6 +155,22 @@ export class LibraryService {
               }
 
               // 6. Track Upsert
+              let trackTitle = metadata.common.title;
+              let trackNumber = metadata.common.track.no || 0;
+
+              if (!trackTitle || trackNumber === 0) {
+                // Nettoyage et extraction depuis le nom de fichier : "01-Calling_Her_Name.flac"
+                const fileName = path.basename(filePath, path.extname(filePath));
+                const fileMatch = fileName.match(/^([0-9]+)[\s-_.]+(.*)/);
+                
+                if (fileMatch) {
+                  if (trackNumber === 0) trackNumber = parseInt(fileMatch[1]);
+                  if (!trackTitle) trackTitle = fileMatch[2].replace(/_/g, ' ').trim();
+                } else if (!trackTitle) {
+                  trackTitle = fileName.replace(/_/g, ' ').trim();
+                }
+              }
+
               db.prepare(`
                 INSERT INTO tracks (album_id, title, number, disc, duration, quality, bitrate, path)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -163,8 +180,8 @@ export class LibraryService {
                   bitrate = excluded.bitrate
               `).run(
                 albumId,
-                metadata.common.title || path.basename(filePath),
-                metadata.common.track.no || 0,
+                trackTitle,
+                trackNumber,
                 metadata.common.disk.no || 1,
                 metadata.format.duration || 0,
                 metadata.format.container || 'Unknown',
