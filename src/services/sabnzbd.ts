@@ -58,7 +58,9 @@ export class SabnzbdService {
 
     try {
       const response = await axios.get(`${url}/api?mode=history&output=json&apikey=${apiKey}`);
-      return response.data.history?.slots || [];
+      const slots = response.data.history?.slots || [];
+      console.log(`[SABnzbd] History fetched: ${slots.length} slots.`);
+      return slots;
     } catch (error) {
       console.error('Failed to get SABnzbd history:', error);
       return [];

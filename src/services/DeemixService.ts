@@ -211,7 +211,12 @@ export class DeemixService {
       if (albumData?.cover_xl || albumData?.cover_big || albumData?.cover_medium) {
         const coverUrl = albumData.cover_xl || albumData.cover_big || albumData.cover_medium;
         try {
-          const coverRes = await axios.get(coverUrl, { responseType: 'arraybuffer' });
+          const coverRes = await axios.get(coverUrl, { 
+            responseType: 'arraybuffer',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            }
+          });
           const coverPath = path.join(albumDir, 'folder.jpg');
           fs.writeFileSync(coverPath, Buffer.from(coverRes.data));
           

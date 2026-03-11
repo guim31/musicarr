@@ -14,7 +14,7 @@ export class ImportService {
 
     return {
       libraryPath: musicPath?.value,
-      readOnly: readOnly?.value !== 'false' // Par défaut lecture seule si non défini ou true
+      readOnly: readOnly?.value !== 'false' // Default to read-only if not 'false'
     };
   }
 
@@ -25,44 +25,74 @@ export class ImportService {
     if (this.isProcessing) return;
     
     const { libraryPath, readOnly } = this.getSettings();
-    if (!libraryPath || readOnly) return;
+    console.log(`[Import] Scan SABnzbd - Path: ${libraryPath}, ReadOnly: ${readOnly}`);
+
+    if (!libraryPath || readOnly) {
+      if (!libraryPath) console.log("[Import] libraryPath non configuré.");
+      if (readOnly) console.log("[Import] Mode lecture seule actif, importation ignorée.");
+      return;
+    }
 
     const downloadDir = path.join(libraryPath, '_A_TRIER');
-    if (!fs.existsSync(downloadDir)) return;
+    if (!fs.existsSync(downloadDir)) {
+      console.log(`[Import] Dossier downloadDir non trouvé : ${downloadDir}`);
+      return;
+    }
 
     this.isProcessing = true;
     try {
       const history = await SabnzbdService.getHistory();
-      const musicCompleted = history.filter((slot: any) => 
-        slot.category === 'music' && slot.status === 'Completed'
-      );
-
-      for (const slot of musicCompleted) {
-        await this.importSabnzbdSlot(slot, downloadDir, libraryPath);
+      console.log(`[Import] SABnzbd history items: ${history.length}`);
+      
+      for (const slot of history) {
+        const isMusic = slot.category?.toLowerCase() === 'music';
+        const isCompleted = slot.status === 'Completed';
+        
+        if (isMusic && isCompleted) {
+          console.log(`[Import] Processing slot: ${slot.name} (ID: ${slot.nzo_id})`);
+          await this.importSabnzbdSlot(slot, downloadDir, libraryPath);
+        } else if (isMusic) {
+          console.log(`[Import] Skipping slot ${slot.name}: status is "${slot.status}" (expected "Completed")`);
+        }
       }
     } catch (error) {
-      console.error('ImportService error:', error);
+      console.error('[Import] Error during processSabnzbdDownloads:', error);
     } finally {
       this.isProcessing = false;
     }
   }
 
   private static async importSabnzbdSlot(slot: any, downloadDir: string, libraryPath: string) {
-    // 1. Locate the folder
     const folderName = slot.name;
-    const localPath = path.join(downloadDir, folderName);
+    const storage = slot.storage; 
+    console.log(`[Import] Checking slot: "${folderName}" (Category: ${slot.category}, Status: ${slot.status}, Storage: ${storage})`);
+    
+    let localPath = path.join(downloadDir, folderName);
+    if (!fs.existsSync(localPath) && storage) {
+        const storageBase = path.basename(storage);
+        if (storageBase !== folderName) {
+            const altPath = path.join(downloadDir, storageBase);
+            if (fs.existsSync(altPath)) {
+                localPath = altPath;
+                console.log(`[Import] Using storage base path: ${localPath}`);
+            }
+        }
+    }
 
     if (!fs.existsSync(localPath)) {
-      console.log(`Folder not found in _A_TRIER: ${folderName}`);
+      const folders = fs.readdirSync(downloadDir);
+      console.log(`[Import] Folder NOT found for "${folderName}". Content of _A_TRIER: ${folders.join(', ')}`);
       return;
     }
 
-    // 2. Identify Artist/Album by scanning audio files
+    console.log(`[Import] Processing folder: ${localPath}`);
+
+    // 2. Identify Artist/Album
     const files = this.getAllFiles(localPath);
     const audioFile = files.find(f => f.match(/\.(mp3|flac|m4a|wav)$/i));
 
     if (!audioFile) {
-      console.log(`No audio files found in ${localPath}`);
+      console.log(`[Import] No audio files found in ${localPath}`);
       return;
     }
 
@@ -75,7 +105,7 @@ export class ImportService {
       artist = metadata.common.artist || '';
       album = metadata.common.album || '';
     } catch (e) {
-      console.error(`Metadata parsing failed for ${fullAudioPath}`);
+      console.error(`[Import] Metadata parsing failed for ${fullAudioPath}`);
     }
 
     if (!artist || !album) {
@@ -87,7 +117,7 @@ export class ImportService {
     }
 
     if (!artist || !album) {
-      console.log(`Could not determine artist/album for ${folderName}`);
+      console.log(`[Import] Could not determine artist/album for ${folderName}`);
       return;
     }
 
@@ -98,11 +128,13 @@ export class ImportService {
     const artistDir = path.join(libraryPath, cleanArtist);
     const destDir = path.join(artistDir, cleanAlbum);
 
+    console.log(`[Import] Destination: ${destDir}`);
+
     if (!fs.existsSync(destDir)) {
       fs.mkdirSync(destDir, { recursive: true });
     }
 
-    // 4. Move files (flat move to destDir, preserving 1 level of subdirs like CD1)
+    // 4. Move files
     const topLevelFiles = fs.readdirSync(localPath);
     for (const file of topLevelFiles) {
       const src = path.join(localPath, file);
@@ -119,22 +151,45 @@ export class ImportService {
           fs.renameSync(src, dest);
         }
       } catch (e) {
-        console.error(`Failed to move ${src} to ${dest}:`, e);
+        console.error(`[Import] Failed to move ${src} to ${dest}:`, e);
       }
     }
 
-    // 5. Apply permissions
+    // 5. Detect and Copy Cover
+    try {
+      const dataDir = path.join(process.cwd(), 'data', 'covers');
+      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+      
+      const albumRecord = db.prepare('SELECT id FROM albums WHERE artist_id = (SELECT id FROM artists WHERE name = ?) AND name = ?')
+        .get(cleanArtist, cleanAlbum) as { id: number } | undefined;
+
+      if (albumRecord) {
+        const cachedCoverPath = path.join(dataDir, `album_${albumRecord.id}.jpg`);
+        const coverRegex = /^(cover|folder|front)\.(png|jpe?g)$/i;
+        const localCover = topLevelFiles.find(f => coverRegex.test(f));
+        
+        if (localCover && !fs.existsSync(cachedCoverPath)) {
+          const srcCover = path.join(destDir, localCover);
+          fs.copyFileSync(srcCover, cachedCoverPath);
+          console.log(`[Import] Cover cached: ${localCover} -> album_${albumRecord.id}.jpg`);
+        }
+      }
+    } catch (e) {
+      console.error('[Import] Error handling cover:', e);
+    }
+
+    // 6. Apply permissions
     try {
       const stats = fs.statSync(libraryPath);
       this.applyOwnership(destDir, stats.uid, stats.gid);
     } catch(e) {}
 
-    // 6. Cleanup empty source folder
+    // 6. Cleanup
     try {
       fs.rmSync(localPath, { recursive: true, force: true });
     } catch(e) {}
 
-    // 7. Update Database / Activity
+    // 7. Update Database
     const activity = db.prepare("SELECT id FROM activity WHERE type = 'download' AND details LIKE ?").get(`%"nzo_id":"${slot.nzo_id}"%`) as any;
     
     if (activity) {
@@ -151,16 +206,14 @@ export class ImportService {
 
   private static getAllFiles(dirPath: string, arrayOfFiles: string[] = []) {
     const files = fs.readdirSync(dirPath);
-    arrayOfFiles = arrayOfFiles || [];
-
     files.forEach((file) => {
-      if (fs.statSync(path.join(dirPath, file)).isDirectory()) {
-        arrayOfFiles = this.getAllFiles(path.join(dirPath, file), arrayOfFiles);
+      const fullPath = path.join(dirPath, file);
+      if (fs.statSync(fullPath).isDirectory()) {
+        arrayOfFiles = this.getAllFiles(fullPath, arrayOfFiles);
       } else {
         arrayOfFiles.push(file);
       }
     });
-
     return arrayOfFiles;
   }
 
