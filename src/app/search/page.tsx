@@ -62,8 +62,11 @@ export default function SearchPage() {
         throw new Error(data.error || 'Erreur lors du téléchargement');
       }
       
-      // On pourrait remplacer ceci par un élégant toast plus tard
-      alert(`✅ Ajouté à SABnzbd avec succès :\n${result.title}`);
+      const message = result.protocol === 'deemix' 
+        ? `🎵 Téléchargement depuis Deezer démarré pour :\n${result.title}`
+        : `✅ Ajouté à SABnzbd avec succès :\n${result.title}`;
+        
+      alert(message);
     } catch (err: any) {
       console.error(err);
       setError(err.message);
@@ -148,12 +151,15 @@ export default function SearchPage() {
                       fontSize: '0.7rem', 
                       padding: '2px 6px', 
                       borderRadius: '4px', 
-                      backgroundColor: result.protocol === 'usenet' ? 'rgba(59, 130, 246, 0.1)' : 'rgba(234, 179, 8, 0.1)',
-                      color: result.protocol === 'usenet' ? '#60a5fa' : '#facc15',
+                      backgroundColor: result.protocol === 'usenet' ? 'rgba(59, 130, 246, 0.1)' : 
+                                      result.protocol === 'deemix' ? 'rgba(168, 85, 247, 0.1)' : 'rgba(234, 179, 8, 0.1)',
+                      color: result.protocol === 'usenet' ? '#60a5fa' : 
+                             result.protocol === 'deemix' ? '#a855f7' : '#facc15',
                       fontWeight: 600,
                       textTransform: 'uppercase'
                     }}>
-                      {result.protocol === 'usenet' ? 'NZB' : 'Torrent'}
+                      {result.protocol === 'usenet' ? 'NZB' : 
+                       result.protocol === 'deemix' ? 'DEEZER' : 'Torrent'}
                     </span>
                   </td>
                   <td style={{ color: 'var(--text-muted)' }}>{result.size}</td>
@@ -185,12 +191,16 @@ export default function SearchPage() {
                       <button 
                         onClick={() => handleDownload(result)}
                         className={styles.downloadButton}
-                        title={result.protocol === 'torrent' ? "Non supporté" : "Télécharger via SABnzbd"}
+                        title={result.protocol === 'torrent' ? "Non supporté" : (result.protocol === 'deemix' ? "Télécharger via Deemix" : "Télécharger via SABnzbd")}
                         disabled={downloadingItems[result.guid || result.title] || result.protocol === 'torrent'}
-                        style={{ opacity: result.protocol === 'torrent' ? 0.5 : 1, cursor: result.protocol === 'torrent' ? 'not-allowed' : 'pointer' }}
+                        style={{ 
+                          opacity: result.protocol === 'torrent' ? 0.5 : 1, 
+                          cursor: result.protocol === 'torrent' ? 'not-allowed' : 'pointer',
+                          backgroundColor: result.protocol === 'deemix' ? 'var(--accent)' : '' 
+                        }}
                       >
                         {downloadingItems[result.guid || result.title] ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                        Télécharger
+                        {result.protocol === 'deemix' ? 'Deezer' : 'Télécharger'}
                       </button>
                     </div>
                   </td>

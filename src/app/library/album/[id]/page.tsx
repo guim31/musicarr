@@ -11,16 +11,21 @@ import {
   AlertCircle,
   Play,
   Volume2,
-  HardDrive
+  HardDrive,
+  Type,
+  RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import styles from './AlbumDetail.module.css';
+import { useToast } from '@/context/ToastContext';
 
 export default function AlbumDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
   const [album, setAlbum] = useState<any>(null);
   const [tracks, setTracks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [renaming, setRenaming] = useState(false);
+  const { showToast } = useToast();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -48,6 +53,26 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const handleRename = async () => {
+    if (!confirm("Voulez-vous renommer les dossiers et fichiers de cet album avec des underscores ?")) return;
+    
+    setRenaming(true);
+    try {
+      const res = await fetch(`/api/albums/${id}/rename`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        showToast("Album renommé avec succès !", "success");
+        window.location.reload(); // Recharger pour voir les nouveaux chemins (via scan)
+      } else {
+        throw new Error(data.error || "Erreur lors du renommage");
+      }
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setRenaming(false);
+    }
   };
 
   if (loading) {
@@ -97,9 +122,13 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
                 <Play size={18} fill="currentColor" />
                 Lire tout
               </button>
-              <button className={`${styles.button} ${styles.outlineButton}`}>
-                <HardDrive size={18} />
-                Ouvrir le dossier
+              <button 
+                className={`${styles.button} ${styles.outlineButton}`}
+                onClick={handleRename}
+                disabled={renaming}
+              >
+                {renaming ? <RefreshCw className="animate-spin" size={18} /> : <Type size={18} />}
+                {renaming ? 'Renommage...' : 'Normaliser noms'}
               </button>
             </div>
           </div>

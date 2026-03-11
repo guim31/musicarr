@@ -185,6 +185,11 @@
   color: white;
 }
 
+.protocolBadge[data-protocol="deemix"] {
+  background-color: #a855f7;
+  color: white;
+}
+
 .indexerName {
   font-size: 0.75rem;
   font-weight: 600;

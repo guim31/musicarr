@@ -55,7 +55,17 @@ export class LibraryService {
     for (const filePath of files) {
       try {
         const metadata = await mm.parseFile(filePath);
-        const { artist, album, date, genre, year } = metadata.common;
+        let { artist, album, date, genre, year } = metadata.common;
+
+        // Fallback sur la structure des dossiers si les tags sont manquants
+        if (!artist || !album) {
+          const folderPath = path.dirname(filePath);
+          const albumFolderName = path.basename(folderPath);
+          const artistFolderName = path.basename(path.dirname(folderPath));
+          
+          artist = artist || artistFolderName.replace(/_/g, ' ');
+          album = album || albumFolderName.replace(/_/g, ' ');
+        }
 
         if (artist && album) {
           // 1. Artist Upsert (cached)

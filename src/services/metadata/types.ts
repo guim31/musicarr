@@ -21,8 +21,18 @@ export interface RemoteAlbum {
   trackCount?: number;
 }
 
+export interface RemoteTrack {
+  name: string;
+  deezerId?: string;
+  number: number;
+  disc: number;
+  duration: number;
+  artistName: string;
+}
+
 export interface MetadataProvider {
   name: string;
   searchArtist(query: string): Promise<RemoteArtist[]>;
   getArtistAlbums(artistId: string): Promise<RemoteAlbum[]>;
+  getAlbumTracks?(albumId: string): Promise<RemoteTrack[]>;
 }

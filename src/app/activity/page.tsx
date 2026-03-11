@@ -120,22 +120,42 @@ export default function ActivityPage() {
           <div className={styles.activeGrid}>
             {active.map((item) => {
               const details = JSON.parse(item.details || '{}');
+              const isDeemix = item.id.startsWith('local-') && item.type === 'download';
+              
+              let progressPercent = 0;
+              let statusLabel = "";
+              
+              if (isDeemix) {
+                progressPercent = details.total > 0 ? (details.current / details.total) * 100 : 0;
+                statusLabel = `${details.current} / ${details.total} titres`;
+              } else {
+                progressPercent = details.percentage || 0;
+                statusLabel = `${details.speed || '0 KB/s'} / ${details.timeleft || 'calcul...'}`;
+              }
+
               return (
-                <div key={item.id} className={styles.activeCard}>
+                <div key={item.id} className={styles.activeCard} data-type={isDeemix ? 'deemix' : 'sabnzbd'}>
                   <div className={styles.activeHeader}>
-                    <Download size={20} color="var(--accent)" />
+                    <Download size={20} color={isDeemix ? "#a238ff" : "var(--accent)"} />
                     <div className={styles.activeTitle}>
                       <h4 title={item.title}>{item.title}</h4>
-                      <span>{details.speed} / {details.timeleft} restant</span>
+                      <span>{statusLabel}</span>
                     </div>
                   </div>
                   <div className={styles.progressArea}>
                     <div className={styles.progressBar}>
-                      <div className={styles.progressFill} style={{ width: `${details.percentage}%` }}></div>
+                      <div 
+                        className={styles.progressFill} 
+                        style={{ 
+                          width: `${progressPercent}%`,
+                          background: isDeemix ? 'linear-gradient(90deg, #a238ff, #ff3bce)' : 'var(--accent)'
+                        }}
+                      ></div>
                     </div>
                     <div className={styles.progressLabels}>
-                      <span>{details.percentage}%</span>
-                      <span>{details.mbleft} MB restants</span>
+                      <span>{Math.round(progressPercent)}%</span>
+                      {!isDeemix && <span>{details.mbleft} MB restants</span>}
+                      {isDeemix && <span>Titre en cours...</span>}
                     </div>
                   </div>
                 </div>

@@ -37,6 +37,8 @@ export default function SettingsPage() {
 
   // Metadata providers
   const [discogsToken, setDiscogsToken] = useState('');
+  const [deezerArl, setDeezerArl] = useState('');
+  const [deezerQuality, setDeezerQuality] = useState('MP3_320');
 
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -116,6 +118,8 @@ export default function SettingsPage() {
       const metaData = await metaRes.json();
       if (metaData) {
         setDiscogsToken(metaData.discogsToken || '');
+        setDeezerArl(metaData.deezerArl || '');
+        setDeezerQuality(metaData.deezerQuality || 'MP3_320');
       }
     } catch (error) {
       console.error('Failed to fetch config', error);
@@ -312,7 +316,7 @@ export default function SettingsPage() {
       const res = await fetch('/api/metadata', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ discogsToken })
+        body: JSON.stringify({ discogsToken, deezerArl, deezerQuality })
       });
       if (res.ok) {
         showToast('Paramètres métadonnées enregistrés.', 'success');
@@ -601,7 +605,50 @@ export default function SettingsPage() {
       </div>
 
       <div className={styles.section}>
-        <h2 className={styles.title}><Server size={24} color="var(--accent)" /> Fournisseurs de Métadonnées</h2>
+        <h2 className={styles.title}><Server size={24} color="var(--accent)" /> Deezer / Deemix</h2>
+        <div className={styles.formGroup}>
+          <label className={styles.label}>Deezer ARL Cookie</label>
+          <input 
+            className={styles.input} 
+            type="password" 
+            placeholder="Votre cookie ARL Deezer" 
+            value={deezerArl}
+            onChange={(e) => setDeezerArl(e.target.value)}
+          />
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+            🔑 Nécessaire pour le téléchargement direct. Récupérez-le dans les cookies de votre navigateur sur deezer.com.
+          </p>
+        </div>
+
+        <div className={styles.formGroup}>
+          <label className={styles.label}>Qualité de téléchargement</label>
+          <select 
+            className={styles.input}
+            value={deezerQuality}
+            onChange={(e) => setDeezerQuality(e.target.value)}
+            style={{ appearance: 'none' }}
+          >
+            <option value="MP3_128">MP3 128kbps</option>
+            <option value="MP3_320">MP3 320kbps (HQ)</option>
+            <option value="FLAC">FLAC (Lossless)</option>
+          </select>
+        </div>
+        
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+          <button 
+            className={styles.button} 
+            onClick={handleSaveMetadata} 
+            disabled={loading}
+            style={{ backgroundColor: 'var(--success)' }}
+          >
+            <Save size={18} />
+            <span style={{ marginLeft: '8px' }}>Sauvegarder</span>
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.section}>
+        <h2 className={styles.title}><Server size={24} color="var(--accent)" /> Discogs</h2>
         <div className={styles.formGroup}>
           <label className={styles.label}>Discogs Personal Token</label>
           <input 

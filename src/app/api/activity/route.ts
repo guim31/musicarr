@@ -38,8 +38,19 @@ export async function GET() {
       console.error('Error polling SABnzbd queue:', e);
     }
 
+    // 3. Get local processing activities (Deemix, Scan, etc.)
+    const localActive = db.prepare(`
+      SELECT id, type, status, title, message, details, timestamp
+      FROM activity
+      WHERE status = 'processing'
+      ORDER BY timestamp DESC
+    `).all().map((item: any) => ({
+      ...item,
+      id: `local-${item.id}`
+    }));
+
     return NextResponse.json({
-      active,
+      active: [...localActive, ...active],
       history
     });
   } catch (error: any) {

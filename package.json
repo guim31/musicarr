@@ -11,6 +11,9 @@
   "dependencies": {
     "axios": "^1.13.6",
     "better-sqlite3": "^12.6.2",
+    "blowfish-node": "^1.1.4",
+    "crypto": "^1.0.1",
+    "form-data": "^4.0.5",
     "glob": "^13.0.6",
     "lucide-react": "^0.577.0",
     "music-metadata": "^11.12.1",

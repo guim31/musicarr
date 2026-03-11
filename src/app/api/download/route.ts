@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { SabnzbdService } from '@/services/sabnzbd';
+import { DeemixService } from '@/services/DeemixService';
 
 export async function POST(request: Request) {
   try {
@@ -7,6 +8,16 @@ export async function POST(request: Request) {
 
     if (!url || !title) {
       return NextResponse.json({ error: 'URL et Titre requis' }, { status: 400 });
+    }
+
+    if (protocol === 'deemix') {
+      // Pour Deezer, 'url' contient le deezerAlbumId
+      const success = await DeemixService.downloadAlbum(url);
+      if (success) {
+        return NextResponse.json({ success: true, message: 'Téléchargement Deezer démarré' });
+      } else {
+        return NextResponse.json({ error: 'Échec du démarrage du téléchargement Deezer' }, { status: 500 });
+      }
     }
 
     if (protocol === 'torrent') {

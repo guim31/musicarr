@@ -81,7 +81,10 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
       });
       const data = await res.json();
       if (data.success) {
-        showToast('Ajouté à SABnzbd avec succès !', 'success');
+        const message = result.protocol?.toLowerCase() === 'deemix' 
+          ? `🎵 Téléchargement depuis Deezer démarré pour :\n${result.title}`
+          : 'Ajouté à SABnzbd avec succès !';
+        showToast(message, 'success');
         onClose(); // Close modal on success if preferred
       } else {
         throw new Error(data.error || 'Erreur lors de l’envoi au client de téléchargement');
@@ -108,7 +111,7 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
         <header className={styles.header}>
           <div className={styles.headerTitle}>
             <Search size={20} color="var(--accent)" />
-            <h3>Résultats Prowlarr pour "{query}"</h3>
+            <h3>Résultats de recherche pour "{query}"</h3>
           </div>
           <button className={styles.closeBtn} onClick={onClose}>
             <X size={20} />
@@ -126,7 +129,7 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
           {loading ? (
             <div className={styles.loading}>
               <RefreshCw className="animate-spin" size={40} color="var(--accent)" />
-              <p>Recherche sur vos indexeurs Usenet & Torrent...</p>
+              <p>Recherche sur Deezer, Usenet & Torrent...</p>
             </div>
           ) : results.length === 0 ? (
             <div className={styles.noResults}>
@@ -141,10 +144,10 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
                   <div className={styles.resultMain}>
                     <div className={styles.resultHeader}>
                       <span className={styles.protocolBadge} data-protocol={res.protocol.toLowerCase()}>
-                        {res.protocol}
+                        {res.protocol === 'deemix' ? 'DEEZER' : res.protocol}
                       </span>
                       <span className={styles.indexerName}>{res.indexer}</span>
-                      <span className={styles.ageBadge}>{res.ageInDays}j</span>
+                      {res.protocol !== 'deemix' && <span className={styles.ageBadge}>{res.ageInDays}j</span>}
                     </div>
                     <h4 className={styles.resultTitle} title={res.title}>{res.title}</h4>
                     <div className={styles.resultMeta}>

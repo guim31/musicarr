@@ -1,4 +1,4 @@
-import { MetadataProvider, RemoteAlbum, RemoteArtist } from '../types';
+import { MetadataProvider, RemoteAlbum, RemoteArtist, RemoteTrack } from '../types';
 
 export class DeezerProvider implements MetadataProvider {
   name = 'Deezer';
@@ -44,5 +44,33 @@ export class DeezerProvider implements MetadataProvider {
         image: r.cover_xl || r.cover_medium || r.cover,
       };
     });
+  }
+
+  async getAlbumTracks(deezerAlbumId: string): Promise<RemoteTrack[]> {
+    const data = await this.fetchDeezer(`album/${deezerAlbumId}/tracks`, { limit: '100' });
+    if (!data || !data.data) return [];
+
+    return data.data.map((t: any) => ({
+      name: t.title,
+      deezerId: t.id.toString(),
+      number: t.track_position || 0,
+      disc: t.disk_number || 1,
+      duration: t.duration || 0,
+      artistName: t.artist?.name || '',
+    }));
+  }
+
+  async searchAlbum(query: string): Promise<RemoteAlbum[]> {
+    const data = await this.fetchDeezer('search/album', { q: query });
+    if (!data || !data.data) return [];
+
+    return data.data.slice(0, 10).map((r: any) => ({
+      name: r.title,
+      deezerId: r.id.toString(),
+      releaseDate: r.release_date || undefined,
+      artistName: r.artist?.name || '',
+      type: 'album',
+      image: r.cover_xl || r.cover_medium || r.cover,
+    }));
   }
 }
