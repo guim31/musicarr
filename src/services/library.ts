@@ -109,7 +109,7 @@ export class LibraryService {
                   path = excluded.path,
                   status = 'downloaded',
                   quality = excluded.quality,
-                  release_date = excluded.release_date,
+                  release_date = COALESCE(excluded.release_date, albums.release_date),
                   metadata = excluded.metadata
               `).run(
                 artistId, 

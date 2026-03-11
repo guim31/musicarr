@@ -144,13 +144,22 @@ export class DeemixService {
       }
     }
 
+    // Récupérer l'année existante en cas de mise à jour (pour fallback si Deezer est incomplet)
+    let fallbackYear = '';
+    if (albumId) {
+      const existing = db.prepare('SELECT release_date FROM albums WHERE id = ?').get(albumId) as { release_date: string } | undefined;
+      if (existing?.release_date) {
+        fallbackYear = existing.release_date.split('-')[0];
+      }
+    }
+
     // Lancer le téléchargement en arrière-plan
-    this.runDownloadInBackground(deezerAlbumId, tracks, albumName, albumDir, activityId);
+    this.runDownloadInBackground(deezerAlbumId, tracks, albumName, albumDir, activityId, fallbackYear);
 
     return { success: true, activityId };
   }
 
-  private static async runDownloadInBackground(deezerAlbumId: string, tracks: any[], albumName: string, albumDir: string, activityId: number | bigint) {
+  private static async runDownloadInBackground(deezerAlbumId: string, tracks: any[], albumName: string, albumDir: string, activityId: number | bigint, fallbackYear?: string) {
     try {
       // 1. Download Album Cover
       const albumData = await (this.deezer as any).fetchDeezer(`album/${deezerAlbumId}`);
@@ -198,7 +207,7 @@ export class DeemixService {
 
         // Finaliser le fichier : injection de tags et remuxing avec FFmpeg pour compatibilité Navidrome
         if (success && downloadedPath) {
-          await this.finalizeTrack(downloadedPath, track, albumData, ownership);
+          await this.finalizeTrack(downloadedPath, track, albumData, ownership, fallbackYear);
         }
 
         completed++;
@@ -436,14 +445,15 @@ export class DeemixService {
     }
   }
 
-  private static async finalizeTrack(filePath: string, trackInfo: any, albumData: any, ownership: { uid: number, gid: number }) {
+  private static async finalizeTrack(filePath: string, trackInfo: any, albumData: any, ownership: { uid: number, gid: number }, fallbackYear?: string) {
     const ext = path.extname(filePath);
     const tempPath = `${filePath}.tmp_final${ext}`;
     
     const title = trackInfo.name;
     const artist = trackInfo.artistName;
     const album = albumData.title;
-    const year = albumData.release_date ? albumData.release_date.split('-')[0] : '';
+    let year = (albumData && albumData.release_date) ? albumData.release_date.split('-')[0] : '';
+    if (!year && fallbackYear) year = fallbackYear;
     const trackNum = trackInfo.number;
     const discNum = trackInfo.disc || 1;
 
