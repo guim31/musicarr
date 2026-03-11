@@ -2,11 +2,13 @@ import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { LibraryService } from '@/services/library';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     const path = db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
-    const artistsCount = db.prepare('SELECT count(*) as count FROM artists WHERE id IN (SELECT DISTINCT artist_id FROM albums WHERE status = "downloaded")').get() as { count: number };
-    const albumsCount = db.prepare('SELECT count(*) as count FROM albums WHERE status = "downloaded"').get() as { count: number };
+    const artistsCount = db.prepare("SELECT count(*) as count FROM artists WHERE id IN (SELECT DISTINCT artist_id FROM albums WHERE status = 'downloaded')").get() as { count: number };
+    const albumsCount = db.prepare("SELECT count(*) as count FROM albums WHERE status = 'downloaded'").get() as { count: number };
 
     return NextResponse.json({
       path: path?.value || '',
@@ -28,6 +30,31 @@ export async function POST(request: Request) {
       db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
         .run('library_path', newPath);
       return NextResponse.json({ success: true });
+    }
+
+    if (action === 'preview_path') {
+      try {
+        const fs = await import('fs');
+        if (!fs.existsSync(newPath)) {
+          return NextResponse.json({ folders: [], error: "Le chemin n'existe pas." });
+        }
+        const stat = fs.statSync(newPath);
+        if (!stat.isDirectory()) {
+          return NextResponse.json({ folders: [], error: "Le chemin n'est pas un dossier." });
+        }
+        const files = fs.readdirSync(newPath, { withFileTypes: true });
+        const folderNames = files
+          .filter(dirent => dirent.isDirectory())
+          .map(dirent => dirent.name);
+          
+        return NextResponse.json({ 
+          folders: folderNames.slice(0, 10), 
+          total: folderNames.length,
+          success: true
+        });
+      } catch (e: any) {
+        return NextResponse.json({ folders: [], error: "Dossier inaccessible." });
+      }
     }
 
     if (action === 'scan') {

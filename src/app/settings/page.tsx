@@ -28,6 +28,10 @@ export default function SettingsPage() {
   // Library state
   const [libraryPath, setLibraryPath] = useState('');
   const [libraryStats, setLibraryStats] = useState({ artists: 0, albums: 0 });
+  const [previewFolders, setPreviewFolders] = useState<string[]>([]);
+  const [previewTotal, setPreviewTotal] = useState(0);
+  const [previewError, setPreviewError] = useState('');
+  const [previewing, setPreviewing] = useState(false);
 
   // Metadata providers
   const [discogsToken, setDiscogsToken] = useState('');
@@ -43,8 +47,10 @@ export default function SettingsPage() {
 
   const fetchConfig = async () => {
     try {
+      const ts = Date.now();
+      
       // Fetch Prowlarr
-      const pRes = await fetch('/api/prowlarr');
+      const pRes = await fetch(`/api/prowlarr?t=${ts}`);
       const pData = await pRes.json();
       if (pData.config) {
         setProwlarrUrl(pData.config.url || '');
@@ -55,7 +61,7 @@ export default function SettingsPage() {
       }
 
       // Fetch SABnzbd
-      const sRes = await fetch('/api/sabnzbd');
+      const sRes = await fetch(`/api/sabnzbd?t=${ts}`);
       const sData = await sRes.json();
       if (sData) {
         setSabUrl(sData.url || '');
@@ -63,7 +69,7 @@ export default function SettingsPage() {
         setSabCategory(sData.category || '');
       }
       // Fetch Library
-      const libRes = await fetch('/api/library');
+      const libRes = await fetch(`/api/library?t=${ts}`);
       const libData = await libRes.json();
       if (libData) {
         setLibraryPath(libData.path || '');
@@ -71,7 +77,7 @@ export default function SettingsPage() {
       }
 
       // Fetch Metadata
-      const metaRes = await fetch('/api/metadata');
+      const metaRes = await fetch(`/api/metadata?t=${ts}`);
       const metaData = await metaRes.json();
       if (metaData) {
         setDiscogsToken(metaData.discogsToken || '');
@@ -200,6 +206,31 @@ export default function SettingsPage() {
     }
   };
 
+  const handlePreviewPath = async () => {
+    if (!libraryPath) return;
+    setPreviewing(true);
+    setPreviewError('');
+    setPreviewFolders([]);
+    try {
+      const res = await fetch('/api/library', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'preview_path', path: libraryPath })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPreviewFolders(data.folders || []);
+        setPreviewTotal(data.total || 0);
+      } else {
+        setPreviewError(data.error || 'Erreur de prévisualisation');
+      }
+    } catch (e) {
+      setPreviewError('Erreur réseau lors de la prévisualisation.');
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const handleScanLibrary = async () => {
     setScanning(true);
     showToast('Scan de la bibliothèque en cours...', 'info');
@@ -247,6 +278,80 @@ export default function SettingsPage() {
         <p style={{ color: 'var(--text-muted)' }}>Gérez vos indexeurs et vos clients de téléchargement.</p>
       </header>
 
+            <div className={styles.section}>
+        <h2 className={styles.title}><Server size={24} color="var(--accent)" /> Bibliothèque</h2>
+        <div className={styles.formGroup}>
+          <label className={styles.label}>Chemin de la musique (NAS)</label>
+          <input 
+            className={styles.input} 
+            type="text" 
+            placeholder="/app/music" 
+            value={libraryPath}
+            onChange={(e) => setLibraryPath(e.target.value)}
+          />
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+            💡 Dans Docker, utilisez le chemin interne du container : <strong>/app/music</strong> (mappé dans le docker-compose).
+          </p>
+        </div>
+        
+        {previewError && (
+          <div style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <XCircle size={16} /> {previewError}
+          </div>
+        )}
+        
+        {previewFolders.length > 0 && (
+          <div style={{ marginBottom: '20px', padding: '16px', backgroundColor: 'var(--background)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '8px', fontWeight: 500 }}>
+               <CheckCircle2 size={14} style={{ display: 'inline', verticalAlign: 'middle', marginRight: '6px', color: 'var(--success)' }}/>
+               Dossier valide. {previewTotal} dossiers trouvés :
+             </p>
+             <ul style={{ margin: 0, paddingLeft: '24px', fontSize: '0.85rem', color: 'var(--foreground)' }}>
+               {previewFolders.map(f => <li key={f} style={{ marginBottom: '4px' }}>{f}</li>)}
+               {previewTotal > previewFolders.length && <li style={{ color: 'var(--text-muted)', fontStyle: 'italic' }}>...et {previewTotal - previewFolders.length} autres</li>}
+             </ul>
+          </div>
+        )}
+
+        {libraryStats.artists > 0 && !previewFolders.length && !previewError && (
+          <div style={{ marginBottom: '20px', display: 'flex', gap: '24px', fontSize: '0.85rem' }}>
+            <div style={{ color: 'var(--text-muted)' }}>Artistes: <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{libraryStats.artists}</span></div>
+            <div style={{ color: 'var(--text-muted)' }}>Albums: <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{libraryStats.albums}</span></div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <button 
+              className={`${styles.button} ${styles.outlineButton}`} 
+              onClick={handlePreviewPath} 
+              disabled={previewing || !libraryPath}
+            >
+              {previewing ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              <span style={{ marginLeft: '8px' }}>Aperçu des dossiers</span>
+            </button>
+            <button 
+              className={styles.button} 
+              style={{ backgroundColor: 'var(--accent)' }} 
+              onClick={handleScanLibrary}
+              disabled={loading || scanning || !libraryPath}
+            >
+              {scanning ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
+              <span style={{ marginLeft: '8px' }}>Lancer le Scan</span>
+            </button>
+          </div>
+          <button 
+            className={styles.button} 
+            onClick={handleSaveLibrary} 
+            disabled={loading || scanning}
+            style={{ backgroundColor: 'var(--success)' }}
+          >
+            <Save size={18} />
+            <span style={{ marginLeft: '8px' }}>Sauvegarder</span>
+          </button>
+        </div>
+      </div>
+
       <div className={styles.section}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
           <h2 className={styles.title} style={{ marginBottom: 0 }}>
@@ -283,17 +388,18 @@ export default function SettingsPage() {
             placeholder="Clé API Prowlarr" 
           />
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
           <button className={styles.button} onClick={handleTestProwlarr} disabled={loading}>
             Tester la connexion
           </button>
           <button 
             className={styles.button} 
-            style={{ backgroundColor: 'var(--success)' }} 
             onClick={handleSaveProwlarr}
             disabled={loading}
+            style={{ backgroundColor: 'var(--success)' }}
           >
-            Sauvegarder & Sync
+            <Save size={18} />
+            <span style={{ marginLeft: '8px' }}>Sauvegarder & Sync</span>
           </button>
         </div>
 
@@ -358,56 +464,18 @@ export default function SettingsPage() {
             placeholder="music" 
           />
         </div>
-        <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
           <button className={styles.button} onClick={handleTestSab} disabled={loading}>
             Tester la connexion
           </button>
           <button 
             className={styles.button} 
-            style={{ backgroundColor: 'var(--success)' }} 
             onClick={handleSaveSab}
             disabled={loading}
+            style={{ backgroundColor: 'var(--success)' }}
           >
-            Sauvegarder les réglages
-          </button>
-        </div>
-      </div>
-
-      <div className={styles.section}>
-        <h2 className={styles.title}><Server size={24} color="var(--accent)" /> Bibliothèque</h2>
-        <div className={styles.formGroup}>
-          <label className={styles.label}>Chemin de la musique (NAS)</label>
-          <input 
-            className={styles.input} 
-            type="text" 
-            placeholder="/app/music" 
-            value={libraryPath}
-            onChange={(e) => setLibraryPath(e.target.value)}
-          />
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px' }}>
-            💡 Dans Docker, utilisez le chemin interne du container : <strong>/app/music</strong> (mappé dans le docker-compose).
-          </p>
-        </div>
-        
-        {libraryStats.artists > 0 && (
-          <div style={{ marginBottom: '20px', display: 'flex', gap: '24px', fontSize: '0.85rem' }}>
-            <div style={{ color: 'var(--text-muted)' }}>Artistes: <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{libraryStats.artists}</span></div>
-            <div style={{ color: 'var(--text-muted)' }}>Albums: <span style={{ color: 'var(--foreground)', fontWeight: 600 }}>{libraryStats.albums}</span></div>
-          </div>
-        )}
-
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button className={styles.button} onClick={handleSaveLibrary} disabled={loading || scanning}>
-            Sauvegarder le chemin
-          </button>
-          <button 
-            className={styles.button} 
-            style={{ backgroundColor: 'var(--accent)' }} 
-            onClick={handleScanLibrary}
-            disabled={loading || scanning || !libraryPath}
-          >
-            {scanning ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            <span style={{ marginLeft: '8px' }}>Lancer le Scan</span>
+            <Save size={18} />
+            <span style={{ marginLeft: '8px' }}>Sauvegarder</span>
           </button>
         </div>
       </div>
@@ -428,8 +496,13 @@ export default function SettingsPage() {
           </p>
         </div>
         
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button className={styles.button} onClick={handleSaveMetadata} disabled={loading}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
+          <button 
+            className={styles.button} 
+            onClick={handleSaveMetadata} 
+            disabled={loading}
+            style={{ backgroundColor: 'var(--success)' }}
+          >
             <Save size={18} />
             <span style={{ marginLeft: '8px' }}>Sauvegarder</span>
           </button>
