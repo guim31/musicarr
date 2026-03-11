@@ -189,6 +189,10 @@
   border: 1px dashed var(--accent);
 }
 
+.missingAlbum .albumInfo {
+  padding-right: 96px;
+}
+
 .albumCover {
   width: 120px;
   height: 120px;
