@@ -124,35 +124,57 @@
   position: relative;
 }
 
-.searchQuickBtn {
+.albumActions {
   position: absolute;
   top: 50%;
   right: 24px;
-  transform: translateY(-50%) scale(0.8);
+  transform: translateY(-50%);
+  display: flex;
+  gap: 12px;
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.albumListItemWrapper:hover .albumActions {
+  opacity: 1;
+}
+
+.actionBtn {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background-color: var(--accent);
-  color: white;
   border: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0;
-  transition: all 0.2s ease;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 10;
+  transition: transform 0.2s ease;
 }
 
-.albumListItemWrapper:hover .searchQuickBtn {
-  opacity: 1;
-  transform: translateY(-50%) scale(1);
+.actionBtn:hover {
+  transform: scale(1.1);
+}
+
+.searchQuickBtn {
+  background-color: var(--accent);
+  color: white;
 }
 
 .searchQuickBtn:hover {
   background-color: var(--accent-hover);
-  transform: translateY(-50%) scale(1.1) !important;
+}
+
+.scanQuickBtn {
+  background-color: var(--card-bg);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+
+.scanQuickBtn:hover {
+  border-color: var(--text-muted);
+  background-color: rgba(255, 255, 255, 0.05);
 }
 
 .albumListItemLink {
@@ -170,6 +192,7 @@
   display: flex;
   align-items: stretch;
   height: 120px;
+  position: relative;
 }
 
 .albumListItem:hover {
@@ -189,8 +212,8 @@
   border: 1px dashed var(--accent);
 }
 
-.missingAlbum .albumInfo {
-  padding-right: 96px;
+.albumListItem:hover .albumSecondaryDetails {
+  opacity: 0;
 }
 
 .albumCover {

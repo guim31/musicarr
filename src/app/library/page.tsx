@@ -11,6 +11,7 @@ import {
   ExternalLink, 
   ChevronRight,
   Monitor,
+  RefreshCw,
   CheckCircle2,
   Clock
 } from 'lucide-react';
@@ -144,6 +145,22 @@ export default function LibraryPage() {
                   </td>
                   <td>
                     <div className={styles.actions}>
+                      <button 
+                        className={`${styles.button} ${styles.outlineButton}`} 
+                        style={{ padding: '6px' }}
+                        onClick={async () => {
+                          try {
+                            const res = await fetch(`/api/artists/${artist.id}/scan`, { method: 'POST' });
+                            const data = await res.json();
+                            if (data.success) {
+                              fetchArtists(); // Re-fetch data
+                            }
+                          } catch (e) { console.error(e); }
+                        }}
+                        title="Scanner le dossier de cet artiste"
+                      >
+                        <RefreshCw size={14} />
+                      </button>
                       <Link href={`/library/artist/${artist.id}`}>
                         <button className={`${styles.button} ${styles.outlineButton}`} style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
                           Détails

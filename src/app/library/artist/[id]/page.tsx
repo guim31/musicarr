@@ -106,6 +106,20 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
     }
   };
 
+  const handleScanAlbum = async (albumId: number, albumName: string) => {
+    try {
+      showToast(`Scan de l'album "${albumName}" en cours...`, 'info');
+      const res = await fetch(`/api/albums/${albumId}/scan`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Scan terminé !', 'success');
+        await fetchData();
+      }
+    } catch (err) {
+      showToast('Erreur lors du scan.', 'error');
+    }
+  };
+
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
@@ -218,17 +232,30 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
                   </div>
                 </div>
               </Link>
-              <button 
-                className={styles.searchQuickBtn}
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleManualSearch(album.id, album.name);
-                }}
-                title="Rechercher / Mettre à jour cet album"
-              >
-                <Search size={16} />
-              </button>
+              <div className={styles.albumActions}>
+                <button 
+                  className={`${styles.actionBtn} ${styles.scanQuickBtn}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleScanAlbum(album.id, album.name);
+                  }}
+                  title="Scanner les fichiers locaux"
+                >
+                  <RefreshCw size={18} />
+                </button>
+                <button 
+                  className={`${styles.actionBtn} ${styles.searchQuickBtn}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleManualSearch(album.id, album.name);
+                  }}
+                  title="Rechercher / Mettre à jour cet album"
+                >
+                  <Search size={18} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
