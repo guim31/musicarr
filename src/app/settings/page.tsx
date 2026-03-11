@@ -61,8 +61,8 @@ export default function SettingsPage() {
             if (data.progress) {
               setScanProgress(data.progress);
               if (data.stats) setLibraryStats(data.stats);
-            } else if (scanProgress && scanProgress.total > 0 && scanProgress.processed > 0) {
-              // Si la progression a disparu, c'est que le scan s'est terminé
+            } else if (scanning && scanProgress && scanProgress.total !== -1) {
+              // Si la progression a disparu et qu'on n'est plus en phase d'initialisation (-1), le scan est fini
               setScanning(false);
               setScanProgress(null);
               if (data.stats) setLibraryStats(data.stats);
@@ -288,7 +288,7 @@ export default function SettingsPage() {
 
   const handleScanLibrary = async () => {
     setScanning(true);
-    setScanProgress({ processed: 0, total: 100 });
+    setScanProgress({ processed: 0, total: -1 }); // -1 indique "Calcul en cours..."
     showToast('Démarrage du scan de la bibliothèque...', 'info');
     try {
       const res = await fetch('/api/library', {
@@ -413,14 +413,16 @@ export default function SettingsPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '0.85rem', fontWeight: 500 }}>
               <span style={{ color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Loader2 size={16} className="animate-spin" />
-                Analyse en cours...
+                {scanProgress.total === -1 ? 'Initialisation...' : 'Analyse en cours...'}
               </span>
-              <span style={{ color: 'var(--text-muted)' }}>{scanProgress.processed} / {scanProgress.total}</span>
+              <span style={{ color: 'var(--text-muted)' }}>
+                {scanProgress.total === -1 ? '' : `${scanProgress.processed} / ${scanProgress.total}`}
+              </span>
             </div>
             <div style={{ width: '100%', height: '8px', backgroundColor: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
               <div style={{ 
                 height: '100%', 
-                width: `${Math.max(0, Math.min(100, (scanProgress.processed / Math.max(1, scanProgress.total)) * 100))}%`, 
+                width: `${Math.max(0, Math.min(100, scanProgress.total <= 0 ? 0 : (scanProgress.processed / scanProgress.total) * 100))}%`, 
                 backgroundColor: 'var(--accent)', 
                 transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)' 
               }} />
