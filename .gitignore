@@ -42,3 +42,6 @@ next-env.d.ts
 
 # musicarr data
 /data/
+*.db-shm
+*.db-wal
+*.db-journal
