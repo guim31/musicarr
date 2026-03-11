@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 export async function GET() {
   try {
     const path = db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
+    const progressRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('scan_progress') as { value: string } | undefined;
     const artistsCount = db.prepare("SELECT count(*) as count FROM artists WHERE id IN (SELECT DISTINCT artist_id FROM albums WHERE status = 'downloaded')").get() as { count: number };
     const albumsCount = db.prepare("SELECT count(*) as count FROM albums WHERE status = 'downloaded'").get() as { count: number };
 
@@ -15,7 +16,8 @@ export async function GET() {
       stats: {
         artists: artistsCount.count,
         albums: albumsCount.count
-      }
+      },
+      progress: progressRow ? JSON.parse(progressRow.value) : null
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -58,11 +60,10 @@ export async function POST(request: Request) {
     }
 
     if (action === 'scan') {
-      // Pour une vraie application, on lancerait ça dans un "background worker"
-      // ou on renverrait un ID de tâche. Pour le moment on le fait en direct.
-      console.log('Starting scan...');
-      const count = await LibraryService.scan();
-      return NextResponse.json({ success: true, filesProcessed: count });
+      console.log('Starting scan (async)...');
+      // Lancer en arrière-plan
+      LibraryService.scan().catch(err => console.error('Erreur scan:', err));
+      return NextResponse.json({ success: true, message: 'Scan démarré' });
     }
 
     return NextResponse.json({ error: 'Action invalide' }, { status: 400 });

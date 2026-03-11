@@ -39,11 +39,38 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{ processed: number, total: number } | null>(null);
   const { showToast } = useToast();
 
   useEffect(() => {
     fetchConfig();
   }, []);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (scanning) {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/library?t=${Date.now()}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.progress) {
+              setScanProgress(data.progress);
+              if (data.stats) setLibraryStats(data.stats);
+            } else if (scanProgress && scanProgress.total > 0 && scanProgress.processed > 0) {
+              // Si la progression a disparu, c'est que le scan s'est terminé
+              setScanning(false);
+              setScanProgress(null);
+              if (data.stats) setLibraryStats(data.stats);
+              showToast('Scan de la bibliothèque terminé !', 'success');
+              clearInterval(interval);
+            }
+          }
+        } catch (e) {}
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [scanning, scanProgress, showToast]);
 
   const fetchConfig = async () => {
     try {
@@ -74,6 +101,10 @@ export default function SettingsPage() {
       if (libData) {
         setLibraryPath(libData.path || '');
         setLibraryStats(libData.stats || { artists: 0, albums: 0 });
+        if (libData.progress) {
+          setScanning(true);
+          setScanProgress(libData.progress);
+        }
       }
 
       // Fetch Metadata
@@ -233,7 +264,8 @@ export default function SettingsPage() {
 
   const handleScanLibrary = async () => {
     setScanning(true);
-    showToast('Scan de la bibliothèque en cours...', 'info');
+    setScanProgress({ processed: 0, total: 100 });
+    showToast('Démarrage du scan de la bibliothèque...', 'info');
     try {
       const res = await fetch('/api/library', {
         method: 'POST',
@@ -241,15 +273,16 @@ export default function SettingsPage() {
         body: JSON.stringify({ action: 'scan' })
       });
       const data = await res.json();
-      if (data.success) {
-        showToast(`Scan terminé ! ${data.filesProcessed} fichiers traités.`, 'success');
-        fetchConfig();
+      if (!data.success) {
+        setScanning(false);
+        setScanProgress(null);
+        showToast('Erreur au démarrage du scan.', 'error');
       }
     } catch (error) {
       console.error(error);
-      showToast('Erreur lors du scan de la bibliothèque.', 'error');
-    } finally {
       setScanning(false);
+      setScanProgress(null);
+      showToast('Erreur réseau lors du scan.', 'error');
     }
   };
 
@@ -350,7 +383,28 @@ export default function SettingsPage() {
             <span style={{ marginLeft: '8px' }}>Sauvegarder</span>
           </button>
         </div>
+
+        {scanning && scanProgress && (
+          <div style={{ marginTop: '20px', padding: '16px', backgroundColor: 'var(--background)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px', fontSize: '0.85rem', fontWeight: 500 }}>
+              <span style={{ color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Loader2 size={16} className="animate-spin" />
+                Analyse en cours...
+              </span>
+              <span style={{ color: 'var(--text-muted)' }}>{scanProgress.processed} / {scanProgress.total}</span>
+            </div>
+            <div style={{ width: '100%', height: '8px', backgroundColor: 'var(--border)', borderRadius: '4px', overflow: 'hidden' }}>
+              <div style={{ 
+                height: '100%', 
+                width: `${Math.max(0, Math.min(100, (scanProgress.processed / Math.max(1, scanProgress.total)) * 100))}%`, 
+                backgroundColor: 'var(--accent)', 
+                transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)' 
+              }} />
+            </div>
+          </div>
+        )}
       </div>
+
 
       <div className={styles.section}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
