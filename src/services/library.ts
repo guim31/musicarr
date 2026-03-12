@@ -29,9 +29,21 @@ export class LibraryService {
     }
 
     try {
-      // Si targetPath est fourni, on scanne RECURSIVEMENT ce dossier. Sinon toute la lib.
       const scanDir = targetPath || musicPath;
+      console.log(`[Library] Scanning directory: ${scanDir}`);
+      
+      if (!fs.existsSync(scanDir)) {
+        console.error(`[Library] Error: Scan directory does not exist: ${scanDir}`);
+        throw new Error(`Le dossier à scanner n'existe pas : ${scanDir}`);
+      }
+
       const files = await glob('**/*.{flac,mp3,m4a,wav}', { cwd: scanDir, absolute: true });
+      console.log(`[Library] Found ${files.length} audio files`);
+
+      if (files.length === 0) {
+        console.warn(`[Library] No files found in ${scanDir}`);
+        return 0;
+      }
       
       let processedCount = 0;
       const totalCount = files.length;
@@ -270,6 +282,10 @@ export class LibraryService {
               foundTrackPaths.add(filePath);
               processedCount++;
               
+              if (processedCount % 50 === 0) {
+                console.log(`[Library] Processed ${processedCount}/${totalCount} files...`);
+              }
+
               if (!targetPath && (processedCount % 10 === 0 || processedCount === totalCount)) {
                 db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('scan_progress', JSON.stringify({ processed: processedCount, total: totalCount }));
               }
@@ -277,6 +293,7 @@ export class LibraryService {
           }
         }
       }
+      console.log(`[Library] Scan completed. Processed ${processedCount} tracks.`);
 
       // 7. Cleanup
       if (!targetPath) {
