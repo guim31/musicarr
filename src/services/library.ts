@@ -79,9 +79,16 @@ export class LibraryService {
         if (dirMetadatas.length === 0) continue;
 
         // 2. Identify albums in this directory
+        const folderName = path.basename(dirPath).replace(/_/g, ' ').trim().normalize('NFC');
         const albumsInDir = new Map<string, typeof dirMetadatas>();
         for (const item of dirMetadatas) {
-          const albumName = (item.metadata.common.album || "Unknown Album").trim().normalize('NFC');
+          let albumName = item.metadata.common.album?.trim().normalize('NFC');
+          
+          // Fallback to folder name if tag is missing or looks like generic placeholder
+          if (!albumName || albumName.toLowerCase() === 'unknown' || albumName.toLowerCase() === 'unknown album') {
+            albumName = folderName;
+          }
+
           if (!albumsInDir.has(albumName)) albumsInDir.set(albumName, []);
           albumsInDir.get(albumName)!.push(item);
         }
@@ -95,18 +102,24 @@ export class LibraryService {
           let effectiveAlbumArtist = "VARIOUS ARTISTS";
           
           if (albumArtists.size === 1) {
-            // All tracks agree on an album artist
             effectiveAlbumArtist = Array.from(albumArtists)[0]!.trim().normalize('NFC');
           } else if (hasCompilationFlag || artists.size > 1) {
-            // Multiple artists or explicit flag: it's a compilation
             effectiveAlbumArtist = "VARIOUS ARTISTS";
           } else if (artists.size === 1) {
-            // No album artist but only one artist anyway
             effectiveAlbumArtist = Array.from(artists)[0]!.trim().normalize('NFC');
-          } else {
-            // fallback to directory name
+          } 
+
+          // Fallback to directory structure if:
+          // 1. Tags are missing/Unknown
+          // 2. Or if we only have one artist but no album artist and it doesn't match the folder structure
+          const firstItem = items[0].metadata.common;
+          const albumTagIsMissing = !firstItem.album || firstItem.album.toLowerCase().includes('unknown');
+          
+          if (albumTagIsMissing || (effectiveAlbumArtist === "VARIOUS ARTISTS" && !hasCompilationFlag)) {
             const artistFolderName = path.basename(path.dirname(dirPath));
-            effectiveAlbumArtist = artistFolderName.replace(/_/g, ' ').trim().normalize('NFC');
+            if (artistFolderName && artistFolderName !== '.' && artistFolderName !== '..' && artistFolderName.toLowerCase() !== 'musique') {
+              effectiveAlbumArtist = artistFolderName.replace(/_/g, ' ').trim().normalize('NFC');
+            }
           }
 
           const artistName = effectiveAlbumArtist.toUpperCase();
@@ -203,13 +216,25 @@ export class LibraryService {
               let trackTitle = title ? title.trim().normalize('NFC') : null;
               let trackNumber = track.no || 0;
 
-              if (!trackTitle || trackNumber === 0) {
-                const fileName = path.basename(filePath, path.extname(filePath));
-                const fileMatch = fileName.match(/^([0-9]+)[\s-_.]+(.*)/);
+              const fileName = path.basename(filePath, path.extname(filePath));
+              const fileMatch = fileName.match(/^([0-9]+)[\s-_.]+(.*)/);
+
+              // Extract track number from filename if missing or 0
+              if (trackNumber === 0 && fileMatch) {
+                trackNumber = parseInt(fileMatch[1]);
+              }
+
+              // Extract track title from filename if missing or looks like "junk" tags
+              const titleLooksLikeJunk = trackTitle && (
+                trackTitle.toLowerCase().includes('(full album)') || 
+                trackTitle.toLowerCase() === albumName.toLowerCase() ||
+                trackTitle.toLowerCase() === 'unknown'
+              );
+
+              if (!trackTitle || titleLooksLikeJunk) {
                 if (fileMatch) {
-                  if (trackNumber === 0) trackNumber = parseInt(fileMatch[1]);
-                  if (!trackTitle) trackTitle = fileMatch[2].replace(/_/g, ' ').trim().normalize('NFC');
-                } else if (!trackTitle) {
+                  trackTitle = fileMatch[2].replace(/_/g, ' ').trim().normalize('NFC');
+                } else {
                   trackTitle = fileName.replace(/_/g, ' ').trim().normalize('NFC');
                 }
               }
