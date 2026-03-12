@@ -7,6 +7,8 @@ import * as mm from 'music-metadata';
 
 export class ImportService {
   private static isProcessing = false;
+  private static lastScanTime = 0;
+  private static SCAN_INTERVAL = 60000; // 1 minute
 
   private static getSettings() {
     const musicPath = db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
@@ -23,36 +25,43 @@ export class ImportService {
    */
   static async processSabnzbdDownloads() {
     if (this.isProcessing) return;
+
+    // Throttle : ne pas scanner plus d'une fois par minute
+    const now = Date.now();
+    if (now - this.lastScanTime < this.SCAN_INTERVAL) {
+      return;
+    }
     
     const { libraryPath, readOnly } = this.getSettings();
-    console.log(`[Import] Scan SABnzbd - Path: ${libraryPath}, ReadOnly: ${readOnly}`);
 
     if (!libraryPath || readOnly) {
-      if (!libraryPath) console.log("[Import] libraryPath non configuré.");
-      if (readOnly) console.log("[Import] Mode lecture seule actif, importation ignorée.");
       return;
     }
 
     const downloadDir = path.join(libraryPath, '_A_TRIER');
     if (!fs.existsSync(downloadDir)) {
-      console.log(`[Import] Dossier downloadDir non trouvé : ${downloadDir}`);
       return;
     }
 
     this.isProcessing = true;
+    this.lastScanTime = now;
+
     try {
       const history = await SabnzbdService.getHistory();
-      console.log(`[Import] SABnzbd history items: ${history.length}`);
       
       for (const slot of history) {
         const isMusic = slot.category?.toLowerCase() === 'music';
         const isCompleted = slot.status === 'Completed';
         
         if (isMusic && isCompleted) {
-          console.log(`[Import] Processing slot: ${slot.name} (ID: ${slot.nzo_id})`);
-          await this.importSabnzbdSlot(slot, downloadDir, libraryPath);
-        } else if (isMusic) {
-          console.log(`[Import] Skipping slot ${slot.name}: status is "${slot.status}" (expected "Completed")`);
+          // Vérifier d'abord si on l'a déjà importé pour éviter le spam de log
+          const alreadyProcessed = db.prepare("SELECT id FROM activity WHERE type = 'download' AND status = 'completed' AND details LIKE ?")
+            .get(`%"nzo_id":"${slot.nzo_id}"%`);
+          
+          if (!alreadyProcessed) {
+            console.log(`[Import] New completed slot found: ${slot.name} (ID: ${slot.nzo_id})`);
+            await this.importSabnzbdSlot(slot, downloadDir, libraryPath);
+          }
         }
       }
     } catch (error) {
@@ -80,8 +89,10 @@ export class ImportService {
     }
 
     if (!fs.existsSync(localPath)) {
-      const folders = fs.readdirSync(downloadDir);
-      console.log(`[Import] Folder NOT found for "${folderName}". Content of _A_TRIER: ${folders.join(', ')}`);
+      // On ne log que si le dossier downloadDir lui-même existe encore
+      if (fs.existsSync(downloadDir)) {
+        console.log(`[Import] Folder NOT found for "${folderName}" in ${downloadDir}`);
+      }
       return;
     }
 
