@@ -55,6 +55,7 @@ export async function POST(request: Request) {
     }
 
     // Insert artist
+    const upperName = name.toUpperCase();
     const insertArtist = db.prepare(`
       INSERT INTO artists (name, mbid, discogs_id, image, metadata)
       VALUES (?, ?, ?, ?, ?)
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
     let artistId;
     try {
       const result = insertArtist.run(
-        name, 
+        upperName, 
         mbid || null, 
         discogsId || null,
         image || null, 

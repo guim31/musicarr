@@ -135,7 +135,7 @@ export class DeemixService {
     const tracks = await this.deezer.getAlbumTracks(deezerAlbumId);
     if (tracks.length === 0) throw new Error('Aucune piste trouvée pour cet album');
 
-    const artistName = tracks[0].artistName;
+    const artistName = tracks[0].artistName.toUpperCase();
     const albumName = (await (this.deezer as any).fetchDeezer(`album/${deezerAlbumId}`)).title;
 
     // Résolution intelligente des dossiers pour éviter les doublons (casse, underscores/espaces)
