@@ -55,6 +55,7 @@ db.exec(`
     label TEXT,   -- Publisher
     monitored INTEGER DEFAULT 1,
     status TEXT DEFAULT 'missing', -- 'downloaded', 'missing', 'wanted'
+    type TEXT, -- 'album', 'single', 'ep', 'compilation'
     metadata TEXT,
     FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE,
     UNIQUE(artist_id, name)
@@ -98,7 +99,7 @@ db.exec(`
 // Migrations for existing databases
 const migrate = () => {
   const columns = {
-    albums: ['album_artist', 'barcode', 'label'],
+    albums: ['album_artist', 'barcode', 'label', 'type'],
     tracks: ['artist', 'bpm', 'isrc', 'track_total', 'disc_total']
   };
 

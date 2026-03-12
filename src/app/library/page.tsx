@@ -162,7 +162,7 @@ export default function AlbumsPage() {
               className={styles.albumCard}
             >
               <div className={styles.coverWrapper}>
-                 <div className={styles.coverImage} style={{ backgroundImage: `url(/api/albums/${album.id}/cover)` }}>
+                 <div className={styles.coverImage} style={{ backgroundImage: `url(/api/albums/${album.id}/cover?v=${new Date().getTime()})` }}>
                     {!album.metadata?.includes('hasCover":true') && !album.path && (
                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', backgroundColor: 'rgba(0,0,0,0.2)' }}>
                           <Disc size={40} color="var(--text-muted)" opacity={0.3} />
@@ -209,7 +209,7 @@ export default function AlbumsPage() {
                         height: '40px', 
                         borderRadius: '4px', 
                         backgroundColor: 'var(--background)',
-                        backgroundImage: `url(/api/albums/${album.id}/cover)`,
+                        backgroundImage: `url(/api/albums/${album.id}/cover?v=${new Date().getTime()})`,
                         backgroundSize: 'cover',
                         backgroundPosition: 'center',
                         border: '1px solid var(--border)'

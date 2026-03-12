@@ -39,7 +39,8 @@ export class SyncService {
     // 3. Merge with local DB
     let newFound = 0;
     for (const remote of remoteAlbums) {
-      if (remote.type && remote.type !== 'album' && remote.type !== 'ep') continue;
+      // On garde tout maintenant pour permettre le filtrage/tri dans l'UI
+      // if (remote.type && remote.type !== 'album' && remote.type !== 'ep') continue;
 
       const existing = db.prepare(`
         SELECT id, mbid, discogs_id, metadata FROM albums 
@@ -56,10 +57,11 @@ export class SyncService {
         if (remote.image && !meta.artworkUrl) meta.artworkUrl = remote.image;
         if (remote.deezerId && !meta.deezerId) meta.deezerId = remote.deezerId;
         
-        db.prepare('UPDATE albums SET mbid = ?, discogs_id = ?, metadata = ? WHERE id = ?')
+        db.prepare('UPDATE albums SET mbid = ?, discogs_id = ?, type = ?, metadata = ? WHERE id = ?')
           .run(
             remote.mbid || existing.mbid, 
             remote.discogsId || existing.discogs_id, 
+            remote.type || existing.type,
             JSON.stringify(meta), 
             existing.id
           );
@@ -68,14 +70,15 @@ export class SyncService {
         if (remote.image) meta.artworkUrl = remote.image;
         if (remote.deezerId) meta.deezerId = remote.deezerId;
         db.prepare(`
-          INSERT INTO albums (artist_id, name, mbid, discogs_id, release_date, status, metadata)
-          VALUES (?, ?, ?, ?, ?, 'missing', ?)
+          INSERT INTO albums (artist_id, name, mbid, discogs_id, release_date, type, status, metadata)
+          VALUES (?, ?, ?, ?, ?, ?, 'missing', ?)
         `).run(
           artistId,
           remote.name,
           remote.mbid || null,
           remote.discogsId || null,
           remote.releaseDate || null,
+          remote.type || 'album',
           JSON.stringify(meta)
         );
         newFound++;

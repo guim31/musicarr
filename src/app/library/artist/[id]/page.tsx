@@ -153,7 +153,7 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
           <div className={styles.artistInfo}>
             <h1>{artist.name}</h1>
             <div className={styles.artistMeta}>
-              <span>{albums.filter(a => a.status === 'downloaded').length} / {albums.length} Album{albums.length > 1 ? 's' : ''}</span>
+              <span>{albums.filter(a => a.status === 'downloaded').length} / {albums.length} Release{albums.length > 1 ? 's' : ''}</span>
               <span className={styles.badge}><Monitor size={14} /> Surveillé</span>
             </div>
           </div>
@@ -184,81 +184,114 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
       </header>
 
       <section className={styles.albumsSection}>
-        <div style={{ padding: '0 0 24px 0', borderBottom: '1px solid var(--border)', marginBottom: '32px' }}>
-          <h2 style={{ fontSize: '1.25rem' }}>Albums</h2>
-        </div>
+        {(() => {
+          // Group albums by type
+          const grouped = albums.reduce((acc: any, album) => {
+            const type = album.type || 'album';
+            if (!acc[type]) acc[type] = [];
+            acc[type].push(album);
+            return acc;
+          }, {});
 
-        <div className={styles.albumsList}>
-          {albums.map((album) => (
-            <div key={album.id} className={styles.albumListItemWrapper}>
-              <Link href={`/library/album/${album.id}`} className={styles.albumListItemLink}>
-                <div className={`${styles.albumListItem} ${album.status !== 'downloaded' ? styles.missingAlbum : ''}`}>
-                  <div className={styles.albumCover}>
-                    <img 
-                      src={`/api/albums/${album.id}/cover`} 
-                      alt={album.name} 
-                      onError={(e: any) => {
-                        e.target.style.display = 'none';
-                      }}
-                    />
-                    <div className={styles.coverOverlay}>
-                      <Disc size={48} strokeWidth={1} />
+          // Sort order: albums first, then EPs, then singles, then others
+          const order = ['album', 'ep', 'single', 'compilation'];
+          const sortedTypes = Object.keys(grouped).sort((a, b) => {
+            const indexA = order.indexOf(a);
+            const indexB = order.indexOf(b);
+            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+            if (indexA !== -1) return -1;
+            if (indexB !== -1) return 1;
+            return a.localeCompare(b);
+          });
+
+          const typeLabels: Record<string, string> = {
+            album: 'Albums',
+            ep: 'EP',
+            single: 'Singles',
+            compilation: 'Compilations'
+          };
+
+          return sortedTypes.map(type => (
+            <div key={type} className={styles.typeGroup}>
+              <div className={styles.sectionHeader}>
+                <h2>{typeLabels[type] || type.charAt(0).toUpperCase() + type.slice(1)}</h2>
+                <span className={styles.countBadge}>{grouped[type].length}</span>
+              </div>
+
+              <div className={styles.albumsList} style={{ marginBottom: '48px' }}>
+                {grouped[type].map((album: any) => (
+                  <div key={album.id} className={styles.albumListItemWrapper}>
+                    <Link href={`/library/album/${album.id}`} className={styles.albumListItemLink}>
+                      <div className={`${styles.albumListItem} ${album.status !== 'downloaded' ? styles.missingAlbum : ''}`}>
+                        <div className={styles.albumCover}>
+                          <img 
+                            src={`/api/albums/${album.id}/cover?v=${new Date(album.metadata?.last_scan || Date.now()).getTime()}`} 
+                            alt={album.name} 
+                            onError={(e: any) => {
+                              e.target.style.display = 'none';
+                            }}
+                          />
+                          <div className={styles.coverOverlay}>
+                            <Disc size={48} strokeWidth={1} />
+                          </div>
+                        </div>
+                        
+                        <div className={styles.albumInfo}>
+                          <div className={styles.albumMainDetails}>
+                            <h3 title={album.name}>{album.name}</h3>
+                            <div className={styles.albumMeta}>
+                              <span>{album.release_date ? album.release_date.toString().substring(0, 4) : 'Année inconnue'}</span>
+                              {album.quality && <span className={styles.qualityBadge}>{album.quality}</span>}
+                            </div>
+                          </div>
+
+                          <div className={styles.albumSecondaryDetails}>
+                            <div className={styles.tagList}>
+                              {album.metadata?.bitrate && <span>{album.metadata.bitrate} kbps</span>}
+                              {album.metadata?.sampleRate && <span>{album.metadata.sampleRate / 1000} kHz</span>}
+                              {album.metadata?.genre && <span>{album.metadata.genre}</span>}
+                            </div>
+                            <div className={styles.albumStatus}>
+                              {album.status === 'downloaded' ? (
+                                <span className={styles.downloaded}><CheckCircle2 size={14} /> Collecté</span>
+                              ) : (
+                                <span className={styles.missing}><Clock size={14} /> Manquant</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </Link>
+                    <div className={styles.albumActions}>
+                      <button 
+                        className={`${styles.actionBtn} ${styles.scanQuickBtn}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleScanAlbum(album.id, album.name);
+                        }}
+                        title="Scanner les fichiers locaux"
+                      >
+                        <RefreshCw size={18} />
+                      </button>
+                      <button 
+                        className={`${styles.actionBtn} ${styles.searchQuickBtn}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleManualSearch(album.id, album.name);
+                        }}
+                        title="Rechercher / Mettre à jour cet album"
+                      >
+                        <Search size={18} />
+                      </button>
                     </div>
                   </div>
-                  
-                  <div className={styles.albumInfo}>
-                    <div className={styles.albumMainDetails}>
-                      <h3 title={album.name}>{album.name}</h3>
-                      <div className={styles.albumMeta}>
-                        <span>{album.release_date ? album.release_date.toString().substring(0, 4) : 'Année inconnue'}</span>
-                        {album.quality && <span className={styles.qualityBadge}>{album.quality}</span>}
-                      </div>
-                    </div>
-
-                    <div className={styles.albumSecondaryDetails}>
-                      <div className={styles.tagList}>
-                        {album.metadata?.bitrate && <span>{album.metadata.bitrate} kbps</span>}
-                        {album.metadata?.sampleRate && <span>{album.metadata.sampleRate / 1000} kHz</span>}
-                        {album.metadata?.genre && <span>{album.metadata.genre}</span>}
-                      </div>
-                      <div className={styles.albumStatus}>
-                        {album.status === 'downloaded' ? (
-                          <span className={styles.downloaded}><CheckCircle2 size={14} /> Collecté</span>
-                        ) : (
-                          <span className={styles.missing}><Clock size={14} /> Manquant</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </Link>
-              <div className={styles.albumActions}>
-                <button 
-                  className={`${styles.actionBtn} ${styles.scanQuickBtn}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleScanAlbum(album.id, album.name);
-                  }}
-                  title="Scanner les fichiers locaux"
-                >
-                  <RefreshCw size={18} />
-                </button>
-                <button 
-                  className={`${styles.actionBtn} ${styles.searchQuickBtn}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    handleManualSearch(album.id, album.name);
-                  }}
-                  title="Rechercher / Mettre à jour cet album"
-                >
-                  <Search size={18} />
-                </button>
+                ))}
               </div>
             </div>
-          ))}
-        </div>
+          ));
+        })()}
       </section>
 
       <SearchModal 

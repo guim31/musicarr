@@ -35,12 +35,14 @@ export class MusicBrainzProvider implements MetadataProvider {
     });
 
     const validReleaseGroups = (data['release-groups'] || []).filter((rg: any) => {
+      // On accepte plus de types maintenant pour permettre le tri dans l'UI
       const primaryType = rg['primary-type']?.toLowerCase();
-      if (primaryType !== 'album' && primaryType !== 'ep') return false;
-
+      // On ignore juste les types vraiment non musicaux si besoin, mais ici on va être large
+      if (!primaryType) return true;
+      
       const secondaryTypes = rg['secondary-types'] || [];
       const isInvalidSecondary = secondaryTypes.some((t: string) => 
-        ['Live', 'Compilation', 'Remix', 'Interview', 'Spokenword', 'Audiobook', 'Mixtape/Street'].includes(t)
+        ['Interview', 'Spokenword', 'Audiobook'].includes(t)
       );
       
       return !isInvalidSecondary;
@@ -53,5 +55,28 @@ export class MusicBrainzProvider implements MetadataProvider {
       type: rg['primary-type']?.toLowerCase() || 'album',
       image: `https://coverartarchive.org/release-group/${rg.id}/front`
     }));
+  }
+
+  async getAlbumTracks(releaseGroupId: string): Promise<any[]> {
+    const data = await this.fetchMB(`release-group/${releaseGroupId}`, { inc: 'releases+recordings' });
+    const release = data.releases?.[0]; // On prend la première release du groupe
+    if (!release) return [];
+
+    // On recharge pour avoir le détail de la release (médias/pistes)
+    const releaseData = await this.fetchMB(`release/${release.id}`, { inc: 'recordings' });
+    
+    const tracks: any[] = [];
+    (releaseData.media || []).forEach((m: any) => {
+      (m.tracks || []).forEach((t: any) => {
+        tracks.push({
+          name: t.title,
+          number: t.position,
+          duration: t.length ? t.length / 1000 : 0,
+          disc: m.position || 1
+        });
+      });
+    });
+
+    return tracks;
   }
 }

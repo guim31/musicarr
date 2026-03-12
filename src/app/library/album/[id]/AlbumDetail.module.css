@@ -185,3 +185,14 @@
   font-size: 0.75rem;
   font-weight: 600;
 }
+
+.remoteTrack {
+  opacity: 0.4;
+  filter: grayscale(0.5);
+}
+
+.statusMissing {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-style: italic;
+}

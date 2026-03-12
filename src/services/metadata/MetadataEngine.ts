@@ -117,4 +117,16 @@ export class MetadataEngine {
       (b.releaseDate || '').localeCompare(a.releaseDate || '')
     );
   }
+
+  async getAlbumTracks(mbid?: string, deezerId?: string): Promise<any[]> {
+    if (deezerId) {
+      const dz = new DeezerProvider();
+      return dz.getAlbumTracks(deezerId);
+    }
+    if (mbid) {
+      const mb = new MusicBrainzProvider();
+      return mb.getAlbumTracks(mbid);
+    }
+    return [];
+  }
 }

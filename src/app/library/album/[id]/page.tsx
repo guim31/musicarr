@@ -26,6 +26,8 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
   const [album, setAlbum] = useState<any>(null);
   const [tracks, setTracks] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingTracks, setLoadingTracks] = useState(false);
+  const [trackError, setTrackError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [tagModalOpen, setTagModalOpen] = useState(false);
   const { showToast } = useToast();
@@ -41,11 +43,21 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
       const tracksData = await tracksRes.json();
       
       setAlbum(albumData);
-      setTracks(tracksData);
+      
+      // Sécurité tracks
+      if (Array.isArray(tracksData)) {
+        setTracks(tracksData);
+        if (tracksData.length === 0) setTrackError("Aucune piste trouvée (locale ou distante).");
+      } else {
+        setTracks([]);
+        setTrackError("Erreur lors de la récupération des pistes.");
+      }
     } catch (err) {
       console.error(err);
+      setTrackError("Erreur de connexion au serveur.");
     } finally {
       setLoading(false);
+      setLoadingTracks(false);
     }
   }, [id]);
 
@@ -103,7 +115,7 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
         <div className={styles.albumHeader}>
           <div className={styles.albumCover}>
             <img 
-              src={`/api/albums/${album.id}/cover`} 
+              src={`/api/albums/${album.id}/cover?v=${new Date().getTime()}`} 
               alt={album.name} 
               onError={(e: any) => e.target.style.display = 'none'}
             />
@@ -159,25 +171,54 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
             </tr>
           </thead>
           <tbody>
-            {tracks.map((track) => (
-              <tr key={track.id}>
-                <td className={styles.trackNumber}>{track.number || '-'}</td>
-                <td className={styles.trackTitle}>{track.title}</td>
-                <td className={styles.trackMeta}>{formatDuration(track.duration)}</td>
-                <td className={styles.trackMeta}>
-                  {track.bitrate ? `${track.bitrate} kbps` : '-'}
-                </td>
-                <td className={styles.trackMeta}>
-                  <span className={styles.formatTag}>{track.quality}</span>
-                </td>
-                <td style={{ textAlign: 'right' }}>
-                  <CheckCircle2 color="var(--success)" size={16} />
+            {loadingTracks ? (
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '48px' }}>
+                  <RefreshCw className="animate-spin" style={{ margin: '0 auto', marginBottom: '12px', color: 'var(--accent)' }} />
+                  <p style={{ color: 'var(--text-muted)' }}>Récupération de la liste des titres...</p>
                 </td>
               </tr>
-            ))}
+            ) : tracks.length === 0 ? (
+              <tr>
+                <td colSpan={6} style={{ textAlign: 'center', padding: '48px' }}>
+                  <Music size={32} style={{ margin: '0 auto', marginBottom: '12px', opacity: 0.2 }} />
+                  <p style={{ color: 'var(--text-muted)' }}>{trackError || "Aucune piste disponible."}</p>
+                </td>
+              </tr>
+            ) : (
+              tracks.map((track) => (
+                <tr key={track.id} className={!track.isLocal ? styles.remoteTrack : ''}>
+                  <td className={styles.trackNumber}>{track.number || '-'}</td>
+                  <td className={styles.trackTitle}>{track.title}</td>
+                  <td className={styles.trackMeta}>{formatDuration(track.duration)}</td>
+                  <td className={styles.trackMeta}>
+                    {track.isLocal ? (track.bitrate ? `${track.bitrate} kbps` : '-') : '-'}
+                  </td>
+                  <td className={styles.trackMeta}>
+                    {track.isLocal ? <span className={styles.formatTag}>{track.quality}</span> : '-'}
+                  </td>
+                  <td style={{ textAlign: 'right' }}>
+                    {track.isLocal ? (
+                      <CheckCircle2 color="var(--success)" size={16} />
+                    ) : (
+                      <span className={styles.statusMissing}>Non téléchargé</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </section>
+
+      {/* Debug Info */}
+      {(album.mbid || album.metadata?.deezerId) && (
+        <div style={{ marginTop: '24px', fontSize: '0.7rem', color: 'var(--text-muted)', opacity: 0.5, textAlign: 'center' }}>
+          {album.mbid && <span>MBID: {album.mbid}</span>}
+          {album.mbid && album.metadata?.deezerId && <span style={{ margin: '0 8px' }}>|</span>}
+          {album.metadata?.deezerId && <span>Deezer: {album.metadata.deezerId}</span>}
+        </div>
+      )}
 
       <TagEditorModal 
         isOpen={tagModalOpen}
