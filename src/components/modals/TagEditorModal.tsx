@@ -16,7 +16,10 @@ import {
   Tag,
   Upload,
   Sparkles,
-  Info
+  Info,
+  Globe,
+  Image as ImageIcon,
+  Search
 } from 'lucide-react';
 import styles from './TagEditorModal.module.css';
 import { useToast } from '@/context/ToastContext';
@@ -60,6 +63,8 @@ interface TagEditorModalProps {
 export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveSuccess }: TagEditorModalProps) {
   const { showToast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestingCover, setSuggestingCover] = useState(false);
   const [trackEdits, setTrackEdits] = useState<any[]>([]);
   const [bulkData, setBulkData] = useState({
     artist: '',
@@ -127,7 +132,10 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
   };
 
   const applyBulk = (field: string) => {
-    const value = (bulkData as any)[field];
+    let value = (bulkData as any)[field];
+    if (field === 'artist' || field === 'albumArtist') {
+      value = value.toUpperCase();
+    }
     const newEdits = trackEdits.map(t => ({ ...t, [field]: value }));
     setTrackEdits(newEdits);
     showToast(`Appliqué "${value}" à toutes les pistes`, "success");
@@ -181,6 +189,73 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
 
     setTrackEdits(newEdits);
     showToast("Titres, numéros et disques synchronisés !", "success");
+  };
+  
+  const handleSuggestTags = async () => {
+    setSuggesting(true);
+    try {
+      const res = await fetch(`/api/albums/${album.id}/suggest-tags`);
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || "Impossible de récupérer des suggestions.");
+      
+      const suggestions = data.suggestions;
+      const newEdits = [...trackEdits];
+      
+      // Tentative de matching par numéro de piste (plus fiable)
+      let matches = 0;
+      suggestions.forEach((s: any) => {
+        const trackIdx = newEdits.findIndex(t => t.number === s.number);
+        if (trackIdx !== -1) {
+          newEdits[trackIdx] = { 
+            ...newEdits[trackIdx], 
+            title: s.title,
+            artist: s.artist?.toUpperCase() 
+          };
+          matches++;
+        }
+      });
+
+      // Si pas de match par numéro (ex: fichiers pas encore numérotés), on fait par index
+      if (matches === 0) {
+        suggestions.forEach((s: any, idx: number) => {
+          if (newEdits[idx]) {
+            newEdits[idx] = { 
+              ...newEdits[idx], 
+              title: s.title,
+              artist: s.artist?.toUpperCase(),
+              number: s.number 
+            };
+            matches++;
+          }
+        });
+      }
+
+      setTrackEdits(newEdits);
+      showToast(`${matches} pistes pré-remplies via Internet !`, "success");
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
+  const handleSuggestCover = async () => {
+    setSuggestingCover(true);
+    try {
+      const res = await fetch(`/api/albums/${album.id}/suggest-cover`);
+      const data = await res.json();
+      
+      if (!res.ok) throw new Error(data.error || "Impossible de trouver une pochette.");
+      
+      setNewCover(data.coverUrl);
+      setCoverPreview(data.coverUrl);
+      showToast("Pochette trouvée et appliquée !", "success");
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      setSuggestingCover(false);
+    }
   };
 
   const handleSave = async () => {
@@ -238,8 +313,21 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                   </label>
                 </div>
               </div>
+              
+              <div className={styles.coverActions}>
+                 <button 
+                  className={`${styles.cleanBtn} ${styles.smallBtn}`} 
+                  onClick={handleSuggestCover}
+                  disabled={suggestingCover}
+                  title="Chercher sur MusicBrainz/Deezer"
+                >
+                  {suggestingCover ? <RefreshCw className="animate-spin" size={14} /> : <Search size={14} />}
+                  Chercher Pochette
+                </button>
+              </div>
+
               <div className={styles.coverUrlInput}>
-                <label>Pousser via URL</label>
+                <label>URL de la pochette</label>
                 <div className={styles.inputGroup}>
                   <input 
                     type="text" 
@@ -356,20 +444,6 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                   </button>
                 </div>
               </div>
-              <div className={styles.bulkItem}>
-                <label><Disc size={14} /> Barcode</label>
-                <div className={styles.inputGroup}>
-                  <input 
-                    type="text" 
-                    value={bulkData.barcode} 
-                    onChange={e => setBulkData({...bulkData, barcode: e.target.value})}
-                    placeholder="UPC / EAN..."
-                  />
-                  <button onClick={() => applyBulk('barcode')} title="Appliquer à tout">
-                    <Layers size={14} />
-                  </button>
-                </div>
-              </div>
 
               <div className={styles.magicAction}>
                 <div className={styles.tooltipContainer} style={{ width: '100%' }}>
@@ -382,6 +456,22 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                   </div>
                 </div>
               </div>
+
+              <div className={styles.magicAction}>
+                <div className={styles.tooltipContainer} style={{ width: '100%' }}>
+                  <button 
+                    className={`${styles.cleanBtn} ${styles.suggestBtn}`} 
+                    onClick={handleSuggestTags}
+                    disabled={suggesting}
+                  >
+                    {suggesting ? <RefreshCw className="animate-spin" size={16} /> : <Globe size={16} />}
+                    Suggérer via Internet
+                  </button>
+                  <div className={`${styles.tooltip} ${styles.tooltipRight}`} style={{ bottom: '130%', top: 'auto', left: '50%' }}>
+                    <strong>Recherche intelligente :</strong> Cherche l'album sur Deezer/MusicBrainz et pré-remplit les titres et artistes officiels.
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -389,10 +479,10 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th style={{ width: '45px', textAlign: 'center' }}>CD</th>
-                  <th style={{ width: '45px', textAlign: 'center' }}>#</th>
-                  <th style={{ minWidth: '200px' }}>Titre</th>
-                  <th style={{ minWidth: '150px' }}>
+                  <th style={{ width: '60px', textAlign: 'center' }}>CD</th>
+                  <th style={{ width: '60px', textAlign: 'center' }}>#</th>
+                  <th style={{ minWidth: '220px' }}>Titre</th>
+                  <th style={{ minWidth: '180px' }}>
                     Artiste Piste
                     <div className={styles.tooltipContainer}>
                       <Info size={10} className={styles.infoIcon} style={{ marginLeft: '4px' }} />
@@ -401,7 +491,7 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                       </div>
                     </div>
                   </th>
-                  <th style={{ minWidth: '150px' }}>
+                  <th style={{ minWidth: '180px' }}>
                     Artiste Album
                     <div className={styles.tooltipContainer}>
                       <Info size={10} className={styles.infoIcon} style={{ marginLeft: '4px' }} />
@@ -410,10 +500,8 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                       </div>
                     </div>
                   </th>
-                  <th style={{ width: '60px', textAlign: 'center' }}>BPM</th>
-                  <th style={{ width: '120px' }}>ISRC</th>
-                  <th style={{ minWidth: '120px' }}>Label</th>
-                  <th style={{ minWidth: '120px' }}>Barcode</th>
+                  <th style={{ width: '130px' }}>ISRC</th>
+                  <th style={{ minWidth: '150px' }}>Label</th>
                 </tr>
               </thead>
               <tbody>
@@ -465,16 +553,6 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                     <td>
                       <input 
                         className={styles.cellInput}
-                        style={{ textAlign: 'center' }}
-                        type="text" 
-                        value={edit.bpm || ''} 
-                        onChange={e => handleTrackChange(idx, 'bpm', e.target.value)}
-                        placeholder="-"
-                      />
-                    </td>
-                    <td>
-                      <input 
-                        className={styles.cellInput}
                         type="text" 
                         value={edit.isrc} 
                         onChange={e => handleTrackChange(idx, 'isrc', e.target.value)}
@@ -488,15 +566,6 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                         value={edit.label} 
                         onChange={e => handleTrackChange(idx, 'label', e.target.value)}
                         placeholder="Label"
-                      />
-                    </td>
-                    <td>
-                      <input 
-                        className={styles.cellInput}
-                        type="text" 
-                        value={edit.barcode} 
-                        onChange={e => handleTrackChange(idx, 'barcode', e.target.value)}
-                        placeholder="Barcode"
                       />
                     </td>
                   </tr>

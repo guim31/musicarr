@@ -58,7 +58,7 @@ export class MusicBrainzProvider implements MetadataProvider {
   }
 
   async getAlbumTracks(releaseGroupId: string): Promise<any[]> {
-    const data = await this.fetchMB(`release-group/${releaseGroupId}`, { inc: 'releases+recordings' });
+    const data = await this.fetchMB(`release-group/${releaseGroupId}`, { inc: 'releases' });
     const release = data.releases?.[0]; // On prend la première release du groupe
     if (!release) return [];
 
