@@ -229,7 +229,8 @@ export class LibraryService {
               let trackNumber = track.no || 0;
 
               const fileName = path.basename(filePath, path.extname(filePath));
-              const fileMatch = fileName.match(/^([0-9]+)[\s-_.]+(.*)/);
+              // Match "01-Title", "01_Title", "01 Title", "01.Title" or just "01"
+              const fileMatch = fileName.match(/^([0-9]+)(?:[\s-_.]+|$)(.*)/);
 
               // Extract track number from filename if missing or 0
               if (trackNumber === 0 && fileMatch) {
@@ -244,8 +245,11 @@ export class LibraryService {
               );
 
               if (!trackTitle || titleLooksLikeJunk) {
-                if (fileMatch) {
+                if (fileMatch && fileMatch[2] && fileMatch[2].trim()) {
                   trackTitle = fileMatch[2].replace(/_/g, ' ').trim().normalize('NFC');
+                } else if (fileMatch) {
+                  // If filename is just "01", at least we have the number, title can be "Piste 01" or fileName
+                  trackTitle = fileName; 
                 } else {
                   trackTitle = fileName.replace(/_/g, ' ').trim().normalize('NFC');
                 }
