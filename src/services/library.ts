@@ -105,7 +105,7 @@ export class LibraryService {
           albumsInDir.get(albumName)!.push(item);
         }
 
-        for (const [albumName, items] of albumsInDir) {
+        for (let [albumName, items] of albumsInDir) {
           // Detect if this is a compilation: different artists but same album, and no consistent albumartist
           const artists = new Set(items.map(i => i.metadata.common.artist).filter(Boolean));
           const albumArtists = new Set(items.map(i => i.metadata.common.albumartist).filter(Boolean));
@@ -161,6 +161,22 @@ export class LibraryService {
                fileCount: items.length,
                hasCover: false
             };
+
+            // Intelligence : Recherche de l'album avec tolérance sur la ponctuation (ex: "The Game!" vs "The Game")
+            const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const targetSlug = slug(albumName);
+            
+            const existingAlbums = db.prepare('SELECT id, name FROM albums WHERE artist_id = ?').all(artistId) as { id: number, name: string }[];
+            let match = existingAlbums.find(a => a.name === albumName); // Exact match
+            
+            if (!match) {
+              match = existingAlbums.find(a => slug(a.name) === targetSlug);
+              if (match) {
+                console.log(`[Library] Fuzzy match: "${albumName}" mapped to existing album "${match.name}"`);
+                // On utilise le nom existant en base pour déclencher le ON CONFLICT
+                albumName = match.name;
+              }
+            }
 
             db.prepare(`
               INSERT INTO albums (artist_id, name, album_artist, release_date, quality, path, status, barcode, label, metadata)
@@ -240,7 +256,6 @@ export class LibraryService {
               // Extract track title from filename if missing or looks like "junk" tags
               const titleLooksLikeJunk = trackTitle && (
                 trackTitle.toLowerCase().includes('(full album)') || 
-                trackTitle.toLowerCase() === albumName.toLowerCase() ||
                 trackTitle.toLowerCase() === 'unknown'
               );
 
@@ -255,33 +270,60 @@ export class LibraryService {
                 }
               }
 
-              db.prepare(`
-                INSERT INTO tracks (album_id, title, artist, number, track_total, disc, disc_total, duration, bpm, isrc, quality, bitrate, path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(album_id, title, number, disc) DO UPDATE SET
-                  path = excluded.path,
-                  artist = excluded.artist,
-                  bpm = excluded.bpm,
-                  isrc = excluded.isrc,
-                  quality = excluded.quality,
-                  bitrate = excluded.bitrate,
-                  track_total = excluded.track_total,
-                  disc_total = excluded.disc_total
-              `).run(
-                albumId,
-                trackTitle,
-                artist ? artist.trim().normalize('NFC') : null,
-                trackNumber,
-                track.of || null,
-                disk.no || 1,
-                disk.of || null,
-                metadata.format.duration || 0,
-                bpm || null,
-                isrc && isrc.length > 0 ? isrc[0] : null,
-                metadata.format.container || 'Unknown',
-                metadata.format.bitrate ? Math.round(metadata.format.bitrate / 1000) : null,
-                filePath
-              );
+              // Essayer de trouver une piste existante par son chemin DIRECT (très efficace pour éviter les doublons lors des renommages)
+              const existingTrack = db.prepare('SELECT id, title, number FROM tracks WHERE album_id = ? AND path = ?').get(albumId, filePath) as { id: number, title: string, number: number } | undefined;
+
+              if (existingTrack) {
+                // Mise à jour de la piste existante
+                db.prepare(`
+                  UPDATE tracks SET 
+                    title = ?, artist = ?, number = ?, track_total = ?, disc = ?, disc_total = ?, 
+                    duration = ?, bpm = ?, isrc = ?, quality = ?, bitrate = ?
+                  WHERE id = ?
+                `).run(
+                  trackTitle,
+                  artist ? artist.trim().normalize('NFC') : null,
+                  trackNumber,
+                  track.of || null,
+                  disk.no || 1,
+                  disk.of || null,
+                  metadata.format.duration || 0,
+                  bpm || null,
+                  isrc && isrc.length > 0 ? isrc[0] : null,
+                  metadata.format.container || 'Unknown',
+                  metadata.format.bitrate ? Math.round(metadata.format.bitrate / 1000) : null,
+                  existingTrack.id
+                );
+              } else {
+                // Nouvelle piste ou changement d'identifiant (title/number/disc)
+                db.prepare(`
+                  INSERT INTO tracks (album_id, title, artist, number, track_total, disc, disc_total, duration, bpm, isrc, quality, bitrate, path)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  ON CONFLICT(album_id, title, number, disc) DO UPDATE SET
+                    path = excluded.path,
+                    artist = excluded.artist,
+                    bpm = excluded.bpm,
+                    isrc = excluded.isrc,
+                    quality = excluded.quality,
+                    bitrate = excluded.bitrate,
+                    track_total = excluded.track_total,
+                    disc_total = excluded.disc_total
+                `).run(
+                  albumId,
+                  trackTitle,
+                  artist ? artist.trim().normalize('NFC') : null,
+                  trackNumber,
+                  track.of || null,
+                  disk.no || 1,
+                  disk.of || null,
+                  metadata.format.duration || 0,
+                  bpm || null,
+                  isrc && isrc.length > 0 ? isrc[0] : null,
+                  metadata.format.container || 'Unknown',
+                  metadata.format.bitrate ? Math.round(metadata.format.bitrate / 1000) : null,
+                  filePath
+                );
+              }
               
               foundTrackPaths.add(filePath);
               processedCount++;
@@ -309,18 +351,25 @@ export class LibraryService {
             db.prepare('DELETE FROM tracks WHERE album_id = ?').run(album.id);
           }
         }
+        
         const allTracks = db.prepare('SELECT id, path FROM tracks').all() as { id: number, path: string }[];
+        const seenPaths = new Set<string>();
         for (const track of allTracks) {
-          if (track.path && !foundTrackPaths.has(track.path)) {
+          if (!track.path || !foundTrackPaths.has(track.path) || seenPaths.has(track.path)) {
             db.prepare('DELETE FROM tracks WHERE id = ?').run(track.id);
+          } else {
+            seenPaths.add(track.path);
           }
         }
       } else {
         // En cas de scan partiel, on ne nettoie que les fichiers disparus DANS ce dossier
         const tracksInDir = db.prepare("SELECT id, path FROM tracks WHERE path LIKE ?").all(targetPath + '%') as { id: number, path: string }[];
+        const seenPaths = new Set<string>();
         for (const track of tracksInDir) {
-          if (track.path && !foundTrackPaths.has(track.path)) {
+          if (!track.path || !foundTrackPaths.has(track.path) || seenPaths.has(track.path)) {
             db.prepare('DELETE FROM tracks WHERE id = ?').run(track.id);
+          } else {
+            seenPaths.add(track.path);
           }
         }
         

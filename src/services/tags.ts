@@ -178,16 +178,29 @@ export class TagService {
           albumId
         );
 
-        if (allSameArtist && firstUpdate.artist) {
+        // Intelligence : mettre à jour le lien artiste/album si l'artiste a changé
+        const targetArtistName = (first.albumArtist || (allSameArtist ? firstUpdate.artist : null))?.toUpperCase();
+        if (targetArtistName) {
+          const existingArtist = db.prepare('SELECT id FROM artists WHERE name = ?').get(targetArtistName) as { id: number } | undefined;
+          
+          if (existingArtist) {
+            if (existingArtist.id !== album.artist_id) {
+              db.prepare('UPDATE albums SET artist_id = ? WHERE id = ?').run(existingArtist.id, albumId);
+            }
+          } else {
+             // Créer le nouvel artiste s'il n'existe pas
+             const newArtistId = db.prepare('INSERT INTO artists (name) VALUES (?)').run(targetArtistName).lastInsertRowid;
+             db.prepare('UPDATE albums SET artist_id = ? WHERE id = ?').run(newArtistId, albumId);
+          }
+        } else if (allSameArtist && firstUpdate.artist) {
+          // Cas simple : tous les titres ont le même artiste, on peut potentiellement renommer l'artiste
           const newArtistName = firstUpdate.artist.toUpperCase();
-          // Vérifier si l'artiste existe déjà sous ce nouveau nom
           const existingArtist = db.prepare('SELECT id FROM artists WHERE name = ?').get(newArtistName) as { id: number } | undefined;
           
           if (existingArtist && existingArtist.id !== album.artist_id) {
-            // L'album change de "propriétaire" (artiste existant)
             db.prepare('UPDATE albums SET artist_id = ? WHERE id = ?').run(existingArtist.id, albumId);
           } else if (!existingArtist) {
-            // On renomme l'artiste actuel (attention, cela affecte TOUS ses autres albums)
+            // On renomme l'artiste actuel (si c'était son seul album ou s'il n'avait pas de MBID)
             db.prepare('UPDATE artists SET name = ? WHERE id = ?').run(newArtistName, album.artist_id);
           }
         }

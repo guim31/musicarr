@@ -599,13 +599,67 @@ export class DeemixService {
     }
   }
 
-  static async renameAlbumContents(albumId: string) {
+  static async getAlbumOrganizationPlan(albumId: string) {
     const album = db.prepare(`
-      SELECT a.id, a.path, a.name as albumName, ar.name as artistName 
+      SELECT a.id, a.path, a.name as albumName, a.album_artist, ar.name as artistName 
       FROM albums a 
       JOIN artists ar ON a.artist_id = ar.id 
       WHERE a.id = ?
-    `).get(albumId) as { id: number, path: string, albumName: string, artistName: string } | undefined;
+    `).get(albumId) as { id: number, path: string, albumName: string, artistName: string, album_artist?: string } | undefined;
+
+    if (!album || !album.path || !fs.existsSync(album.path)) {
+      throw new Error("Album non trouvé");
+    }
+
+    const musicPath = this.getMusicPath();
+    if (!musicPath) throw new Error("Chemin de la bibliothèque non configuré");
+    
+    const normalize = (s: string) => s.split(/[\s_]+/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('_');
+    const changes: { type: 'file' | 'folder' | 'artist', from: string, to: string }[] = [];
+
+    // 1. Files
+    const files = fs.readdirSync(album.path);
+    for (const file of files) {
+      const fullPath = path.join(album.path, file);
+      if (fs.existsSync(fullPath) && fs.lstatSync(fullPath).isFile()) {
+        const ext = path.extname(file);
+        const name = path.basename(file, ext);
+        let targetName = normalize(name);
+        const match = name.match(/^(\d+)\s*[-_]\s*(.*)$/);
+        if (match) targetName = `${match[1].padStart(2, '0')}-${normalize(match[2])}`;
+        
+        if (file !== `${targetName}${ext}`) {
+          changes.push({ type: 'file', from: file, to: `${targetName}${ext}` });
+        }
+      }
+    }
+
+    // 2. Album Folder
+    const currentAlbumDir = path.basename(album.path);
+    const targetAlbumDir = normalize(currentAlbumDir);
+    if (currentAlbumDir !== targetAlbumDir) {
+        changes.push({ type: 'folder', from: currentAlbumDir, to: targetAlbumDir });
+    }
+
+    // 3. Artist Folder
+    const currentArtistDir = path.basename(path.dirname(album.path));
+    const targetArtistName = (album.artistName || album.album_artist || "UNKNOWN").toUpperCase();
+    const targetArtistFolder = normalize(targetArtistName);
+    
+    if (currentArtistDir !== targetArtistFolder) {
+        changes.push({ type: 'artist', from: currentArtistDir, to: targetArtistFolder });
+    }
+
+    return changes;
+  }
+
+  static async renameAlbumContents(albumId: string) {
+    const album = db.prepare(`
+      SELECT a.id, a.path, a.name as albumName, a.album_artist, ar.name as artistName 
+      FROM albums a 
+      JOIN artists ar ON a.artist_id = ar.id 
+      WHERE a.id = ?
+    `).get(albumId) as { id: number, path: string, albumName: string, artistName: string, album_artist?: string } | undefined;
 
     if (!album || !album.path || !fs.existsSync(album.path)) {
       throw new Error("Album non trouvé ou chemin invalide");
@@ -614,7 +668,7 @@ export class DeemixService {
     const musicPath = this.getMusicPath();
     if (!musicPath) throw new Error("Chemin de la bibliothèque non configuré");
 
-    const normalize = (s: string) => s.replace(/\s+/g, '_');
+    const normalize = (s: string) => s.split(/[\s_]+/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('_');
 
     // 1. Renommer les fichiers dans le dossier
     const files = fs.readdirSync(album.path);
@@ -656,19 +710,64 @@ export class DeemixService {
       db.prepare("UPDATE albums SET path = ? WHERE id = ?").run(newAlbumPath, albumId);
     }
 
-    // 3. Renommer le dossier de l'artiste si nécessaire (Force UPPERCASE)
-    const artistPath = path.dirname(finalAlbumPath);
-    const currentArtistDirName = path.basename(artistPath);
-    const newArtistDirName = normalize(currentArtistDirName).toUpperCase();
+    // 3. Re-ancrer l'album sous le bon dossier artiste si celui-ci a changé
+    const currentArtistDir = path.dirname(finalAlbumPath);
+    const targetArtistName = (album.artistName || album.album_artist || "UNKNOWN").toUpperCase();
+    const cleanArtistFolder = normalize(targetArtistName);
+    const targetArtistDir = path.join(musicPath, cleanArtistFolder);
 
-    if (currentArtistDirName !== newArtistDirName && artistPath !== musicPath) {
-      const parentDir = path.dirname(artistPath);
-      const newArtistPath = path.join(parentDir, newArtistDirName);
+    if (currentArtistDir !== targetArtistDir) {
+      console.log(`[Reorganize] Moving album from ${currentArtistDir} to ${targetArtistDir}`);
+      if (!fs.existsSync(targetArtistDir)) {
+        fs.mkdirSync(targetArtistDir, { recursive: true });
+        try {
+          const stats = fs.statSync(musicPath);
+          fs.chmodSync(targetArtistDir, 0o777);
+          if (stats.uid !== 0) fs.chownSync(targetArtistDir, stats.uid, stats.gid);
+        } catch(e) {}
+      }
       
-      if (!fs.existsSync(newArtistPath)) {
-        fs.renameSync(artistPath, newArtistPath);
-        const updatedAlbumPath = path.join(newArtistPath, path.basename(finalAlbumPath));
-        db.prepare("UPDATE albums SET path = ? WHERE id = ?").run(updatedAlbumPath, albumId);
+      const newAlbumPath = path.join(targetArtistDir, path.basename(finalAlbumPath));
+      if (finalAlbumPath !== newAlbumPath) {
+        fs.renameSync(finalAlbumPath, newAlbumPath);
+        finalAlbumPath = newAlbumPath;
+        db.prepare("UPDATE albums SET path = ? WHERE id = ?").run(newAlbumPath, albumId);
+        
+        // Nettoyer l'ancien dossier artiste s'il est vide
+        try {
+          if (fs.readdirSync(currentArtistDir).length === 0) {
+            fs.rmdirSync(currentArtistDir);
+          }
+        } catch (e) {}
+      }
+    }
+
+    // 4. Mettre à jour tous les chemins des pistes en base de données
+    const tracks = db.prepare('SELECT id, path FROM tracks WHERE album_id = ?').all(albumId) as { id: number, path: string }[];
+    const albumDirFiles = fs.readdirSync(finalAlbumPath);
+    
+    for (const track of tracks) {
+      if (track.path) {
+        const currentFileName = path.basename(track.path);
+        // On essaie de retrouver le fichier (il a pu être renommé à l'étape 1)
+        // La stratégie de renommage à l'étape 1 est déterministe, on peut la reproduire
+        // mais le plus simple est de scanner le dossier final.
+        const extension = path.extname(track.path);
+        const nameWithoutExt = path.basename(track.path, extension);
+        
+        let targetFileName = normalize(nameWithoutExt);
+        const trackMatch = nameWithoutExt.match(/^(\d+)\s*[-_]\s*(.*)$/);
+        if (trackMatch) {
+          const num = trackMatch[1].padStart(2, '0');
+          const title = normalize(trackMatch[2]);
+          targetFileName = `${num}-${title}`;
+        }
+        targetFileName += extension;
+
+        const newTrackPath = path.join(finalAlbumPath, targetFileName);
+        if (fs.existsSync(newTrackPath)) {
+          db.prepare('UPDATE tracks SET path = ? WHERE id = ?').run(newTrackPath, track.id);
+        }
       }
     }
 

@@ -20,6 +20,7 @@ import Link from 'next/link';
 import styles from './AlbumDetail.module.css';
 import { useToast } from '@/context/ToastContext';
 import TagEditorModal from '@/components/modals/TagEditorModal';
+import OrganizeFilesModal from '@/components/modals/OrganizeFilesModal';
 
 export default function AlbumDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
@@ -30,6 +31,7 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
   const [trackError, setTrackError] = useState<string | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [tagModalOpen, setTagModalOpen] = useState(false);
+  const [organizeModalOpen, setOrganizeModalOpen] = useState(false);
   const { showToast } = useToast();
 
   const fetchData = useCallback(async () => {
@@ -72,17 +74,19 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
   };
 
   const handleRename = async () => {
-    if (!confirm("Voulez-vous renommer les dossiers et fichiers de cet album avec des underscores ?")) return;
-    
     setRenaming(true);
     try {
       const res = await fetch(`/api/albums/${id}/rename`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        showToast("Album renommé avec succès !", "success");
-        window.location.reload(); // Recharger pour voir les nouveaux chemins (via scan)
+        showToast("Album organisé avec succès !", "success");
+        setOrganizeModalOpen(false);
+        fetchData();
+        // Optionnel : recharger la page si le chemin d'artiste change radicalement 
+        // ou si on veut forcer un rafraîchissement complet
+        // window.location.reload(); 
       } else {
-        throw new Error(data.error || "Erreur lors du renommage");
+        throw new Error(data.error || "Erreur lors de l'organisation");
       }
     } catch (err: any) {
       showToast(err.message, "error");
@@ -140,11 +144,11 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
               </button>
               <button 
                 className={`${styles.button} ${styles.outlineButton}`}
-                onClick={handleRename}
+                onClick={() => setOrganizeModalOpen(true)}
                 disabled={renaming}
               >
-                {renaming ? <RefreshCw className="animate-spin" size={18} /> : <Type size={18} />}
-                {renaming ? 'Renommage...' : 'Normaliser noms'}
+                {renaming ? <RefreshCw className="animate-spin" size={18} /> : <HardDrive size={18} />}
+                {renaming ? 'Organisation...' : 'Organiser les fichiers'}
               </button>
               <button 
                 className={`${styles.button} ${styles.outlineButton}`}
@@ -226,6 +230,15 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
         album={album}
         tracks={tracks}
         onSaveSuccess={fetchData}
+      />
+
+      <OrganizeFilesModal
+        isOpen={organizeModalOpen}
+        onClose={() => setOrganizeModalOpen(false)}
+        albumId={parseInt(id)}
+        onConfirm={handleRename}
+        loading={renaming}
+        albumName={album.name}
       />
     </div>
   );
