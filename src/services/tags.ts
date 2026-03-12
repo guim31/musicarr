@@ -157,15 +157,23 @@ export class TagService {
         const metadata = album.metadata ? JSON.parse(album.metadata) : {};
         if (allSameGenre) metadata.genre = firstUpdate.genre;
         
+        const first = updates[0];
+        
         db.prepare(`
           UPDATE albums SET 
             name = ?, 
+            album_artist = ?,
             release_date = ?, 
+            barcode = ?,
+            label = ?,
             metadata = ?
           WHERE id = ?
         `).run(
-          allSameAlbum ? firstUpdate.album : album.name,
-          allSameYear ? firstUpdate.year : album.release_date,
+          allSameAlbum ? first.album : album.name,
+          first.albumArtist || null,
+          allSameYear ? first.year : album.release_date,
+          first.barcode || null,
+          first.label || null,
           JSON.stringify(metadata),
           albumId
         );

@@ -6,32 +6,35 @@ import {
   Plus, 
   Filter, 
   Music, 
-  Users, 
+  Disc, 
   ArrowRight, 
   ExternalLink, 
   ChevronRight,
   Monitor,
   RefreshCw,
   CheckCircle2,
-  Clock
+  Clock,
+  LayoutGrid,
+  List
 } from 'lucide-react';
 import Link from 'next/link';
 import styles from './Library.module.css';
 
-export default function LibraryPage() {
-  const [artists, setArtists] = useState<any[]>([]);
+export default function AlbumsPage() {
+  const [albums, setAlbums] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid'); // Default to grid for 'jukebox' feel
 
   useEffect(() => {
-    fetchArtists();
+    fetchAlbums();
   }, []);
 
-  const fetchArtists = async () => {
+  const fetchAlbums = async () => {
     try {
-      const res = await fetch('/api/artists');
+      const res = await fetch('/api/albums');
       const data = await res.json();
-      setArtists(data);
+      setAlbums(data);
     } catch (err) {
       console.error(err);
     } finally {
@@ -39,8 +42,9 @@ export default function LibraryPage() {
     }
   };
 
-  const filteredArtists = artists.filter(a => 
-    a.name.toLowerCase().includes(filter.toLowerCase())
+  const filteredAlbums = albums.filter(a => 
+    a.name.toLowerCase().includes(filter.toLowerCase()) ||
+    (a.album_artist || a.artist_name || '').toLowerCase().includes(filter.toLowerCase())
   );
 
   return (
@@ -50,24 +54,78 @@ export default function LibraryPage() {
           <h1>Ma Collection</h1>
           <p style={{ color: 'var(--text-muted)' }}>Gérez vos artistes et albums favoris.</p>
         </div>
-        <Link href="/library/add" style={{ textDecoration: 'none' }}>
-          <button className={styles.button}>
-            <Plus size={20} />
-            Ajouter un artiste
-          </button>
-        </Link>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <Link href="/library/add" style={{ textDecoration: 'none' }}>
+            <button className={styles.button}>
+              <Plus size={20} />
+              Ajouter un artiste
+            </button>
+          </Link>
+        </div>
       </header>
+
+      {/* TABS NAVIGATION */}
+      <div style={{ display: 'flex', gap: '24px', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '0' }}>
+        <div style={{ 
+          padding: '8px 16px', 
+          color: 'var(--accent)', 
+          fontWeight: 600, 
+          cursor: 'pointer',
+          borderBottom: '2px solid var(--accent)'
+        }}>
+          Albums
+        </div>
+        <Link href="/library/artists" style={{ textDecoration: 'none' }}>
+          <div style={{ 
+            padding: '8px 16px', 
+            color: 'var(--text-muted)', 
+            fontWeight: 600, 
+            cursor: 'pointer',
+            borderBottom: '2px solid transparent'
+          }}>
+            Artistes
+          </div>
+        </Link>
+      </div>
 
       <div className={styles.searchHeader}>
         <div className={styles.searchInputWrapper}>
           <Search size={18} className={styles.searchIcon} />
           <input 
             type="text" 
-            placeholder="Filtrer ma collection..." 
+            placeholder="Rechercher un album ou artiste de l'album..." 
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className={styles.searchInput}
           />
+        </div>
+        <div style={{ display: 'flex', gap: '8px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '4px', backgroundColor: 'var(--background)' }}>
+          <button 
+             onClick={() => setViewMode('grid')}
+             className={styles.outlineButton}
+             style={{ 
+               padding: '6px', 
+               border: 'none',
+               backgroundColor: viewMode === 'grid' ? 'var(--accent)' : 'transparent',
+               color: viewMode === 'grid' ? 'white' : 'var(--text-muted)'
+             }}
+             title="Vue Jukebox"
+          >
+            <LayoutGrid size={18} />
+          </button>
+          <button 
+             onClick={() => setViewMode('list')}
+             className={styles.outlineButton}
+             style={{ 
+               padding: '6px', 
+               border: 'none',
+               backgroundColor: viewMode === 'list' ? 'var(--accent)' : 'transparent',
+               color: viewMode === 'list' ? 'white' : 'var(--text-muted)'
+             }}
+             title="Vue Liste"
+          >
+            <List size={18} />
+          </button>
         </div>
         <button className={`${styles.button} ${styles.outlineButton}`}>
           <Filter size={18} />
@@ -77,9 +135,9 @@ export default function LibraryPage() {
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
-          <Music className="animate-pulse" size={48} color="var(--accent)" />
+          <Disc className="animate-pulse" size={48} color="var(--accent)" />
         </div>
-      ) : artists.length === 0 ? (
+      ) : filteredAlbums.length === 0 ? (
         <div style={{ 
           textAlign: 'center', 
           padding: '120px 0', 
@@ -89,81 +147,114 @@ export default function LibraryPage() {
           alignItems: 'center',
           gap: '16px'
         }}>
-          <Users size={64} strokeWidth={1} />
+          <Disc size={64} strokeWidth={1} />
           <div>
-            <h2 style={{ color: 'var(--foreground)', marginBottom: '8px' }}>Votre collection est vide</h2>
-            <p>Commencez par ajouter des artistes ou scannez votre bibliothèque locale.</p>
+            <h2 style={{ color: 'var(--foreground)', marginBottom: '8px' }}>Aucun album trouvé</h2>
+            <p>Ajustez votre recherche ou scannez votre bibliothèque.</p>
           </div>
-          <Link href="/settings">
-            <button className={`${styles.button} ${styles.outlineButton}`} style={{ marginTop: '16px' }}>
-              Configurer le dossier musique
-            </button>
-          </Link>
+        </div>
+      ) : viewMode === 'grid' ? (
+        <div className={styles.albumGrid}>
+          {filteredAlbums.map((album) => (
+            <Link 
+              key={album.id} 
+              href={`/library/album/${album.id}`}
+              className={styles.albumCard}
+            >
+              <div className={styles.coverWrapper}>
+                 <div className={styles.coverImage} style={{ backgroundImage: `url(/api/albums/${album.id}/cover)` }}>
+                    {!album.metadata?.includes('hasCover":true') && !album.path && (
+                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+                          <Disc size={40} color="var(--text-muted)" opacity={0.3} />
+                       </div>
+                    )}
+                 </div>
+                 {album.quality && album.quality !== 'Unknown' && (
+                    <div className={styles.qualityBadge}>{album.quality}</div>
+                 )}
+              </div>
+              <div className={styles.albumInfo}>
+                 <div className={styles.albumCardTitle}>{album.name}</div>
+                 <div className={styles.albumCardArtist}>{album.album_artist || album.artist_name}</div>
+                 <div className={styles.albumCardMeta}>
+                    <span>{album.release_date || '-'}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                       {album.track_count} <Music size={12} />
+                    </span>
+                 </div>
+              </div>
+            </Link>
+          ))}
         </div>
       ) : (
         <div className={styles.tableWrapper}>
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Artiste</th>
-                <th>Albums</th>
-                <th>Collecté</th>
-                <th>Statut</th>
+                <th>Album</th>
+                <th>Artiste de l'album</th>
+                <th style={{ textAlign: 'center' }}>Année</th>
+                <th>Format</th>
+                <th>Status</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredArtists.map((artist) => (
-                <tr key={artist.id}>
+              {filteredAlbums.map((album) => (
+                <tr key={album.id}>
                   <td>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <Link href={`/library/artist/${artist.id}`} className={styles.artistLink}>
-                        <span className={styles.artistName}>{artist.name}</span>
+                      <div style={{ 
+                        width: '40px', 
+                        height: '40px', 
+                        borderRadius: '4px', 
+                        backgroundColor: 'var(--background)',
+                        backgroundImage: `url(/api/albums/${album.id}/cover)`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        border: '1px solid var(--border)'
+                      }}>
+                        {!album.metadata?.includes('hasCover":true') && !album.path && (
+                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                              <Disc size={20} color="var(--text-muted)" />
+                           </div>
+                        )}
+                      </div>
+                      <Link href={`/library/album/${album.id}`} className={styles.artistLink}>
+                        <span className={styles.artistName}>{album.name}</span>
                       </Link>
                     </div>
                   </td>
                   <td>
-                    <span style={{ color: 'var(--text-muted)' }}>{artist.album_count} album{artist.album_count > 1 ? 's' : ''}</span>
+                    <Link href={`/library/artist/${album.artist_id}`} style={{ textDecoration: 'none' }}>
+                      <span style={{ color: 'var(--foreground)', opacity: 0.9 }}>{album.album_artist || album.artist_name}</span>
+                    </Link>
+                  </td>
+                  <td style={{ textAlign: 'center' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>{album.release_date || '-'}</span>
                   </td>
                   <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div className={`${styles.statusBadge} ${artist.downloaded_count === artist.album_count ? styles.downloadedBadge : ''}`}>
-                        {artist.downloaded_count} collecté{artist.downloaded_count > 1 ? 's' : ''}
-                      </div>
-                      {artist.missing_count > 0 && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--warning)', fontWeight: 600 }}>
-                          {artist.missing_count} manquant{artist.missing_count > 1 ? 's' : ''}
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--success)' }}>
-                      <Monitor size={14} />
-                      Surveillé
+                    <span style={{ 
+                      fontSize: '0.7rem', 
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)', 
+                      padding: '2px 6px', 
+                      borderRadius: '4px',
+                      color: 'var(--text-muted)',
+                      fontWeight: 600
+                    }}>
+                      {album.quality || 'N/A'}
                     </span>
                   </td>
                   <td>
+                    <div className={`${styles.statusBadge} ${album.status === 'downloaded' ? styles.downloadedBadge : ''}`}>
+                      {album.status === 'downloaded' ? 'Collecté' : 'Manquant'}
+                    </div>
+                  </td>
+                  <td>
                     <div className={styles.actions}>
-                      <button 
-                        className={`${styles.button} ${styles.outlineButton}`} 
-                        style={{ padding: '6px' }}
-                        onClick={async () => {
-                          try {
-                            const res = await fetch(`/api/artists/${artist.id}/scan`, { method: 'POST' });
-                            const data = await res.json();
-                            if (data.success) {
-                              fetchArtists(); // Re-fetch data
-                            }
-                          } catch (e) { console.error(e); }
-                        }}
-                        title="Scanner le dossier de cet artiste"
-                      >
-                        <RefreshCw size={14} />
-                      </button>
-                      <Link href={`/library/artist/${artist.id}`}>
+                      <Link href={`/library/album/${album.id}`}>
                         <button className={`${styles.button} ${styles.outlineButton}`} style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
-                          Détails
+                          Ouvrir
                           <ChevronRight size={14} />
                         </button>
                       </Link>

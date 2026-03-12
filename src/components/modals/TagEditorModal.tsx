@@ -15,7 +15,8 @@ import {
   Calendar,
   Tag,
   Upload,
-  Sparkles
+  Sparkles,
+  Info
 } from 'lucide-react';
 import styles from './TagEditorModal.module.css';
 import { useToast } from '@/context/ToastContext';
@@ -23,9 +24,15 @@ import { useToast } from '@/context/ToastContext';
 interface Track {
   id: number;
   title: string;
+  artist?: string;
   number: number;
+  track_total?: number;
   disc: number;
+  disc_total?: number;
   quality: string;
+  duration?: number;
+  bpm?: number;
+  isrc?: string;
   path: string;
 }
 
@@ -33,7 +40,10 @@ interface Album {
   id: number;
   name: string;
   artist_name: string;
+  album_artist?: string;
   release_date?: string;
+  barcode?: string;
+  label?: string;
   metadata?: {
     genre?: string;
   };
@@ -53,31 +63,44 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
   const [trackEdits, setTrackEdits] = useState<any[]>([]);
   const [bulkData, setBulkData] = useState({
     artist: '',
+    albumArtist: '',
     album: '',
     year: '',
-    genre: ''
+    genre: '',
+    label: '',
+    barcode: ''
   });
   const [coverPreview, setCoverPreview] = useState<string>(`/api/albums/${album.id}/cover`);
   const [newCover, setNewCover] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setTrackEdits(tracks.map(t => ({
+      setTrackEdits(tracks.map((t: any) => ({
         trackId: t.id,
         title: t.title,
         number: t.number,
+        trackTotal: t.track_total,
         disc: t.disc || 1,
+        discTotal: t.disc_total,
         path: t.path,
-        artist: album.artist_name,
+        artist: t.artist || album.artist_name,
+        albumArtist: album.album_artist || '',
         album: album.name,
         year: album.release_date?.substring(0, 4) || '',
-        genre: album.metadata?.genre || ''
+        genre: album.metadata?.genre || '',
+        bpm: t.bpm || '',
+        isrc: t.isrc || '',
+        barcode: album.barcode || '',
+        label: album.label || ''
       })));
       setBulkData({
         artist: album.artist_name,
+        albumArtist: album.album_artist || '',
         album: album.name,
         year: album.release_date?.substring(0, 4) || '',
-        genre: album.metadata?.genre || ''
+        genre: album.metadata?.genre || '',
+        label: album.label || '',
+        barcode: album.barcode || ''
       });
       setCoverPreview(`/api/albums/${album.id}/cover?t=${Date.now()}`);
       setNewCover(null);
@@ -129,9 +152,10 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
       const parentDir = pathParts.pop() || '';
 
       // Extraction numéro piste depuis nom fichier
-      const fileMatch = fileName.match(/^([0-9]+)[\s-_.]+/);
-      if (fileMatch && (!number || number === 0)) {
-        number = parseInt(fileMatch[1]);
+      const fileMatch = fileName.match(/^(?:([0-9]+)\s*-?\s*)?(.+)\.(?:flac|mp3|m4a|wav)$/i);
+      if (fileMatch) {
+         if (!number || number === 0) number = parseInt(fileMatch[1]);
+         if (!title || title === t.title) title = fileMatch[2];
       }
 
       // Extraction numéro disque depuis dossier parent (CD 01, Disc 2, etc.)
@@ -143,6 +167,7 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
       // Nettoyage final du titre : extension et underscores
       title = title.replace(/\.(flac|mp3|m4a|wav)$/i, '')
                   .replace(/_/g, ' ')
+                  .replace(/^[0-9]+[\s-_.]+/, '') // Enlever les préfixes numériques résiduels
                   .trim();
 
       return { ...t, title, number, disc };
@@ -230,7 +255,16 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
 
             <div className={styles.bulkActions}>
               <div className={styles.bulkItem}>
-                <label><User size={14} /> Artiste</label>
+                <label>
+                  <User size={14} /> Artiste Piste
+                  <div className={styles.tooltipContainer}>
+                    <Info size={12} className={styles.infoIcon} style={{ marginLeft: '4px' }} />
+                    <div className={`${styles.tooltip} ${styles.tooltipRight}`}>
+                      <strong>Compilations :</strong> Mettez ici l'artiste spécifique de chaque chanson.<br/><br/>
+                      <em>Ex : Daft Punk</em>
+                    </div>
+                  </div>
+                </label>
                 <div className={styles.inputGroup}>
                   <input 
                     type="text" 
@@ -239,6 +273,29 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                     placeholder="Artiste commun..."
                   />
                   <button onClick={() => applyBulk('artist')} title="Appliquer à tout">
+                    <Layers size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className={styles.bulkItem}>
+                <label>
+                  <Sparkles size={14} color="var(--accent)" /> Artiste de l'Album
+                  <div className={styles.tooltipContainer}>
+                    <Info size={12} className={styles.infoIcon} style={{ marginLeft: '4px' }} />
+                    <div className={`${styles.tooltip} ${styles.tooltipRight}`}>
+                      <strong>Compilations :</strong> Mettez ici <strong>VARIOUS ARTISTS</strong> pour regrouper l'album.<br/><br/>
+                      C'est ce qui définit le dossier de stockage.
+                    </div>
+                  </div>
+                </label>
+                <div className={styles.inputGroup}>
+                  <input 
+                    type="text" 
+                    value={bulkData.albumArtist} 
+                    onChange={e => setBulkData({...bulkData, albumArtist: e.target.value})}
+                    placeholder="VARIOUS ARTISTS, etc."
+                  />
+                  <button onClick={() => applyBulk('albumArtist')} title="Appliquer à tout">
                     <Layers size={14} />
                   </button>
                 </div>
@@ -285,12 +342,45 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                   </button>
                 </div>
               </div>
+              <div className={styles.bulkItem}>
+                <label><Music size={14} /> Label</label>
+                <div className={styles.inputGroup}>
+                  <input 
+                    type="text" 
+                    value={bulkData.label} 
+                    onChange={e => setBulkData({...bulkData, label: e.target.value})}
+                    placeholder="Universal, Sony..."
+                  />
+                  <button onClick={() => applyBulk('label')} title="Appliquer à tout">
+                    <Layers size={14} />
+                  </button>
+                </div>
+              </div>
+              <div className={styles.bulkItem}>
+                <label><Disc size={14} /> Barcode</label>
+                <div className={styles.inputGroup}>
+                  <input 
+                    type="text" 
+                    value={bulkData.barcode} 
+                    onChange={e => setBulkData({...bulkData, barcode: e.target.value})}
+                    placeholder="UPC / EAN..."
+                  />
+                  <button onClick={() => applyBulk('barcode')} title="Appliquer à tout">
+                    <Layers size={14} />
+                  </button>
+                </div>
+              </div>
 
               <div className={styles.magicAction}>
-                <button className={styles.cleanBtn} onClick={cleanTitles}>
-                  <Sparkles size={16} />
-                  Nettoyer les titres massivement
-                </button>
+                <div className={styles.tooltipContainer} style={{ width: '100%' }}>
+                  <button className={styles.cleanBtn} onClick={cleanTitles}>
+                    <Sparkles size={16} />
+                    Nettoyer les titres massivement
+                  </button>
+                  <div className={`${styles.tooltip} ${styles.tooltipRight}`} style={{ bottom: '130%', top: 'auto', left: '50%' }}>
+                    <strong>Action magique :</strong> Analyse les noms de fichiers pour en extraire le numéro de piste et le titre propre, tout en synchronisant les disques selon les dossiers parents.
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -299,12 +389,31 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th style={{ width: '60px', textAlign: 'center' }}>CD</th>
-                  <th style={{ width: '60px', textAlign: 'center' }}>#</th>
-                  <th>Titre</th>
-                  <th>Artiste</th>
-                  <th>Album</th>
-                  <th style={{ width: '100px' }}>Année</th>
+                  <th style={{ width: '45px', textAlign: 'center' }}>CD</th>
+                  <th style={{ width: '45px', textAlign: 'center' }}>#</th>
+                  <th style={{ minWidth: '200px' }}>Titre</th>
+                  <th style={{ minWidth: '150px' }}>
+                    Artiste Piste
+                    <div className={styles.tooltipContainer}>
+                      <Info size={10} className={styles.infoIcon} style={{ marginLeft: '4px' }} />
+                      <div className={`${styles.tooltip} ${styles.tooltipDown}`}>
+                        L'artiste qui chante ce morceau précis.
+                      </div>
+                    </div>
+                  </th>
+                  <th style={{ minWidth: '150px' }}>
+                    Artiste Album
+                    <div className={styles.tooltipContainer}>
+                      <Info size={10} className={styles.infoIcon} style={{ marginLeft: '4px' }} />
+                      <div className={`${styles.tooltip} ${styles.tooltipDown}`}>
+                        L'artiste principal ou <strong>VARIOUS ARTISTS</strong> pour les compilations.
+                      </div>
+                    </div>
+                  </th>
+                  <th style={{ width: '60px', textAlign: 'center' }}>BPM</th>
+                  <th style={{ width: '120px' }}>ISRC</th>
+                  <th style={{ minWidth: '120px' }}>Label</th>
+                  <th style={{ minWidth: '120px' }}>Barcode</th>
                 </tr>
               </thead>
               <tbody>
@@ -348,16 +457,46 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                       <input 
                         className={styles.cellInput}
                         type="text" 
-                        value={edit.album} 
-                        onChange={e => handleTrackChange(idx, 'album', e.target.value)}
+                        value={edit.albumArtist} 
+                        onChange={e => handleTrackChange(idx, 'albumArtist', e.target.value)}
+                        placeholder="Artiste Album..."
+                      />
+                    </td>
+                    <td>
+                      <input 
+                        className={styles.cellInput}
+                        style={{ textAlign: 'center' }}
+                        type="text" 
+                        value={edit.bpm || ''} 
+                        onChange={e => handleTrackChange(idx, 'bpm', e.target.value)}
+                        placeholder="-"
                       />
                     </td>
                     <td>
                       <input 
                         className={styles.cellInput}
                         type="text" 
-                        value={edit.year} 
-                        onChange={e => handleTrackChange(idx, 'year', e.target.value)}
+                        value={edit.isrc} 
+                        onChange={e => handleTrackChange(idx, 'isrc', e.target.value)}
+                        placeholder="ISRC"
+                      />
+                    </td>
+                    <td>
+                      <input 
+                        className={styles.cellInput}
+                        type="text" 
+                        value={edit.label} 
+                        onChange={e => handleTrackChange(idx, 'label', e.target.value)}
+                        placeholder="Label"
+                      />
+                    </td>
+                    <td>
+                      <input 
+                        className={styles.cellInput}
+                        type="text" 
+                        value={edit.barcode} 
+                        onChange={e => handleTrackChange(idx, 'barcode', e.target.value)}
+                        placeholder="Barcode"
                       />
                     </td>
                   </tr>
