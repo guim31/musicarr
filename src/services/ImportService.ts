@@ -8,7 +8,7 @@ import * as mm from 'music-metadata';
 export class ImportService {
   private static isProcessing = false;
   private static lastScanTime = 0;
-  private static SCAN_INTERVAL = 60000; // 1 minute
+  private static SCAN_INTERVAL = 10000; // 10 secondes pour plus de réactivité
 
   private static getSettings() {
     const musicPath = db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
@@ -52,15 +52,23 @@ export class ImportService {
       for (const slot of history) {
         const isMusic = slot.category?.toLowerCase() === 'music';
         const isCompleted = slot.status === 'Completed';
+        const isFailed = slot.status === 'Failed';
         
-        if (isMusic && isCompleted) {
-          // Vérifier d'abord si on l'a déjà importé pour éviter le spam de log
-          const alreadyProcessed = db.prepare("SELECT id FROM activity WHERE type = 'download' AND status = 'completed' AND details LIKE ?")
+        if (isMusic && (isCompleted || isFailed)) {
+          // Vérifier d'abord si on l'a déjà importé ou marqué en échec pour éviter le spam de log
+          const alreadyProcessed = db.prepare("SELECT id FROM activity WHERE type = 'download' AND (status = 'completed' OR status = 'failed') AND details LIKE ?")
             .get(`%"nzo_id":"${slot.nzo_id}"%`);
           
           if (!alreadyProcessed) {
-            console.log(`[Import] New completed slot found: ${slot.name} (ID: ${slot.nzo_id})`);
-            await this.importSabnzbdSlot(slot, downloadDir, libraryPath);
+            if (isCompleted) {
+              console.log(`[Import] New completed slot found: ${slot.name} (ID: ${slot.nzo_id})`);
+              await this.importSabnzbdSlot(slot, downloadDir, libraryPath);
+            } else if (isFailed) {
+              console.log(`[Import] Failed slot found: ${slot.name} (ID: ${slot.nzo_id})`);
+              // On enregistre l'échec dans l'activité pour que le ToastContext le notifie
+              db.prepare("INSERT INTO activity (type, status, title, message, details) VALUES ('download', 'failed', ?, ?, ?)")
+                .run(slot.name, `Échec SABnzbd: ${slot.fail_message || 'Inconnu'}`, JSON.stringify({ nzo_id: slot.nzo_id }));
+            }
           }
         }
       }
