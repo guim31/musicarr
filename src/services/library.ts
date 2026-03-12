@@ -46,7 +46,7 @@ export class LibraryService {
         db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('scan_progress', JSON.stringify({ processed: 0, total: totalCount }));
       }
 
-      const foundAlbumPaths = new Set<string>();
+      const foundAlbumIds = new Set<number>();
       const foundTrackPaths = new Set<string>();
       
       const filesByDir = new Map<string, string[]>();
@@ -81,7 +81,7 @@ export class LibraryService {
         // 2. Identify albums in this directory
         const albumsInDir = new Map<string, typeof dirMetadatas>();
         for (const item of dirMetadatas) {
-          const albumName = item.metadata.common.album || "Unknown Album";
+          const albumName = (item.metadata.common.album || "Unknown Album").trim().normalize('NFC');
           if (!albumsInDir.has(albumName)) albumsInDir.set(albumName, []);
           albumsInDir.get(albumName)!.push(item);
         }
@@ -96,17 +96,17 @@ export class LibraryService {
           
           if (albumArtists.size === 1) {
             // All tracks agree on an album artist
-            effectiveAlbumArtist = Array.from(albumArtists)[0]!;
+            effectiveAlbumArtist = Array.from(albumArtists)[0]!.trim().normalize('NFC');
           } else if (hasCompilationFlag || artists.size > 1) {
             // Multiple artists or explicit flag: it's a compilation
             effectiveAlbumArtist = "VARIOUS ARTISTS";
           } else if (artists.size === 1) {
             // No album artist but only one artist anyway
-            effectiveAlbumArtist = Array.from(artists)[0]!;
+            effectiveAlbumArtist = Array.from(artists)[0]!.trim().normalize('NFC');
           } else {
             // fallback to directory name
             const artistFolderName = path.basename(path.dirname(dirPath));
-            effectiveAlbumArtist = artistFolderName.replace(/_/g, ' ');
+            effectiveAlbumArtist = artistFolderName.replace(/_/g, ' ').trim().normalize('NFC');
           }
 
           const artistName = effectiveAlbumArtist.toUpperCase();
@@ -169,7 +169,7 @@ export class LibraryService {
           }
 
           if (albumInfo) {
-            foundAlbumPaths.add(dirPath);
+            foundAlbumIds.add(albumInfo.id);
             const albumId = albumInfo.id;
             
             // Handle cover for this album if not already done
@@ -200,7 +200,7 @@ export class LibraryService {
               const { metadata, path: filePath } = item;
               const { title, artist, track, disk, bpm, isrc } = metadata.common;
 
-              let trackTitle = title;
+              let trackTitle = title ? title.trim().normalize('NFC') : null;
               let trackNumber = track.no || 0;
 
               if (!trackTitle || trackNumber === 0) {
@@ -208,9 +208,9 @@ export class LibraryService {
                 const fileMatch = fileName.match(/^([0-9]+)[\s-_.]+(.*)/);
                 if (fileMatch) {
                   if (trackNumber === 0) trackNumber = parseInt(fileMatch[1]);
-                  if (!trackTitle) trackTitle = fileMatch[2].replace(/_/g, ' ').trim();
+                  if (!trackTitle) trackTitle = fileMatch[2].replace(/_/g, ' ').trim().normalize('NFC');
                 } else if (!trackTitle) {
-                  trackTitle = fileName.replace(/_/g, ' ').trim();
+                  trackTitle = fileName.replace(/_/g, ' ').trim().normalize('NFC');
                 }
               }
 
@@ -229,7 +229,7 @@ export class LibraryService {
               `).run(
                 albumId,
                 trackTitle,
-                artist || null,
+                artist ? artist.trim().normalize('NFC') : null,
                 trackNumber,
                 track.of || null,
                 disk.no || 1,
@@ -256,9 +256,9 @@ export class LibraryService {
       // 7. Cleanup
       if (!targetPath) {
         console.log('Cleaning up missing albums and tracks...');
-        const downloadedAlbums = db.prepare("SELECT id, path FROM albums WHERE status = 'downloaded'").all() as { id: number, path: string }[];
+        const downloadedAlbums = db.prepare("SELECT id FROM albums WHERE status = 'downloaded'").all() as { id: number }[];
         for (const album of downloadedAlbums) {
-          if (album.path && !foundAlbumPaths.has(album.path)) {
+          if (!foundAlbumIds.has(album.id)) {
             db.prepare("UPDATE albums SET status = 'missing', path = NULL WHERE id = ?").run(album.id);
             db.prepare('DELETE FROM tracks WHERE album_id = ?').run(album.id);
           }
@@ -275,6 +275,15 @@ export class LibraryService {
         for (const track of tracksInDir) {
           if (track.path && !foundTrackPaths.has(track.path)) {
             db.prepare('DELETE FROM tracks WHERE id = ?').run(track.id);
+          }
+        }
+        
+        // Et les albums qui étaient dans ce dossier mais n'y sont plus (ou ont été renommés/regroupés)
+        const albumsInDir = db.prepare("SELECT id FROM albums WHERE path LIKE ? AND status = 'downloaded'").all(targetPath + '%') as { id: number }[];
+        for (const album of albumsInDir) {
+          if (!foundAlbumIds.has(album.id)) {
+            db.prepare("UPDATE albums SET status = 'missing', path = NULL WHERE id = ?").run(album.id);
+            db.prepare('DELETE FROM tracks WHERE album_id = ?').run(album.id);
           }
         }
       }
