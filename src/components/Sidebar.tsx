@@ -11,7 +11,8 @@ import {
   Settings, 
   AlertCircle,
   Clock,
-  LayoutDashboard
+  LayoutDashboard,
+  Terminal
 } from 'lucide-react';
 import styles from './Sidebar.module.css';
 
@@ -27,6 +28,7 @@ const Sidebar = () => {
 
   const configItems = [
     { name: 'Manquants', href: '/missing', icon: AlertCircle },
+    { name: 'Debug Logs', href: '/debug', icon: Terminal },
     { name: 'Configuration', href: '/settings', icon: Settings },
   ];
 
