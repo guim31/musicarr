@@ -35,6 +35,7 @@ export async function POST(
 
     const failures = results.filter(r => !r.success);
     if (failures.length > 0) {
+      console.error(`Échec de la mise à jour pour ${failures.length} pistes:`, failures);
       return NextResponse.json({ 
         success: false, 
         message: `${failures.length} piste(s) en erreur`,
