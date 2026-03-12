@@ -370,44 +370,54 @@ export class DeemixService {
         // Fallback automatique si FLAC non dispo
         if (quality === 'FLAC') {
            console.log(`FLAC non disponible pour ${trackId}, tentative en MP3_320...`);
-           const mp3Res = await axios.post('https://media.deezer.com/v1/get_url', {
-            license_token: session.license_token,
-            media: [{
-              type: "FULL",
-              id: actualTrackId,
-              formats: [{ format: 'MP3_320', cipher: "BF_CBC_STRIPE" }]
-            }],
-            track_tokens: [trackToken]
-          }, { headers, timeout: 10000 });
-          
-          if (mp3Res.data?.data?.[0]?.media?.[0]?.sources?.[0]?.url) {
-            const mp3Path = filePath.replace(/\.flac$/i, '.mp3');
-            return this.processDownloadStream(mp3Res.data.data[0].media[0].sources[0].url, mp3Path, trackInfo, actualTrackId, headers);
+           try {
+            const mp3Res = await axios.post('https://media.deezer.com/v1/get_url', {
+              license_token: session.license_token,
+              media: [{
+                type: "FULL",
+                id: actualTrackId,
+                formats: [{ format: 'MP3_320', cipher: "BF_CBC_STRIPE" }]
+              }],
+              track_tokens: [trackToken]
+            }, { headers, timeout: 10000 });
+            
+            const mp3MediaData = mp3Res.data?.data?.[0];
+            if (mp3MediaData?.media?.[0]?.sources?.[0]?.url) {
+              const mp3Path = filePath.replace(/\.flac$/i, '.mp3');
+              return this.processDownloadStream(mp3MediaData.media[0].sources[0].url, mp3Path, trackInfo, actualTrackId, headers);
+            }
+          } catch (err) {
+            console.error('Échec du fallback MP3_320:', err);
           }
         }
-        throw new Error(`Erreur Media API: ${mediaData.errors[0].message}`);
+        throw new Error(`Erreur Media API: ${mediaData.errors[0].message} (Deezer ID: ${trackId})`);
       }
 
       if (!mediaData.media || !mediaData.media[0] || !mediaData.media[0].sources || !mediaData.media[0].sources[0]) {
         // Fallback également ici pour le tableau vide
         if (quality === 'FLAC') {
           console.log(`Média vide pour ${trackId} en FLAC, tentative en MP3_320...`);
-          const mp3Res = await axios.post('https://media.deezer.com/v1/get_url', {
-           license_token: session.license_token,
-           media: [{
-             type: "FULL",
-             id: actualTrackId,
-             formats: [{ format: 'MP3_320', cipher: "BF_CBC_STRIPE" }]
-           }],
-           track_tokens: [trackToken]
-         }, { headers, timeout: 10000 });
-         
-         if (mp3Res.data?.data?.[0]?.media?.[0]?.sources?.[0]?.url) {
-           const mp3Path = filePath.replace(/\.flac$/i, '.mp3');
-           return this.processDownloadStream(mp3Res.data.data[0].media[0].sources[0].url, mp3Path, trackInfo, actualTrackId, headers);
-         }
-       }
-        throw new Error(`Structure Media API inattendue: ${JSON.stringify(mediaData)}`);
+          try {
+            const mp3Res = await axios.post('https://media.deezer.com/v1/get_url', {
+              license_token: session.license_token,
+              media: [{
+                type: "FULL",
+                id: actualTrackId,
+                formats: [{ format: 'MP3_320', cipher: "BF_CBC_STRIPE" }]
+              }],
+              track_tokens: [trackToken]
+            }, { headers, timeout: 10000 });
+            
+            const mp3MediaData = mp3Res.data?.data?.[0];
+            if (mp3MediaData?.media?.[0]?.sources?.[0]?.url) {
+              const mp3Path = filePath.replace(/\.flac$/i, '.mp3');
+              return this.processDownloadStream(mp3MediaData.media[0].sources[0].url, mp3Path, trackInfo, actualTrackId, headers);
+            }
+          } catch (err) {
+            console.error('Échec du fallback MP3_320:', err);
+          }
+        }
+        throw new Error(`Piste non disponible en streaming (Deezer ID: ${trackId}). Cela peut être dû à des restrictions géographiques ou à un ARL invalide.`);
       }
 
       const streamUrl = mediaData.media[0].sources[0].url;

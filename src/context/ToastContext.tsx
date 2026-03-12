@@ -24,6 +24,8 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 
 export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const seenHistoryIds = React.useRef<Set<number>>(new Set());
+  const isFirstPoll = React.useRef(true);
 
   const showToast = useCallback((message: string, type: ToastType = 'info', id?: string) => {
     const toastId = id || Math.random().toString(36).substring(2, 9);
@@ -102,13 +104,43 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
           });
         });
 
-        // Optional: remove download toasts that are no longer in active downloads
+        // 2. Monitoring of History to notify about finished tasks
+        const history = data.history || [];
+        
+        // Use a static-like property on the function to track seen IDs if possible, 
+        // or better, a ref if we had one. But since we are inside useEffect, let's use a closure variable defined outside the effect or just a Ref.
+        // Actually, I'll use a Ref defined at the top of the component.
+        
+        history.forEach((entry: any) => {
+          // If we haven't seen this history entry yet
+          if (!seenHistoryIds.current.has(entry.id)) {
+            // If it's the first poll, just mark everything as seen
+            if (isFirstPoll.current) {
+               seenHistoryIds.current.add(entry.id);
+               return;
+            }
+
+            // Only notify for items that just finished (completed or failed)
+            // and were likely started recently (avoid notifying about very old history on reconnect)
+            if (entry.status === 'completed') {
+              showToast(`${entry.title} : Terminé avec succès`, 'success');
+            } else if (entry.status === 'failed') {
+              showToast(`${entry.title} : Échec. ${entry.message}`, 'error');
+            }
+            
+            seenHistoryIds.current.add(entry.id);
+          }
+        });
+        
+        if (isFirstPoll.current) {
+          isFirstPoll.current = false;
+        }
+
+        // Cleanup: remove download toasts that are no longer in active downloads
         setToasts((prev) => {
           return prev.filter(t => {
             if (t.type !== 'download' || !t.id.startsWith('dl-')) return true;
             const stillActive = activeDownloads.some((ad: any) => `dl-${ad.id}` === t.id);
-            // If it's not active anymore, we could either remove it or mark it as success
-            // For now, let's remove it so the container doesn't get cluttered
             return stillActive;
           });
         });
