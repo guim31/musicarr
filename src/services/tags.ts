@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import db from '@/lib/db';
+import { DeemixService } from './DeemixService';
 
 const execAsync = promisify(exec);
 
@@ -205,6 +206,13 @@ export class TagService {
           }
         }
       }
+    }
+
+    // Déclenchement automatique de la réorganisation physique après mise à jour des tags
+    try {
+      await DeemixService.renameAlbumContents(albumId.toString());
+    } catch (e) {
+      console.error("[TagService] Erreur lors de la réorganisation automatique:", e);
     }
 
     return results;
