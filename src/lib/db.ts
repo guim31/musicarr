@@ -45,11 +45,14 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     artist_id INTEGER NOT NULL,
     name TEXT NOT NULL COLLATE NOCASE,
+    album_artist TEXT, -- Explicit ALBUM_ARTIST tag
     mbid TEXT UNIQUE, -- MusicBrainz ID
     discogs_id TEXT UNIQUE, -- Discogs ID
     release_date TEXT,
     quality TEXT, -- FLAC, MP3, etc.
     path TEXT,
+    barcode TEXT, -- UPC/EAN
+    label TEXT,   -- Publisher
     monitored INTEGER DEFAULT 1,
     status TEXT DEFAULT 'missing', -- 'downloaded', 'missing', 'wanted'
     metadata TEXT,
@@ -61,9 +64,14 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     album_id INTEGER NOT NULL,
     title TEXT NOT NULL,
+    artist TEXT, -- Specific track artist (for compilations)
     number INTEGER,
+    track_total INTEGER,
     disc INTEGER,
+    disc_total INTEGER,
     duration REAL,
+    bpm REAL,
+    isrc TEXT,
     quality TEXT,
     bitrate INTEGER,
     path TEXT,
@@ -71,6 +79,7 @@ db.exec(`
     FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE,
     UNIQUE(album_id, title, number, disc)
   );
+
   CREATE TABLE IF NOT EXISTS activity (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     type TEXT NOT NULL, -- 'download', 'move', 'scan', 'sync'
@@ -85,5 +94,28 @@ db.exec(`
     FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE SET NULL
   );
 `);
+
+// Migrations for existing databases
+const migrate = () => {
+  const columns = {
+    albums: ['album_artist', 'barcode', 'label'],
+    tracks: ['artist', 'bpm', 'isrc', 'track_total', 'disc_total']
+  };
+
+  for (const [table, cols] of Object.entries(columns)) {
+    const tableInfo = db.prepare(`PRAGMA table_info(${table})`).all() as any[];
+    const existingCols = tableInfo.map(c => c.name);
+    
+    for (const col of cols) {
+      if (!existingCols.includes(col)) {
+        console.log(`[DB] Migration: Adding column ${col} to table ${table}`);
+        const type = (col === 'bpm' || col === 'track_total' || col === 'disc_total') ? 'INTEGER' : 'TEXT';
+        db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`);
+      }
+    }
+  }
+};
+
+migrate();
 
 export default db;

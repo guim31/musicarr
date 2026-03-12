@@ -99,11 +99,13 @@ export class ImportService {
     const fullAudioPath = path.join(localPath, audioFile);
     let artist = '';
     let album = '';
+    let albumArtist = '';
 
     try {
       const metadata = await mm.parseFile(fullAudioPath);
       artist = metadata.common.artist || '';
       album = metadata.common.album || '';
+      albumArtist = metadata.common.albumartist || '';
     } catch (e) {
       console.error(`[Import] Metadata parsing failed for ${fullAudioPath}`);
     }
@@ -122,7 +124,8 @@ export class ImportService {
     }
 
     // 3. Prepare destination
-    const cleanArtist = artist.toUpperCase().replace(/[\?*:"<>|\\\/]+/g, '_').trim();
+    const effectiveArtist = (albumArtist || artist).toUpperCase();
+    const cleanArtist = effectiveArtist.replace(/[\?*:"<>|\\\/]+/g, '_').trim();
     const cleanAlbum = album.replace(/[\?*:"<>|\\\/]+/g, '_').trim();
     
     const artistDir = path.join(libraryPath, cleanArtist);

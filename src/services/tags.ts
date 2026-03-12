@@ -12,10 +12,17 @@ export interface TrackTagUpdate {
   title?: string;
   artist?: string;
   album?: string;
+  albumArtist?: string;
   number?: number;
+  trackTotal?: number;
   disc?: number;
+  discTotal?: number;
   year?: string;
   genre?: string;
+  bpm?: number;
+  isrc?: string;
+  barcode?: string;
+  label?: string;
 }
 
 export class TagService {
@@ -36,13 +43,27 @@ export class TagService {
     if (update.title) metadataFlags.push(`-metadata title="${update.title.replace(/"/g, '\\"')}"`);
     if (update.artist) metadataFlags.push(`-metadata artist="${update.artist.replace(/"/g, '\\"')}"`);
     if (update.album) metadataFlags.push(`-metadata album="${update.album.replace(/"/g, '\\"')}"`);
-    if (update.number) metadataFlags.push(`-metadata track="${update.number}"`);
-    if (update.disc) metadataFlags.push(`-metadata disc="${update.disc}"`);
+    if (update.albumArtist) metadataFlags.push(`-metadata album_artist="${update.albumArtist.replace(/"/g, '\\"')}"`);
+    
+    if (update.number) {
+      const trackVal = update.trackTotal ? `${update.number}/${update.trackTotal}` : `${update.number}`;
+      metadataFlags.push(`-metadata track="${trackVal}"`);
+    }
+    
+    if (update.disc) {
+      const discVal = update.discTotal ? `${update.disc}/${update.discTotal}` : `${update.disc}`;
+      metadataFlags.push(`-metadata disc="${discVal}"`);
+    }
+    
     if (update.year) {
       metadataFlags.push(`-metadata date="${update.year}"`);
       metadataFlags.push(`-metadata year="${update.year}"`);
     }
     if (update.genre) metadataFlags.push(`-metadata genre="${update.genre.replace(/"/g, '\\"')}"`);
+    if (update.bpm) metadataFlags.push(`-metadata bpm="${update.bpm}"`);
+    if (update.isrc) metadataFlags.push(`-metadata isrc="${update.isrc}"`);
+    if (update.barcode) metadataFlags.push(`-metadata barcode="${update.barcode}"`);
+    if (update.label) metadataFlags.push(`-metadata publisher="${update.label.replace(/"/g, '\\"')}"`);
 
     if (metadataFlags.length === 0) return;
 
@@ -76,10 +97,19 @@ export class TagService {
           db.prepare('UPDATE tracks SET title = ? WHERE id = ?').run(update.title, update.trackId);
         }
         if (update.number !== undefined) {
-          db.prepare('UPDATE tracks SET number = ? WHERE id = ?').run(update.number, update.trackId);
+          db.prepare('UPDATE tracks SET number = ?, track_total = ? WHERE id = ?').run(update.number, update.trackTotal || null, update.trackId);
         }
         if (update.disc !== undefined) {
-          db.prepare('UPDATE tracks SET disc = ? WHERE id = ?').run(update.disc, update.trackId);
+          db.prepare('UPDATE tracks SET disc = ?, disc_total = ? WHERE id = ?').run(update.disc, update.discTotal || null, update.trackId);
+        }
+        if (update.artist) {
+          db.prepare('UPDATE tracks SET artist = ? WHERE id = ?').run(update.artist, update.trackId);
+        }
+        if (update.bpm) {
+          db.prepare('UPDATE tracks SET bpm = ? WHERE id = ?').run(update.bpm, update.trackId);
+        }
+        if (update.isrc) {
+          db.prepare('UPDATE tracks SET isrc = ? WHERE id = ?').run(update.isrc, update.trackId);
         }
         
         // If artist or album name changed, it might affect the whole album/artist record.

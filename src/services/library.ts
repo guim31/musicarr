@@ -62,9 +62,12 @@ export class LibraryService {
       for (const filePath of files) {
         try {
           const metadata = await mm.parseFile(filePath);
-          let { artist, album, date, genre, year } = metadata.common;
+          let { artist, album, date, genre, year, albumartist, bpm, barcode, isrc, label, track, disk } = metadata.common;
 
-          if (!artist || !album) {
+          // Crucial for compilations: use albumartist as the primary album reference
+          const effectiveAlbumArtist = albumartist || artist || 'UNKNOWN ARTIST';
+
+          if (!effectiveAlbumArtist || !album) {
             const folderPath = path.dirname(filePath);
             const albumFolderName = path.basename(folderPath);
             const artistFolderName = path.basename(path.dirname(folderPath));
@@ -73,18 +76,18 @@ export class LibraryService {
             album = album || albumFolderName.replace(/_/g, ' ');
           }
 
-          if (artist && album) {
-            artist = artist.toUpperCase();
-            let artistId = artistIdCache.get(artist);
+          if (effectiveAlbumArtist && album) {
+            const artistName = effectiveAlbumArtist.toUpperCase();
+            let artistId = artistIdCache.get(artistName);
             if (!artistId) {
-              const artistResult = db.prepare('INSERT OR IGNORE INTO artists (name) VALUES (?)').run(artist);
+              const artistResult = db.prepare('INSERT OR IGNORE INTO artists (name) VALUES (?)').run(artistName);
               if (artistResult.changes > 0) {
                 artistId = artistResult.lastInsertRowid;
               } else {
-                const row = db.prepare('SELECT id FROM artists WHERE name = ?').get(artist) as { id: number };
+                const row = db.prepare('SELECT id FROM artists WHERE name = ?').get(artistName) as { id: number };
                 artistId = row.id;
               }
-              artistIdCache.set(artist, artistId);
+              artistIdCache.set(artistName, artistId);
             }
 
             const folderPath = path.dirname(filePath);
@@ -103,20 +106,26 @@ export class LibraryService {
               };
 
               db.prepare(`
-                INSERT INTO albums (artist_id, name, release_date, quality, path, status, metadata)
-                VALUES (?, ?, ?, ?, ?, 'downloaded', ?)
+                INSERT INTO albums (artist_id, name, album_artist, release_date, quality, path, status, barcode, label, metadata)
+                VALUES (?, ?, ?, ?, ?, ?, 'downloaded', ?, ?, ?)
                 ON CONFLICT(artist_id, name) DO UPDATE SET
                   path = excluded.path,
+                  album_artist = excluded.album_artist,
                   status = 'downloaded',
                   quality = excluded.quality,
+                  barcode = excluded.barcode,
+                  label = excluded.label,
                   release_date = COALESCE(excluded.release_date, albums.release_date),
                   metadata = excluded.metadata
               `).run(
                 artistId, 
                 album, 
+                albumartist || null,
                 date || year || null, 
                 metadata.format.container || 'Unknown', 
                 folderPath,
+                barcode || null,
+                label && label.length > 0 ? label[0] : null,
                 JSON.stringify(albumMeta)
               );
 
@@ -167,18 +176,28 @@ export class LibraryService {
               }
 
               db.prepare(`
-                INSERT INTO tracks (album_id, title, number, disc, duration, quality, bitrate, path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO tracks (album_id, title, artist, number, track_total, disc, disc_total, duration, bpm, isrc, quality, bitrate, path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(album_id, title, number, disc) DO UPDATE SET
                   path = excluded.path,
+                  artist = excluded.artist,
+                  bpm = excluded.bpm,
+                  isrc = excluded.isrc,
                   quality = excluded.quality,
-                  bitrate = excluded.bitrate
+                  bitrate = excluded.bitrate,
+                  track_total = excluded.track_total,
+                  disc_total = excluded.disc_total
               `).run(
                 albumId,
                 trackTitle,
+                artist || null,
                 trackNumber,
-                metadata.common.disk.no || 1,
+                track.of || null,
+                disk.no || 1,
+                disk.of || null,
                 metadata.format.duration || 0,
+                bpm || null,
+                isrc && isrc.length > 0 ? isrc[0] : null,
                 metadata.format.container || 'Unknown',
                 metadata.format.bitrate ? Math.round(metadata.format.bitrate / 1000) : null,
                 filePath
