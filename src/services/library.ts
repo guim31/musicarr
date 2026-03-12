@@ -59,110 +59,149 @@ export class LibraryService {
       const artistIdCache = new Map<string, number | bigint>();
       const albumCache = new Map<string, { id: number, coverHandled: boolean }>();
 
-      for (const filePath of files) {
-        try {
-          const metadata = await mm.parseFile(filePath);
-          let { artist, album, date, genre, year, albumartist, bpm, barcode, isrc, label, track, disk } = metadata.common;
+      // Group processing by directory to handle compilations better
+      const sortedDirs = Array.from(filesByDir.keys());
+      
+      for (const dirPath of sortedDirs) {
+        const dirFiles = filesByDir.get(dirPath) || [];
+        const dirMetadatas: { path: string, metadata: mm.IAudioMetadata }[] = [];
+        
+        // 1. Pre-parse all files in directory to detect compilation (skip covers for speed)
+        for (const filePath of dirFiles) {
+          try {
+            const metadata = await mm.parseFile(filePath, { skipCovers: true });
+            dirMetadatas.push({ path: filePath, metadata });
+          } catch (err) {
+            console.error(`Error pre-parsing file ${filePath}:`, err);
+          }
+        }
 
-          // Crucial for compilations: use albumartist as the primary album reference
-          const effectiveAlbumArtist = albumartist || artist || 'UNKNOWN ARTIST';
+        if (dirMetadatas.length === 0) continue;
 
-          if (!effectiveAlbumArtist || !album) {
-            const folderPath = path.dirname(filePath);
-            const albumFolderName = path.basename(folderPath);
-            const artistFolderName = path.basename(path.dirname(folderPath));
-            
-            artist = artist || artistFolderName.replace(/_/g, ' ');
-            album = album || albumFolderName.replace(/_/g, ' ');
+        // 2. Identify albums in this directory
+        const albumsInDir = new Map<string, typeof dirMetadatas>();
+        for (const item of dirMetadatas) {
+          const albumName = item.metadata.common.album || "Unknown Album";
+          if (!albumsInDir.has(albumName)) albumsInDir.set(albumName, []);
+          albumsInDir.get(albumName)!.push(item);
+        }
+
+        for (const [albumName, items] of albumsInDir) {
+          // Detect if this is a compilation: different artists but same album, and no consistent albumartist
+          const artists = new Set(items.map(i => i.metadata.common.artist).filter(Boolean));
+          const albumArtists = new Set(items.map(i => i.metadata.common.albumartist).filter(Boolean));
+          const hasCompilationFlag = items.some(i => (i.metadata.common as any).compilation === true);
+          
+          let effectiveAlbumArtist = "VARIOUS ARTISTS";
+          
+          if (albumArtists.size === 1) {
+            // All tracks agree on an album artist
+            effectiveAlbumArtist = Array.from(albumArtists)[0]!;
+          } else if (hasCompilationFlag || artists.size > 1) {
+            // Multiple artists or explicit flag: it's a compilation
+            effectiveAlbumArtist = "VARIOUS ARTISTS";
+          } else if (artists.size === 1) {
+            // No album artist but only one artist anyway
+            effectiveAlbumArtist = Array.from(artists)[0]!;
+          } else {
+            // fallback to directory name
+            const artistFolderName = path.basename(path.dirname(dirPath));
+            effectiveAlbumArtist = artistFolderName.replace(/_/g, ' ');
           }
 
-          if (effectiveAlbumArtist && album) {
-            const artistName = effectiveAlbumArtist.toUpperCase();
-            let artistId = artistIdCache.get(artistName);
-            if (!artistId) {
-              const artistResult = db.prepare('INSERT OR IGNORE INTO artists (name) VALUES (?)').run(artistName);
-              if (artistResult.changes > 0) {
-                artistId = artistResult.lastInsertRowid;
-              } else {
-                const row = db.prepare('SELECT id FROM artists WHERE name = ?').get(artistName) as { id: number };
-                artistId = row.id;
-              }
-              artistIdCache.set(artistName, artistId);
+          const artistName = effectiveAlbumArtist.toUpperCase();
+          let artistId = artistIdCache.get(artistName);
+          if (!artistId) {
+            const artistResult = db.prepare('INSERT OR IGNORE INTO artists (name) VALUES (?)').run(artistName);
+            if (artistResult.changes > 0) {
+              artistId = artistResult.lastInsertRowid;
+            } else {
+              const row = db.prepare('SELECT id FROM artists WHERE name = ?').get(artistName) as { id: number };
+              artistId = row.id;
             }
+            artistIdCache.set(artistName, artistId);
+          }
 
-            const folderPath = path.dirname(filePath);
-            const cacheKey = `${artistId}-${album}`;
-            let albumInfo = albumCache.get(cacheKey);
+          const cacheKey = `${artistId}-${albumName}`;
+          let albumInfo = albumCache.get(cacheKey);
 
-            if (!albumInfo) {
-              const albumMeta = {
-                format: metadata.format.container || 'Unknown',
-                bitrate: metadata.format.bitrate ? Math.round(metadata.format.bitrate / 1000) : null,
-                sampleRate: metadata.format.sampleRate,
-                genre: genre && genre.length > 0 ? genre[0] : null,
-                duration: metadata.format.duration,
-                fileCount: filesByDir.get(folderPath)?.length || 1,
-                hasCover: metadata.common.picture && metadata.common.picture.length > 0
-              };
+          if (!albumInfo) {
+            const firstItemMetadata = items[0].metadata;
+            const albumMeta = {
+               format: firstItemMetadata.format.container || 'Unknown',
+               bitrate: firstItemMetadata.format.bitrate ? Math.round(firstItemMetadata.format.bitrate / 1000) : null,
+               sampleRate: firstItemMetadata.format.sampleRate,
+               genre: firstItemMetadata.common.genre && firstItemMetadata.common.genre.length > 0 ? firstItemMetadata.common.genre[0] : null,
+               duration: 0, // Will sum up later if needed or just use tracks
+               fileCount: items.length,
+               hasCover: false
+            };
 
-              db.prepare(`
-                INSERT INTO albums (artist_id, name, album_artist, release_date, quality, path, status, barcode, label, metadata)
-                VALUES (?, ?, ?, ?, ?, ?, 'downloaded', ?, ?, ?)
-                ON CONFLICT(artist_id, name) DO UPDATE SET
-                  path = excluded.path,
-                  album_artist = excluded.album_artist,
-                  status = 'downloaded',
-                  quality = excluded.quality,
-                  barcode = excluded.barcode,
-                  label = excluded.label,
-                  release_date = COALESCE(excluded.release_date, albums.release_date),
-                  metadata = excluded.metadata
-              `).run(
-                artistId, 
-                album, 
-                albumartist || null,
-                date || year || null, 
-                metadata.format.container || 'Unknown', 
-                folderPath,
-                barcode || null,
-                label && label.length > 0 ? label[0] : null,
-                JSON.stringify(albumMeta)
-              );
+            db.prepare(`
+              INSERT INTO albums (artist_id, name, album_artist, release_date, quality, path, status, barcode, label, metadata)
+              VALUES (?, ?, ?, ?, ?, ?, 'downloaded', ?, ?, ?)
+              ON CONFLICT(artist_id, name) DO UPDATE SET
+                path = excluded.path,
+                album_artist = excluded.album_artist,
+                status = 'downloaded',
+                quality = excluded.quality,
+                barcode = excluded.barcode,
+                label = excluded.label,
+                release_date = COALESCE(excluded.release_date, albums.release_date),
+                metadata = excluded.metadata
+            `).run(
+              artistId, 
+              albumName, 
+              effectiveAlbumArtist,
+              firstItemMetadata.common.date || firstItemMetadata.common.year || null, 
+              firstItemMetadata.format.container || 'Unknown', 
+              dirPath,
+              firstItemMetadata.common.barcode || null,
+              firstItemMetadata.common.label && firstItemMetadata.common.label.length > 0 ? firstItemMetadata.common.label[0] : null,
+              JSON.stringify(albumMeta)
+            );
 
-              const albumRecord = db.prepare('SELECT id FROM albums WHERE artist_id = ? AND name = ?').get(artistId, album) as any;
-              if (albumRecord) {
-                albumInfo = { id: albumRecord.id, coverHandled: false };
-                albumCache.set(cacheKey, albumInfo);
-              }
+            const albumRecord = db.prepare('SELECT id FROM albums WHERE artist_id = ? AND name = ?').get(artistId, albumName) as any;
+            if (albumRecord) {
+              albumInfo = { id: albumRecord.id, coverHandled: false };
+              albumCache.set(cacheKey, albumInfo);
             }
+          }
 
-            if (albumInfo) {
-              foundAlbumPaths.add(folderPath);
-              const albumId = albumInfo.id;
-              
-              if (!albumInfo.coverHandled) {
-                const coverPath = path.join(dataDir, `album_${albumId}.jpg`);
-                if (!fs.existsSync(coverPath)) {
-                  if (metadata.common.picture && metadata.common.picture.length > 0) {
-                    const picture = metadata.common.picture[0];
-                    fs.writeFileSync(coverPath, picture.data);
-                  } else {
-                    try {
-                      const localFiles = fs.readdirSync(folderPath);
-                      const coverRegex = /^(cover|folder|front)\.(png|jpe?g)$/i;
-                      const localCover = localFiles.find(f => coverRegex.test(f));
-                      if (localCover) {
-                        const localPath = path.join(folderPath, localCover);
-                        fs.copyFileSync(localPath, coverPath);
-                      }
-                    } catch (e) {}
-                  }
+          if (albumInfo) {
+            foundAlbumPaths.add(dirPath);
+            const albumId = albumInfo.id;
+            
+            // Handle cover for this album if not already done
+            if (!albumInfo.coverHandled) {
+              const coverPath = path.join(dataDir, `album_${albumId}.jpg`);
+              if (!fs.existsSync(coverPath)) {
+                // Parse the first file again with covers
+                const fullMeta = await mm.parseFile(items[0].path);
+                if (fullMeta.common.picture && fullMeta.common.picture.length > 0) {
+                   fs.writeFileSync(coverPath, fullMeta.common.picture[0].data);
+                } else {
+                   // Search for local cover file
+                   try {
+                     const localFiles = fs.readdirSync(dirPath);
+                     const coverRegex = /^(cover|folder|front)\.(png|jpe?g)$/i;
+                     const localCover = localFiles.find(f => coverRegex.test(f));
+                     if (localCover) {
+                       fs.copyFileSync(path.join(dirPath, localCover), coverPath);
+                     }
+                   } catch (e) {}
                 }
-                albumInfo.coverHandled = true;
               }
+              albumInfo.coverHandled = true;
+            }
 
-              let trackTitle = metadata.common.title;
-              let trackNumber = metadata.common.track.no || 0;
+            // Process each track
+            for (const item of items) {
+              const { metadata, path: filePath } = item;
+              const { title, artist, track, disk, bpm, isrc } = metadata.common;
+
+              let trackTitle = title;
+              let trackNumber = track.no || 0;
 
               if (!trackTitle || trackNumber === 0) {
                 const fileName = path.basename(filePath, path.extname(filePath));
@@ -204,16 +243,13 @@ export class LibraryService {
               );
               
               foundTrackPaths.add(filePath);
+              processedCount++;
+              
+              if (!targetPath && (processedCount % 10 === 0 || processedCount === totalCount)) {
+                db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('scan_progress', JSON.stringify({ processed: processedCount, total: totalCount }));
+              }
             }
           }
-        } catch (err) {
-          console.error(`Error parsing file ${filePath}:`, err);
-        }
-        
-        processedCount++;
-        // Mise à jour de la progression UI seulement si scan complet
-        if (!targetPath && (processedCount % 10 === 0 || processedCount === totalCount)) {
-          db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('scan_progress', JSON.stringify({ processed: processedCount, total: totalCount }));
         }
       }
 
