@@ -301,46 +301,8 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
         </header>
 
         <div className={styles.editorBody}>
+          {/* COLONNE GAUCHE: ACTIONS DE MASSE */}
           <div className={styles.sidePanel}>
-            <div className={styles.coverSection}>
-              <div className={styles.coverWrapper}>
-                <img src={coverPreview} alt="Album Cover" className={styles.previewImage} />
-                <div className={styles.coverOverlay}>
-                  <label className={styles.uploadLabel}>
-                    <Upload size={24} />
-                    <span>Changer</span>
-                    <input type="file" accept="image/*" onChange={handleFileChange} hidden />
-                  </label>
-                </div>
-              </div>
-              
-              <div className={styles.coverActions}>
-                 <button 
-                  className={`${styles.cleanBtn} ${styles.smallBtn}`} 
-                  onClick={handleSuggestCover}
-                  disabled={suggestingCover}
-                  title="Chercher sur MusicBrainz/Deezer"
-                >
-                  {suggestingCover ? <RefreshCw className="animate-spin" size={14} /> : <Search size={14} />}
-                  Chercher Pochette
-                </button>
-              </div>
-
-              <div className={styles.coverUrlInput}>
-                <label>URL de la pochette</label>
-                <div className={styles.inputGroup}>
-                  <input 
-                    type="text" 
-                    placeholder="https://..." 
-                    onChange={e => {
-                      setNewCover(e.target.value);
-                      setCoverPreview(e.target.value);
-                    }}
-                  />
-                </div>
-              </div>
-            </div>
-
             <div className={styles.bulkActions}>
               <div className={styles.bulkItem}>
                 <label>
@@ -444,64 +406,23 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                   </button>
                 </div>
               </div>
-
-              <div className={styles.magicAction}>
-                <div className={styles.tooltipContainer} style={{ width: '100%' }}>
-                  <button className={styles.cleanBtn} onClick={cleanTitles}>
-                    <Sparkles size={16} />
-                    Nettoyer les titres massivement
-                  </button>
-                  <div className={`${styles.tooltip} ${styles.tooltipRight}`} style={{ bottom: '130%', top: 'auto', left: '50%' }}>
-                    <strong>Action magique :</strong> Analyse les noms de fichiers pour en extraire le numéro de piste et le titre propre, tout en synchronisant les disques selon les dossiers parents.
-                  </div>
-                </div>
-              </div>
-
-              <div className={styles.magicAction}>
-                <div className={styles.tooltipContainer} style={{ width: '100%' }}>
-                  <button 
-                    className={`${styles.cleanBtn} ${styles.suggestBtn}`} 
-                    onClick={handleSuggestTags}
-                    disabled={suggesting}
-                  >
-                    {suggesting ? <RefreshCw className="animate-spin" size={16} /> : <Globe size={16} />}
-                    Suggérer via Internet
-                  </button>
-                  <div className={`${styles.tooltip} ${styles.tooltipRight}`} style={{ bottom: '130%', top: 'auto', left: '50%' }}>
-                    <strong>Recherche intelligente :</strong> Cherche l'album sur Deezer/MusicBrainz et pré-remplit les titres et artistes officiels.
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
 
+          {/* COLONNE MILIEU: TABLEAU */}
           <div className={styles.scrollArea}>
             <table className={styles.table}>
               <thead>
                 <tr>
-                  <th style={{ width: '60px', textAlign: 'center' }}>CD</th>
-                  <th style={{ width: '60px', textAlign: 'center' }}>#</th>
-                  <th style={{ minWidth: '220px' }}>Titre</th>
-                  <th style={{ minWidth: '180px' }}>
+                  <th style={{ width: '40px', textAlign: 'center' }}>CD</th>
+                  <th style={{ width: '70px', textAlign: 'center' }}>#</th>
+                  <th style={{ width: '35%' }}>Titre</th>
+                  <th style={{ width: '30%' }}>
                     Artiste Piste
-                    <div className={styles.tooltipContainer}>
-                      <Info size={10} className={styles.infoIcon} style={{ marginLeft: '4px' }} />
-                      <div className={`${styles.tooltip} ${styles.tooltipDown}`}>
-                        L'artiste qui chante ce morceau précis.
-                      </div>
-                    </div>
                   </th>
-                  <th style={{ minWidth: '180px' }}>
+                  <th style={{ width: '30%' }}>
                     Artiste Album
-                    <div className={styles.tooltipContainer}>
-                      <Info size={10} className={styles.infoIcon} style={{ marginLeft: '4px' }} />
-                      <div className={`${styles.tooltip} ${styles.tooltipDown}`}>
-                        L'artiste principal ou <strong>VARIOUS ARTISTS</strong> pour les compilations.
-                      </div>
-                    </div>
                   </th>
-                  <th style={{ width: '130px' }}>ISRC</th>
-                  <th style={{ minWidth: '150px' }}>Label</th>
                 </tr>
               </thead>
               <tbody>
@@ -550,28 +471,77 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
                         placeholder="Artiste Album..."
                       />
                     </td>
-                    <td>
-                      <input 
-                        className={styles.cellInput}
-                        type="text" 
-                        value={edit.isrc} 
-                        onChange={e => handleTrackChange(idx, 'isrc', e.target.value)}
-                        placeholder="ISRC"
-                      />
-                    </td>
-                    <td>
-                      <input 
-                        className={styles.cellInput}
-                        type="text" 
-                        value={edit.label} 
-                        onChange={e => handleTrackChange(idx, 'label', e.target.value)}
-                        placeholder="Label"
-                      />
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* COLONNE DROITE: COVER ET BOUTONS INTELLIGENTS */}
+          <div className={styles.rightPanel}>
+            <div className={styles.coverSection}>
+              <div className={styles.coverWrapper}>
+                <img src={coverPreview} alt="Album Cover" className={styles.previewImage} />
+                <div className={styles.coverOverlay}>
+                  <label className={styles.uploadLabel}>
+                    <Upload size={24} />
+                    <span>Changer</span>
+                    <input type="file" accept="image/*" onChange={handleFileChange} hidden />
+                  </label>
+                </div>
+              </div>
+              
+              <button 
+                className={`${styles.cleanBtn} ${styles.smallBtn}`} 
+                onClick={handleSuggestCover}
+                disabled={suggestingCover}
+              >
+                {suggestingCover ? <RefreshCw className={styles.spin} size={14} /> : <Search size={14} />}
+                Chercher Pochette
+              </button>
+
+              <div className={styles.coverUrlInput}>
+                <label>URL de la pochette</label>
+                <div className={styles.inputGroup}>
+                  <input 
+                    type="text" 
+                    placeholder="https://..." 
+                    onChange={e => {
+                      setNewCover(e.target.value);
+                      setCoverPreview(e.target.value);
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.magicAction}>
+              <div className={styles.tooltipContainer} style={{ width: '100%' }}>
+                <button className={styles.cleanBtn} onClick={cleanTitles}>
+                  <Sparkles size={16} />
+                  Nettoyer les titres
+                </button>
+                <div className={`${styles.tooltip} ${styles.tooltipRight}`} style={{ bottom: 'auto', top: '100%', left: '0', transform: 'none' }}>
+                  <strong>Action magique :</strong> Analyse les noms de fichiers pour en extraire le numéro de piste et le titre propre.
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.magicAction}>
+              <div className={styles.tooltipContainer} style={{ width: '100%' }}>
+                <button 
+                  className={`${styles.cleanBtn} ${styles.suggestBtn}`} 
+                  onClick={handleSuggestTags}
+                  disabled={suggesting}
+                >
+                  {suggesting ? <RefreshCw className={styles.spin} size={16} /> : <Globe size={16} />}
+                  Suggérer via Internet
+                </button>
+                <div className={`${styles.tooltip} ${styles.tooltipRight}`} style={{ bottom: 'auto', top: '100%', left: '0', transform: 'none' }}>
+                  <strong>Recherche intelligente :</strong> Cherche l'album sur Internet et pré-remplit les titres et artistes officiels.
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -585,7 +555,7 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
               Annuler
             </button>
             <button className={styles.saveBtn} onClick={handleSave} disabled={loading}>
-              {loading ? <RefreshCw className="animate-spin" size={18} /> : <Save size={18} />}
+              {loading ? <RefreshCw className={styles.spin} size={18} /> : <Save size={18} />}
               Sauvegarder les tags
             </button>
           </div>

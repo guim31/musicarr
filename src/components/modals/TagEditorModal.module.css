@@ -65,19 +65,30 @@
 }
 
 .sidePanel {
-  width: 340px;
+  width: 270px;
   background: #141721;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
 }
 
+.rightPanel {
+  width: 280px;
+  background: #141721;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 16px;
+  overflow-y: auto;
+}
+
 .coverSection {
-  padding: 20px;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 12px;
+  padding-bottom: 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
@@ -140,10 +151,10 @@
 
 .bulkActions {
   flex: 1;
-  padding: 20px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
   overflow-y: auto;
 }
 
@@ -213,8 +224,9 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.85rem;
-  min-width: 1200px;
+  font-size: 0.75rem;
+  min-width: 800px;
+  table-layout: fixed;
 }
 
 .table th {
@@ -222,14 +234,14 @@
   top: 0;
   background: #161925;
   text-align: left;
-  padding: 12px 16px;
+  padding: 8px 12px;
   font-weight: 700;
   color: #94a3b8;
   border-bottom: 2px solid rgba(255, 255, 255, 0.05);
   z-index: 10;
   text-transform: uppercase;
-  font-size: 0.7rem;
-  letter-spacing: 0.15em;
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
 }
 
 .table tr {
@@ -241,7 +253,7 @@
 }
 
 .table td {
-  padding: 2px 16px;
+  padding: 0px 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.03);
 }
 
@@ -249,12 +261,12 @@
   width: 100%;
   background: transparent;
   border: 1px solid transparent;
-  padding: 10px 12px;
+  padding: 6px 8px;
   color: white;
-  font-size: 0.95rem;
+  font-size: 0.8rem;
   border-radius: 4px;
   outline: none;
-  transition: all 0.2s;
+  transition: all 0.1s;
 }
 
 .cellInput:hover {
@@ -481,19 +493,28 @@
 
 /* Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: rgba(0, 0, 0, 0.1);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
-  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: var(--accent);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
 }
