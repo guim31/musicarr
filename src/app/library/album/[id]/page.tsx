@@ -67,6 +67,25 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
     fetchData();
   }, [fetchData]);
 
+  // Écouter les événements de fin d'activité pour rafraîchir les données
+  useEffect(() => {
+    const handleActivityFinished = (event: any) => {
+      const activity = event.detail;
+      // Rafraîchir si l'activité concerne cet album ou cet artiste
+      if (
+        (activity.album_id && activity.album_id === parseInt(id)) || 
+        (activity.artist_id && album && activity.artist_id === album.artist_id) ||
+        activity.type === 'scan'
+      ) {
+        console.log('[AlbumDetail] Activity finished, refreshing data...');
+        fetchData();
+      }
+    };
+
+    window.addEventListener('musicarr:activity-finished', handleActivityFinished);
+    return () => window.removeEventListener('musicarr:activity-finished', handleActivityFinished);
+  }, [id, album, fetchData]);
+
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);

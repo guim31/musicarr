@@ -86,8 +86,8 @@ export async function POST(request: Request) {
       
     if (albums.length > 0) {
       const insertAlbum = db.prepare(`
-        INSERT OR IGNORE INTO albums (artist_id, name, release_date, status, metadata)
-        VALUES (?, ?, ?, 'missing', ?)
+        INSERT OR IGNORE INTO albums (artist_id, name, release_date, type, status, metadata)
+        VALUES (?, ?, ?, ?, 'missing', ?)
       `);
 
       albums.forEach(album => {
@@ -97,6 +97,7 @@ export async function POST(request: Request) {
           artistId,
           album.name,
           album.releaseDate || null,
+          album.type || 'album',
           JSON.stringify({
             mbid: album.mbid,
             discogsId: album.discogsId,

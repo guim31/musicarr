@@ -3,6 +3,7 @@ import { DiscogsProvider } from './providers/DiscogsProvider';
 import { DeezerProvider } from './providers/DeezerProvider';
 import { ITunesProvider } from './providers/ITunesProvider';
 import { RemoteAlbum, RemoteArtist } from './types';
+import { CompareUtils } from '@/lib/CompareUtils';
 
 export class MetadataEngine {
   private providers = [
@@ -24,12 +25,12 @@ export class MetadataEngine {
       }))
     );
     
-    // Fusion intelligente par nom
+    // Fusion intelligente par nom normalisé
     const merged = new Map<string, RemoteArtist>();
     
     for (const providerResults of allResults) {
       providerResults.forEach(a => {
-        const key = a.name.toLowerCase().trim();
+        const key = CompareUtils.normalize(a.name);
         if (!merged.has(key)) {
           merged.set(key, a);
         } else {
@@ -85,9 +86,13 @@ export class MetadataEngine {
         merged.set(key, a);
       } else {
         const existing = merged.get(key)!;
+        // On privilégie les types plus spécifiques que 'album'
+        const isBetterType = a.type && a.type !== 'album' && existing.type === 'album';
+        
         merged.set(key, {
           ...existing,
           discogsId: a.discogsId || existing.discogsId,
+          type: isBetterType ? a.type : existing.type,
           // On garde la date la plus ancienne trouvée pour le "first release"
           releaseDate: a.releaseDate && (!existing.releaseDate || a.releaseDate < existing.releaseDate) 
             ? a.releaseDate 
@@ -103,9 +108,12 @@ export class MetadataEngine {
         merged.set(key, a);
       } else {
         const existing = merged.get(key)!;
+        const isBetterType = a.type && a.type !== 'album' && existing.type === 'album';
+
         merged.set(key, {
           ...existing,
           deezerId: a.deezerId || existing.deezerId,
+          type: isBetterType ? a.type : existing.type,
           releaseDate: a.releaseDate && (!existing.releaseDate || a.releaseDate < existing.releaseDate) 
             ? a.releaseDate 
             : existing.releaseDate

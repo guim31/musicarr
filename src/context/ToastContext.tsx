@@ -12,6 +12,8 @@ interface Toast {
   progress?: number;
   details?: string;
   title?: string;
+  keep?: boolean;
+  autoClose?: number;
 }
 
 interface ToastContextType {
@@ -62,88 +64,159 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
         if (!res.ok) return;
         const data = await res.json();
         const activeDownloads = data.active || [];
+        
+        // Helper to match IDs across different formats
+        const searchIdsMatch = (activeItem: any, toastId: string) => {
+           if (`dl-${activeItem.id}` === toastId) return true;
+           try {
+             const details = JSON.parse(activeItem.details || '{}');
+             if (details.nzo_id && `dl-sab-${details.nzo_id}` === toastId) return true;
+           } catch {}
+           return false;
+        };
 
-        // For each active download, ensure a toast exists and is updated
-        activeDownloads.forEach((item: any) => {
-          const details = JSON.parse(item.details || '{}');
-          const isDeemix = item.id.startsWith('local-') && item.type === 'download';
+        // One single state update to avoid race conditions
+        setToasts((currentToasts) => {
+          let updatedToasts = [...currentToasts];
+          const history = data.history || [];
           
-          let progress = 0;
-          let label = "";
-          
-          if (isDeemix) {
-            progress = details.total > 0 ? (details.current / details.total) * 100 : 0;
-            label = `${details.current} / ${details.total} titres`;
-          } else {
-            progress = details.percentage || 0;
-            label = `${details.speed || '0 KB/s'} - ${details.timeleft || ''}`;
-          }
+          // 1. Update active toasts
+          activeDownloads.forEach((item: any) => {
+            const isDownload = item.type === 'download' || item.type === 'move';
+            if (isDownload) {
+              const toastId = `dl-${item.id}`;
+              const existsIndex = updatedToasts.findIndex(t => t.id === toastId);
+              
+              let progress = 0;
+              let label = item.message;
+              try {
+                const details = JSON.parse(item.details || '{}');
+                const isDeemix = item.id.startsWith('local-') && item.type === 'download';
 
-          const toastId = `dl-${item.id}`;
-          
-          setToasts((prev) => {
-            const exists = prev.find(t => t.id === toastId);
-            if (exists) {
-              return prev.map(t => t.id === toastId ? {
-                ...t,
-                progress,
-                details: label,
-                message: item.title
-              } : t);
-            } else {
-              // Only auto-add if it's a new download that wasn't there before
-              return [...prev, {
-                id: toastId,
-                type: 'download',
-                title: 'Téléchargement en cours',
-                message: item.title,
-                progress,
-                details: label
-              }];
+                if (isDeemix) {
+                  progress = details.total > 0 ? (details.current / details.total) * 100 : 0;
+                  label = `${details.current} / ${details.total} titres`;
+                } else {
+                  progress = details.percentage || 0;
+                  label = `${details.speed || '0 KB/s'} - ${details.timeleft || ''}`;
+                }
+              } catch {}
+
+              if (existsIndex !== -1) {
+                updatedToasts = updatedToasts.map((t, index) => index === existsIndex ? {
+                  ...t,
+                  message: item.title,
+                  progress,
+                  details: label,
+                  keep: false 
+                } : t);
+              } else {
+                updatedToasts.push({
+                  id: toastId,
+                  type: 'download',
+                  title: item.title || 'Téléchargement en cours',
+                  message: item.title || '',
+                  progress,
+                  details: label
+                });
+              }
             }
           });
-        });
 
-        // 2. Monitoring of History to notify about finished tasks
-        const history = data.history || [];
-        
-        // Use a static-like property on the function to track seen IDs if possible, 
-        // or better, a ref if we had one. But since we are inside useEffect, let's use a closure variable defined outside the effect or just a Ref.
-        // Actually, I'll use a Ref defined at the top of the component.
-        
-        history.forEach((entry: any) => {
-          // If we haven't seen this history entry yet
-          if (!seenHistoryIds.current.has(entry.id)) {
-            // If it's the first poll, just mark everything as seen
-            if (isFirstPoll.current) {
-               seenHistoryIds.current.add(entry.id);
-               return;
-            }
+          // 2. Process newly finished tasks from history
+          history.forEach((entry: any) => {
+            if (!seenHistoryIds.current.has(entry.id)) {
+              if (isFirstPoll.current) {
+                seenHistoryIds.current.add(entry.id);
+                return;
+              }
 
-            // Only notify for items that just finished (completed or failed)
-            // and were likely started recently (avoid notifying about very old history on reconnect)
-            if (entry.status === 'completed') {
-              showToast(`${entry.title} : Terminé avec succès`, 'success');
-            } else if (entry.status === 'failed') {
-              showToast(`${entry.title} : Échec. ${entry.message}`, 'error');
+              let detailsObj: any = {};
+              try { detailsObj = JSON.parse(entry.details || '{}'); } catch {}
+              const nzoId = detailsObj.nzo_id;
+              
+              const searchIds = [
+                `dl-${entry.id}`,
+                `dl-local-${entry.id}`,
+                nzoId ? `dl-sab-${nzoId}` : null
+              ].filter(Boolean) as string[];
+
+              const isDownload = entry.type === 'download' || entry.type === 'move';
+
+              if (entry.status === 'completed') {
+                const targetToastIndex = updatedToasts.findIndex(t => searchIds.some(id => t.id === id));
+                
+                if (targetToastIndex !== -1) {
+                  const targetToast = updatedToasts[targetToastIndex];
+                  updatedToasts[targetToastIndex] = {
+                    ...targetToast,
+                    id: searchIds[0], 
+                    type: 'success',
+                    title: 'Téléchargement réussi',
+                    message: `${entry.title} est prêt !`,
+                    progress: 100,
+                    details: 'Traitement terminé',
+                    keep: true
+                  };
+                  setTimeout(() => removeToast(searchIds[0]), 6000);
+                } else {
+                  updatedToasts.push({
+                    id: `finish-${entry.id}`,
+                    type: 'success',
+                    title: 'Terminé',
+                    message: `${entry.title} : Terminé avec succès`,
+                    autoClose: 5000
+                  });
+                  setTimeout(() => removeToast(`finish-${entry.id}`), 5000);
+                }
+                
+                // Trigger global events for refreshing
+                window.dispatchEvent(new CustomEvent('musicarr:activity-finished', { 
+                   detail: { ...entry, nzo_id: nzoId } 
+                }));
+              } else if (entry.status === 'failed') {
+                const targetToastIndex = updatedToasts.findIndex(t => searchIds.some(id => t.id === id));
+                if (targetToastIndex !== -1) {
+                  updatedToasts[targetToastIndex] = {
+                    ...updatedToasts[targetToastIndex],
+                    id: searchIds[0],
+                    type: 'error',
+                    title: 'Échec du téléchargement',
+                    message: entry.message || 'Erreur inconnue',
+                    progress: 0,
+                    keep: true
+                  };
+                  setTimeout(() => removeToast(searchIds[0]), 10000);
+                } else {
+                  updatedToasts.push({
+                    id: `fail-${entry.id}`,
+                    type: 'error',
+                    title: 'Échec',
+                    message: `${entry.title} : ${entry.message || 'Erreur'}`,
+                    autoClose: 8000
+                  });
+                  setTimeout(() => removeToast(`fail-${entry.id}`), 8000);
+                }
+              }
+              seenHistoryIds.current.add(entry.id);
             }
+          });
+
+          // 3. Cleanup: remove inactive download/scan toasts that aren't marked as 'keep'
+          return updatedToasts.filter(t => {
+            if (t.type !== 'download' && t.type !== 'scan') return true; 
+            if (t.keep) return true;
             
-            seenHistoryIds.current.add(entry.id);
-          }
-        });
-        
-        if (isFirstPoll.current) {
-          isFirstPoll.current = false;
-        }
-
-        // Cleanup: remove download toasts that are no longer in active downloads
-        setToasts((prev) => {
-          return prev.filter(t => {
-            if (t.type !== 'download' || !t.id.startsWith('dl-')) return true;
-            const stillActive = activeDownloads.some((ad: any) => `dl-${ad.id}` === t.id);
+            const stillActive = activeDownloads.some((ad: any) => 
+               searchIdsMatch(ad, t.id)
+            );
             return stillActive;
           });
         });
+
+        if (isFirstPoll.current) {
+          isFirstPoll.current = false;
+        }
 
       } catch (err) {
         console.error('Toast polling error:', err);
@@ -152,7 +225,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
 
     interval = setInterval(pollActivity, 3000);
     return () => clearInterval(interval);
-  }, []);
+  }, [removeToast]);
 
   // Poll for library scan progress
   React.useEffect(() => {
@@ -197,6 +270,8 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
           wasScanning = false;
           removeToast('library-scan');
           showToast('Scan de la bibliothèque terminé !', 'success');
+          // Dispatch global event
+          window.dispatchEvent(new CustomEvent('musicarr:activity-finished', { detail: { type: 'scan' } }));
         }
       } catch (err) {
         console.error('Scan polling error:', err);

@@ -16,7 +16,7 @@ export interface RemoteAlbum {
   deezerId?: string;
   itunesId?: string;
   releaseDate?: string;
-  type?: 'album' | 'single' | 'ep' | 'compilation';
+  type?: 'album' | 'single' | 'ep' | 'compilation' | 'appearance';
   image?: string;
   trackCount?: number;
   qualities?: string[];

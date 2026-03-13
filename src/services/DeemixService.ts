@@ -184,22 +184,31 @@ export class DeemixService {
       }
     }
 
-    // Récupérer l'année existante en cas de mise à jour (pour fallback si Deezer est incomplet)
-    let fallbackYear = '';
-    if (albumId) {
-      const existing = db.prepare('SELECT release_date FROM albums WHERE id = ?').get(albumId) as { release_date: string } | undefined;
+    // Récupérer la date existante (depuis DB) car Deezer a souvent des dates de réédition/remaster
+    let fallbackDate = '';
+    let dbAlbumId = albumId;
+    
+    if (!dbAlbumId) {
+      // Tenter de retrouver l'album par son deezerId dans le JSON metadata
+      const row = db.prepare("SELECT id, release_date FROM albums WHERE metadata LIKE ?").get(`%"deezerId":"${deezerAlbumId}"%`) as any;
+      if (row) {
+        dbAlbumId = row.id;
+        if (row.release_date) fallbackDate = row.release_date;
+      }
+    } else {
+      const existing = db.prepare('SELECT release_date FROM albums WHERE id = ?').get(dbAlbumId) as { release_date: string } | undefined;
       if (existing?.release_date) {
-        fallbackYear = existing.release_date.split('-')[0];
+        fallbackDate = existing.release_date;
       }
     }
 
     // Lancer le téléchargement en arrière-plan
-    this.runDownloadInBackground(deezerAlbumId, tracks, albumName, albumDir, activityId, fallbackYear);
+    this.runDownloadInBackground(deezerAlbumId, tracks, albumName, albumDir, activityId, dbAlbumId, fallbackDate);
 
     return { success: true, activityId };
   }
 
-  private static async runDownloadInBackground(deezerAlbumId: string, tracks: any[], albumName: string, albumDir: string, activityId: number | bigint, fallbackYear?: string) {
+  private static async runDownloadInBackground(deezerAlbumId: string, tracks: any[], albumName: string, albumDir: string, activityId: number | bigint, albumId?: number, fallbackDate?: string) {
     try {
       // 1. Download Album Cover
       const albumData = await (this.deezer as any).fetchDeezer(`album/${deezerAlbumId}`);
@@ -252,7 +261,7 @@ export class DeemixService {
 
         // Finaliser le fichier : injection de tags et remuxing avec FFmpeg pour compatibilité Navidrome
         if (success && downloadedPath) {
-          await this.finalizeTrack(downloadedPath, track, albumData, ownership, fallbackYear);
+          await this.finalizeTrack(downloadedPath, track, albumData, ownership, fallbackDate);
         }
 
         completed++;
@@ -261,8 +270,24 @@ export class DeemixService {
           .run(JSON.stringify({ deezerId: deezerAlbumId, current: completed, total: tracks.length }), activityId);
       }
 
-      db.prepare("UPDATE activity SET status = 'completed', message = ? WHERE id = ?")
-        .run(`Album ${albumName} téléchargé avec succès (${tracks.length} pistes)`, activityId);
+      // Récupérer les IDs pour notification
+      let artistId = null;
+      let dbAlbumId = albumId;
+      try {
+        if (dbAlbumId) {
+          const row = db.prepare('SELECT artist_id FROM albums WHERE id = ?').get(dbAlbumId) as any;
+          if (row) artistId = row.artist_id;
+        } else {
+          const row = db.prepare('SELECT id, artist_id FROM albums WHERE path = ?').get(albumDir) as any;
+          if (row) {
+             dbAlbumId = row.id;
+             artistId = row.artist_id;
+          }
+        }
+      } catch (e) {}
+
+      db.prepare("UPDATE activity SET status = 'completed', message = ?, artist_id = ?, album_id = ? WHERE id = ?")
+        .run(`Album ${albumName} téléchargé avec succès (${tracks.length} pistes)`, artistId, dbAlbumId || null, activityId);
       
       // Succès : Nettoyer les backups
       if (fs.existsSync(albumDir)) {
@@ -526,15 +551,16 @@ export class DeemixService {
       });
     });
   }
-  private static async finalizeTrack(filePath: string, trackInfo: any, albumData: any, ownership: { uid: number, gid: number }, fallbackYear?: string) {
+  private static async finalizeTrack(filePath: string, trackInfo: any, albumData: any, ownership: { uid: number, gid: number }, fallbackDate?: string) {
     const ext = path.extname(filePath);
     const tempPath = `${filePath}.tmp_final${ext}`;
     
     const title = trackInfo.name;
     const artist = trackInfo.artistName;
     const album = albumData.title;
-    let year = (albumData && albumData.release_date) ? albumData.release_date.split('-')[0] : '';
-    if (!year && fallbackYear) year = fallbackYear;
+    // Priorité à la date de la DB (car potentiellement issue de MusicBrainz/Discogs lors du sync)
+    let dateStr = fallbackDate || (albumData && albumData.release_date) || '';
+    let yearOnly = dateStr ? dateStr.split('-')[0] : '';
     const trackNum = trackInfo.number;
     const discNum = trackInfo.disc || 1;
 
@@ -563,9 +589,11 @@ export class DeemixService {
     cmd += `-metadata album="${album.replace(/"/g, '\\"')}" `;
     cmd += `-metadata track="${trackNum}" `;
     cmd += `-metadata disc="${discNum}" `;
-    if (year) {
-      cmd += `-metadata date="${year}" `;
-      cmd += `-metadata year="${year}" `;
+    if (dateStr) {
+      cmd += `-metadata date="${dateStr}" `;
+    }
+    if (yearOnly) {
+      cmd += `-metadata year="${yearOnly}" `;
     }
 
     if (ext.toLowerCase() === '.mp3') {

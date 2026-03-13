@@ -63,6 +63,21 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
 
   useEffect(() => {
     fetchData();
+
+    const handleRefresh = (event: any) => {
+      const detail = event.detail;
+      // Rafraîchir si c'est un scan global ou si l'activité concerne cet artiste
+      const isThisArtist = detail.artist_id === Number(id);
+      const isAlbumOfThisArtist = albums.some(a => a.id === detail.album_id);
+      
+      if (detail.type === 'scan' || isThisArtist || isAlbumOfThisArtist) {
+        console.log('Refreshing artist detail due to activity finish');
+        fetchData();
+      }
+    };
+
+    window.addEventListener('musicarr:activity-finished', handleRefresh);
+    return () => window.removeEventListener('musicarr:activity-finished', handleRefresh);
   }, [id]);
 
   const handleSync = async () => {
@@ -172,12 +187,12 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
               Tout rechercher
             </button>
             <button 
-              className={styles.iconButton} 
+              className={`${styles.button} ${styles.dangerButton}`} 
               onClick={() => setIsDeleteModalOpen(true)}
-              title="Supprimer l'artiste"
-              style={{ color: 'var(--danger)', marginLeft: '8px' }}
+              title="Supprimer l'artiste de la bibliothèque"
             >
-              <Trash2 size={20} />
+              <Trash2 size={18} />
+              Supprimer
             </button>
           </div>
         </div>
@@ -194,7 +209,7 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
           }, {});
 
           // Sort order: albums first, then EPs, then singles, then others
-          const order = ['album', 'ep', 'single', 'compilation'];
+          const order = ['album', 'ep', 'single', 'compilation', 'appearance'];
           const sortedTypes = Object.keys(grouped).sort((a, b) => {
             const indexA = order.indexOf(a);
             const indexB = order.indexOf(b);
@@ -208,7 +223,8 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
             album: 'Albums',
             ep: 'EP',
             single: 'Singles',
-            compilation: 'Compilations'
+            compilation: 'Compilations',
+            appearance: 'Apparitions & Participations'
           };
 
           return sortedTypes.map(type => (
@@ -311,8 +327,33 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
             <p style={{ marginBottom: '24px', color: 'var(--text-muted)' }}>
               Êtes-vous sûr de vouloir supprimer <strong>{artist.name}</strong> ? Cette action est irréversible et supprimera la trace des albums depuis la base de données.
             </p>
+
+            {(() => {
+              const downloadedCount = albums.filter(a => a.status === 'downloaded').length;
+              if (downloadedCount > 0) {
+                return (
+                  <div style={{ 
+                    padding: '12px 16px', 
+                    backgroundColor: 'rgba(245, 158, 11, 0.1)', 
+                    border: '1px solid rgba(245, 158, 11, 0.2)',
+                    borderRadius: 'var(--radius)',
+                    marginBottom: '24px',
+                    display: 'flex',
+                    gap: '12px',
+                    color: 'var(--warning)',
+                    fontSize: '0.9rem'
+                  }}>
+                    <AlertCircle size={20} style={{ flexShrink: 0 }} />
+                    <p>
+                      <strong>Attention :</strong> {downloadedCount} album{downloadedCount > 1 ? 's sont' : ' est'} déjà présent{downloadedCount > 1 ? 's' : ''} sur votre disque dur.
+                    </p>
+                  </div>
+                );
+              }
+              return null;
+            })()}
             
-            <label style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', cursor: 'pointer', padding: '16px', backgroundColor: 'var(--bg-color)', borderRadius: 'var(--radius)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', cursor: 'pointer', padding: '16px', backgroundColor: 'var(--bg-color)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
               <input 
                 type="checkbox" 
                 checked={deleteWithFiles}
@@ -322,7 +363,7 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
               <span style={{ display: 'flex', flexDirection: 'column' }}>
                 <strong>Supprimer les fichiers associés</strong>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  Supprime définitivement les pistes audio et dossiers de cet artiste du disque dur.
+                  Supprime définitivement les {albums.filter(a => a.status === 'downloaded').length} dossier{albums.filter(a => a.status === 'downloaded').length > 1 ? 's' : ''} d'albums du disque dur.
                 </span>
               </span>
             </label>

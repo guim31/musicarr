@@ -212,14 +212,17 @@ export class ImportService {
     } catch(e) {}
 
     // 7. Update Database
+    const artistRecord = db.prepare('SELECT id FROM artists WHERE name = ?').get(cleanArtist) as { id: number } | undefined;
+    const artistId = artistRecord?.id;
+
     const activity = db.prepare("SELECT id FROM activity WHERE type = 'download' AND details LIKE ?").get(`%"nzo_id":"${slot.nzo_id}"%`) as any;
     
     if (activity) {
-      db.prepare("UPDATE activity SET status = 'completed', message = ? WHERE id = ?")
-        .run(`Importé avec succès dans ${cleanArtist}/${cleanAlbum}`, activity.id);
+      db.prepare("UPDATE activity SET status = 'completed', message = ?, artist_id = ?, details = ? WHERE id = ?")
+        .run(`Importé avec succès dans ${cleanArtist}/${cleanAlbum}`, artistId || null, JSON.stringify({ ...JSON.parse(activity.details || '{}'), nzo_id: slot.nzo_id }), activity.id);
     } else {
-      db.prepare("INSERT INTO activity (type, status, title, message) VALUES ('move', 'completed', ?, ?)")
-        .run(album, `Importé depuis SABnzbd vers ${cleanArtist}/${cleanAlbum}`);
+      db.prepare("INSERT INTO activity (type, status, title, message, artist_id, details) VALUES ('move', 'completed', ?, ?, ?, ?)")
+        .run(album, `Importé depuis SABnzbd vers ${cleanArtist}/${cleanAlbum}`, artistId || null, JSON.stringify({ nzo_id: slot.nzo_id }));
     }
 
     // 8. Trigger scan

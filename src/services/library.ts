@@ -4,6 +4,8 @@ import path from 'path';
 import fs from 'fs';
 import db from '@/lib/db';
 
+import { CompareUtils } from '@/lib/CompareUtils';
+
 export interface ScanUpdate {
   path: string;
   artist: string;
@@ -134,17 +136,32 @@ export class LibraryService {
             }
           }
 
-          const artistName = effectiveAlbumArtist.toUpperCase();
-          let artistId = artistIdCache.get(artistName);
+          const artistName = effectiveAlbumArtist.trim();
+          let artistId = artistIdCache.get(artistName.toUpperCase());
+
           if (!artistId) {
-            const artistResult = db.prepare('INSERT OR IGNORE INTO artists (name) VALUES (?)').run(artistName);
-            if (artistResult.changes > 0) {
-              artistId = artistResult.lastInsertRowid;
+            const targetSlug = CompareUtils.normalize(artistName);
+
+            // 1. Recherche exacte
+            const exactArtist = db.prepare('SELECT id, name FROM artists WHERE name = ? COLLATE NOCASE').get(artistName) as { id: number, name: string } | undefined;
+            
+            if (exactArtist) {
+              artistId = exactArtist.id;
             } else {
-              const row = db.prepare('SELECT id FROM artists WHERE name = ?').get(artistName) as { id: number };
-              artistId = row.id;
+              // 2. Recherche floue (slug)
+              const allArtists = db.prepare('SELECT id, name FROM artists').all() as { id: number, name: string }[];
+              const match = allArtists.find(a => CompareUtils.normalize(a.name) === targetSlug);
+              
+              if (match) {
+                console.log(`[Library] Fuzzy matched artist "${artistName}" to existing "${match.name}"`);
+                artistId = match.id;
+              } else {
+                // 3. Création si vraiment nouveau
+                const artistResult = db.prepare('INSERT INTO artists (name) VALUES (?)').run(artistName.toUpperCase());
+                artistId = artistResult.lastInsertRowid;
+              }
             }
-            artistIdCache.set(artistName, artistId);
+            artistIdCache.set(artistName.toUpperCase(), artistId);
           }
 
           const cacheKey = `${artistId}-${albumName}`;
@@ -157,23 +174,21 @@ export class LibraryService {
                bitrate: firstItemMetadata.format.bitrate ? Math.round(firstItemMetadata.format.bitrate / 1000) : null,
                sampleRate: firstItemMetadata.format.sampleRate,
                genre: firstItemMetadata.common.genre && firstItemMetadata.common.genre.length > 0 ? firstItemMetadata.common.genre[0] : null,
-               duration: 0, // Will sum up later if needed or just use tracks
+               duration: 0, 
                fileCount: items.length,
                hasCover: false
             };
 
             // Intelligence : Recherche de l'album avec tolérance sur la ponctuation (ex: "The Game!" vs "The Game")
-            const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
-            const targetSlug = slug(albumName);
+            const targetSlug = CompareUtils.normalize(albumName);
             
             const existingAlbums = db.prepare('SELECT id, name FROM albums WHERE artist_id = ?').all(artistId) as { id: number, name: string }[];
             let match = existingAlbums.find(a => a.name === albumName); // Exact match
             
             if (!match) {
-              match = existingAlbums.find(a => slug(a.name) === targetSlug);
+              match = existingAlbums.find(a => CompareUtils.normalize(a.name) === targetSlug);
               if (match) {
                 console.log(`[Library] Fuzzy match: "${albumName}" mapped to existing album "${match.name}"`);
-                // On utilise le nom existant en base pour déclencher le ON CONFLICT
                 albumName = match.name;
               }
             }

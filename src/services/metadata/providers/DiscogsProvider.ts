@@ -49,6 +49,8 @@ export class DiscogsProvider implements MetadataProvider {
         discogsId: r.id.toString(),
         releaseDate: r.year?.toString(),
         type: (() => {
+          if (r.role === 'Appearance' || r.role === 'TrackAppearance') return 'appearance';
+          
           const fmt = r.format?.toLowerCase() || '';
           if (fmt.includes('album')) return 'album';
           if (fmt.includes('ep')) return 'ep';

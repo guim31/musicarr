@@ -1,5 +1,6 @@
 import db from '@/lib/db';
 import { MetadataEngine } from './MetadataEngine';
+import { CompareUtils } from '@/lib/CompareUtils';
 
 export class SyncService {
   private engine = new MetadataEngine();
@@ -18,7 +19,9 @@ export class SyncService {
     if (!mbid || !discogsId || !deezerId) {
       console.log(`Searching IDs for artist: ${artist.name}`);
       const results = await this.engine.searchArtist(artist.name);
-      const match = results.find(r => r.name.toLowerCase() === artist.name.toLowerCase()) || results[0];
+      
+      const targetSlug = CompareUtils.normalize(artist.name);
+      const match = results.find(r => CompareUtils.normalize(r.name) === targetSlug) || results[0];
       
       if (match) {
         mbid = mbid || match.mbid;
@@ -42,14 +45,14 @@ export class SyncService {
       // On garde tout maintenant pour permettre le filtrage/tri dans l'UI
       // if (remote.type && remote.type !== 'album' && remote.type !== 'ep') continue;
 
-      const existing = db.prepare(`
-        SELECT id, mbid, discogs_id, metadata FROM albums 
-        WHERE artist_id = ? AND (
-          (mbid IS NOT NULL AND mbid = ?) OR 
-          (discogs_id IS NOT NULL AND discogs_id = ?) OR 
-          (name = ? COLLATE NOCASE)
-        )
-      `).get(artistId, remote.mbid, remote.discogsId, remote.name) as any;
+      const localAlbums = db.prepare('SELECT id, name, mbid, discogs_id, metadata FROM albums WHERE artist_id = ?').all(artistId) as any[];
+      const remoteSlug = CompareUtils.normalize(remote.name);
+
+      const existing = localAlbums.find(a => 
+        (remote.mbid && a.mbid === remote.mbid) || 
+        (remote.discogsId && a.discogs_id === remote.discogsId) ||
+        (CompareUtils.normalize(a.name) === remoteSlug)
+      );
 
       if (existing) {
         let meta: any = {};

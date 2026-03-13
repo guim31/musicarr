@@ -76,6 +76,17 @@ export default function AlbumsPage() {
     return () => clearTimeout(timer);
   }, [filter]);
 
+  // Écouter les événements de fin d'activité pour rafraîchir la liste
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log('[Library] Activity finished, refreshing list...');
+      fetchAlbums();
+    };
+
+    window.addEventListener('musicarr:activity-finished', handleRefresh);
+    return () => window.removeEventListener('musicarr:activity-finished', handleRefresh);
+  }, [fetchAlbums]);
+
   const handleSortChange = (newSortBy: string) => {
     if (sortBy === newSortBy) {
       setOrder(order === 'asc' ? 'desc' : 'asc');

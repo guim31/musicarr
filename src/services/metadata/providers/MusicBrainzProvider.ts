@@ -48,13 +48,23 @@ export class MusicBrainzProvider implements MetadataProvider {
       return !isInvalidSecondary;
     });
 
-    return validReleaseGroups.map((rg: any) => ({
-      name: rg.title,
-      mbid: rg.id,
-      releaseDate: rg['first-release-date'],
-      type: rg['primary-type']?.toLowerCase() || 'album',
-      image: `https://coverartarchive.org/release-group/${rg.id}/front`
-    }));
+    return validReleaseGroups.map((rg: any) => {
+      const primaryType = rg['primary-type']?.toLowerCase() || 'album';
+      const secondaryTypes = rg['secondary-types'] || [];
+      
+      let type: any = primaryType;
+      if (secondaryTypes.includes('Compilation')) type = 'compilation';
+      // Si c'est un split, on peut le considérer comme une participation/apparition dans le tri
+      if (secondaryTypes.includes('Split')) type = 'appearance';
+
+      return {
+        name: rg.title,
+        mbid: rg.id,
+        releaseDate: rg['first-release-date'],
+        type,
+        image: `https://coverartarchive.org/release-group/${rg.id}/front`
+      };
+    });
   }
 
   async getAlbumTracks(releaseGroupId: string): Promise<any[]> {

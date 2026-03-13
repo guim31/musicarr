@@ -8,7 +8,8 @@ import {
   Loader2,
   Check,
   Music,
-  UserPlus
+  UserPlus,
+  ChevronRight
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -22,7 +23,7 @@ export default function AddArtistPage() {
   const [results, setResults] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [addingArtists, setAddingArtists] = useState<Record<string, boolean>>({});
-  const [addedArtists, setAddedArtists] = useState<Record<string, boolean>>({});
+  const [addedArtists, setAddedArtists] = useState<Record<string, number | boolean>>({});
   const [selectedProvider, setSelectedProvider] = useState<string>('musicbrainz'); // 'musicbrainz' by default
 
   const providers = [
@@ -91,7 +92,7 @@ export default function AddArtistPage() {
         throw new Error(data.error || 'Erreur lors de l\'ajout de l\'artiste');
       }
       
-      setAddedArtists(prev => ({ ...prev, [artistKey]: true }));
+      setAddedArtists(prev => ({ ...prev, [artistKey]: data.id || true }));
       // Optional: Show a toast here
     } catch (err: any) {
       console.error(err);
@@ -192,19 +193,28 @@ export default function AddArtistPage() {
                     {artist.genre} {artist.country && `(${artist.country})`}
                   </div>
                   
-                  <button 
-                    onClick={() => handleAddArtist(artist)}
-                    className={`${styles.addButton} ${isAdded ? styles.added : ''}`}
-                    disabled={isAdding || isAdded}
-                  >
-                    {isAdding ? (
-                      <><Loader2 size={16} className="animate-spin" /> Ajout...</>
-                    ) : isAdded ? (
-                      <><Check size={16} /> Ajouté !</>
-                    ) : (
-                      <><Plus size={16} /> Ajouter</>
-                    )}
-                  </button>
+                  {isAdded && typeof isAdded === 'number' ? (
+                    <Link 
+                      href={`/library/artist/${isAdded}`}
+                      className={`${styles.addButton} ${styles.viewButton}`}
+                    >
+                      <ChevronRight size={16} /> Voir la fiche
+                    </Link>
+                  ) : (
+                    <button 
+                      onClick={() => handleAddArtist(artist)}
+                      className={`${styles.addButton} ${isAdded ? styles.added : ''}`}
+                      disabled={isAdding || !!isAdded}
+                    >
+                      {isAdding ? (
+                        <><Loader2 size={16} className="animate-spin" /> Ajout...</>
+                      ) : isAdded ? (
+                        <><Check size={16} /> Ajouté !</>
+                      ) : (
+                        <><Plus size={16} /> Ajouter</>
+                      )}
+                    </button>
+                  )}
                 </div>
               </div>
             );
