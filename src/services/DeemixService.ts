@@ -556,8 +556,9 @@ export class DeemixService {
     const tempPath = `${filePath}.tmp_final${ext}`;
     
     const title = trackInfo.name;
-    const artist = trackInfo.artistName;
+    const artist = (trackInfo.artistName || "").toUpperCase();
     const album = albumData.title;
+    const albumArtist = (albumData.artist?.name || artist).toUpperCase();
     // Priorité à la date de la DB (car potentiellement issue de MusicBrainz/Discogs lors du sync)
     let dateStr = fallbackDate || (albumData && albumData.release_date) || '';
     let yearOnly = dateStr ? dateStr.split('-')[0] : '';
@@ -586,6 +587,8 @@ export class DeemixService {
     // Tags (doivent être placés après les inputs)
     cmd += `-metadata title="${title.replace(/"/g, '\\"')}" `;
     cmd += `-metadata artist="${artist.replace(/"/g, '\\"')}" `;
+    cmd += `-metadata album_artist="${albumArtist.replace(/"/g, '\\"')}" `;
+    cmd += `-metadata albumartist="${albumArtist.replace(/"/g, '\\"')}" `; // Pour compatibilité max
     cmd += `-metadata album="${album.replace(/"/g, '\\"')}" `;
     cmd += `-metadata track="${trackNum}" `;
     cmd += `-metadata disc="${discNum}" `;
