@@ -45,7 +45,7 @@ export class SyncService {
       // On garde tout maintenant pour permettre le filtrage/tri dans l'UI
       // if (remote.type && remote.type !== 'album' && remote.type !== 'ep') continue;
 
-      const localAlbums = db.prepare('SELECT id, name, mbid, discogs_id, metadata FROM albums WHERE artist_id = ?').all(artistId) as any[];
+      const localAlbums = db.prepare('SELECT id, name, mbid, discogs_id, type, status, metadata FROM albums WHERE artist_id = ?').all(artistId) as any[];
       const remoteSlug = CompareUtils.normalize(remote.name);
 
       const existing = localAlbums.find(a => 
@@ -60,11 +60,33 @@ export class SyncService {
         if (remote.image && !meta.artworkUrl) meta.artworkUrl = remote.image;
         if (remote.deezerId && !meta.deezerId) meta.deezerId = remote.deezerId;
         
+        const typePriority = (t: string | null | undefined) => {
+          if (t === 'album') return 10;
+          if (t === 'compilation') return 8;
+          if (t === 'ep') return 5;
+          if (t === 'single') return 1;
+          return 0;
+        };
+
+        const currentType = existing.type;
+        const remoteType = remote.type;
+        
+        let newType = remoteType || currentType;
+        
+        // Logique de consolidation : 
+        // 1. Si déjà téléchargé et marqué comme album, on garde 'album'
+        // 2. Sinon on prend le type avec la plus haute priorité
+        if (existing.status === 'downloaded' && currentType === 'album' && typePriority(remoteType) < 10) {
+          newType = 'album';
+        } else if (typePriority(currentType) > typePriority(remoteType)) {
+          newType = currentType;
+        }
+
         db.prepare('UPDATE albums SET mbid = ?, discogs_id = ?, type = ?, metadata = ? WHERE id = ?')
           .run(
             remote.mbid || existing.mbid, 
             remote.discogsId || existing.discogs_id, 
-            remote.type || existing.type,
+            newType,
             JSON.stringify(meta), 
             existing.id
           );

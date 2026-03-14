@@ -86,8 +86,15 @@ export class MetadataEngine {
         merged.set(key, a);
       } else {
         const existing = merged.get(key)!;
-        // On privilégie les types plus spécifiques que 'album'
-        const isBetterType = a.type && a.type !== 'album' && existing.type === 'album';
+        // On privilégie les types plus "importants" (album > ep > single)
+        const typePriority = (t: string | undefined) => {
+          if (t === 'album') return 10;
+          if (t === 'ep') return 5;
+          if (t === 'single') return 1;
+          if (t === 'compilation') return 8;
+          return 0;
+        };
+        const isBetterType = typePriority(a.type) > typePriority(existing.type);
         
         merged.set(key, {
           ...existing,
@@ -108,7 +115,14 @@ export class MetadataEngine {
         merged.set(key, a);
       } else {
         const existing = merged.get(key)!;
-        const isBetterType = a.type && a.type !== 'album' && existing.type === 'album';
+        const typePriority = (t: string | undefined) => {
+          if (t === 'album') return 10;
+          if (t === 'ep') return 5;
+          if (t === 'single') return 1;
+          if (t === 'compilation') return 8;
+          return 0;
+        };
+        const isBetterType = typePriority(a.type) > typePriority(existing.type);
 
         merged.set(key, {
           ...existing,
