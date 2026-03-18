@@ -75,6 +75,11 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
            return false;
         };
 
+        // Collect side effects to run after state update
+        const eventsToDispatch: any[] = [];
+        const removalsToSchedule: { id: string, delay: number }[] = [];
+        const newlySeenIds: number[] = [];
+
         // One single state update to avoid race conditions
         setToasts((currentToasts) => {
           let updatedToasts = [...currentToasts];
@@ -127,7 +132,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
           history.forEach((entry: any) => {
             if (!seenHistoryIds.current.has(entry.id)) {
               if (isFirstPoll.current) {
-                seenHistoryIds.current.add(entry.id);
+                newlySeenIds.push(entry.id);
                 return;
               }
 
@@ -158,7 +163,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                     details: 'Traitement terminé',
                     keep: true
                   };
-                  setTimeout(() => removeToast(searchIds[0]), 6000);
+                  removalsToSchedule.push({ id: searchIds[0], delay: 6000 });
                 } else {
                   updatedToasts.push({
                     id: `finish-${entry.id}`,
@@ -167,13 +172,11 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                     message: `${entry.title} : Terminé avec succès`,
                     autoClose: 5000
                   });
-                  setTimeout(() => removeToast(`finish-${entry.id}`), 5000);
+                  removalsToSchedule.push({ id: `finish-${entry.id}`, delay: 5000 });
                 }
                 
-                // Trigger global events for refreshing
-                window.dispatchEvent(new CustomEvent('musicarr:activity-finished', { 
-                   detail: { ...entry, nzo_id: nzoId } 
-                }));
+                // Collect global events for refreshing
+                eventsToDispatch.push({ ...entry, nzo_id: nzoId });
               } else if (entry.status === 'failed') {
                 const targetToastIndex = updatedToasts.findIndex(t => searchIds.some(id => t.id === id));
                 if (targetToastIndex !== -1) {
@@ -186,7 +189,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                     progress: 0,
                     keep: true
                   };
-                  setTimeout(() => removeToast(searchIds[0]), 10000);
+                  removalsToSchedule.push({ id: searchIds[0], delay: 10000 });
                 } else {
                   updatedToasts.push({
                     id: `fail-${entry.id}`,
@@ -195,16 +198,16 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                     message: `${entry.title} : ${entry.message || 'Erreur'}`,
                     autoClose: 8000
                   });
-                  setTimeout(() => removeToast(`fail-${entry.id}`), 8000);
+                  removalsToSchedule.push({ id: `fail-${entry.id}`, delay: 8000 });
                 }
               }
-              seenHistoryIds.current.add(entry.id);
+              newlySeenIds.push(entry.id);
             }
           });
 
-          // 3. Cleanup: remove inactive download/scan toasts that aren't marked as 'keep'
+          // 3. Cleanup: remove inactive download toasts that aren't marked as 'keep'
           return updatedToasts.filter(t => {
-            if (t.type !== 'download' && t.type !== 'scan') return true; 
+            if (t.type !== 'download') return true; 
             if (t.keep) return true;
             
             const stillActive = activeDownloads.some((ad: any) => 
@@ -212,6 +215,15 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
             );
             return stillActive;
           });
+        });
+
+        // Side effects after state update
+        newlySeenIds.forEach(id => seenHistoryIds.current.add(id));
+        eventsToDispatch.forEach(detail => {
+          window.dispatchEvent(new CustomEvent('musicarr:activity-finished', { detail }));
+        });
+        removalsToSchedule.forEach(r => {
+          setTimeout(() => removeToast(r.id), r.delay);
         });
 
         if (isFirstPoll.current) {
