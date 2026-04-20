@@ -8,6 +8,8 @@
   justify-content: space-between;
   align-items: flex-start;
   margin-bottom: 32px;
+  flex-wrap: wrap;
+  gap: 16px;
 }
 
 .searchHeader {
@@ -52,7 +54,7 @@
   background-color: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow-x: auto;
 }
 
 .table {
@@ -154,11 +156,17 @@
   background-color: rgba(255, 255, 255, 0.05);
 }
 
-/* Grid View */
 .albumGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 24px;
+}
+
+@media (max-width: 600px) {
+  .albumGrid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+  }
 }
 
 .albumCard {

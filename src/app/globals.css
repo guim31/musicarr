@@ -1,18 +1,18 @@
 :root {
-  --background: #0f1115;
-  --foreground: #e2e8f0;
-  --card-bg: #1a1d23;
-  --sidebar-bg: #14161a;
-  --accent: #3b82f6;
-  --accent-hover: #2563eb;
-  --border: #2d333b;
+  --background: #0a0a0c;
+  --foreground: #f8fafc;
+  --card-bg: #141416;
+  --sidebar-bg: #000000;
+  --accent: #ffffff;
+  --accent-hover: #e2e8f0;
+  --border: #27272a;
   --text-muted: #94a3b8;
   --success: #10b981;
   --warning: #f59e0b;
   --danger: #ef4444;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --radius: 8px;
-  --transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  --radius: 12px;
+  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 * {

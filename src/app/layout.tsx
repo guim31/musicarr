@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Sidebar from "@/components/Sidebar";
+import styles from "./layout.module.css";
 
 import { ToastProvider } from "@/context/ToastContext";
 
@@ -21,14 +22,9 @@ export default function RootLayout({
     <html lang="fr" suppressHydrationWarning>
       <body className={inter.className} suppressHydrationWarning>
         <ToastProvider>
-          <div style={{ display: 'flex' }}>
+          <div className={styles.layoutContainer}>
             <Sidebar />
-            <main style={{ 
-              flex: 1, 
-              marginLeft: '260px', 
-              minHeight: '100vh',
-              padding: '32px'
-            }}>
+            <main className={styles.mainContent}>
               {children}
             </main>
           </div>

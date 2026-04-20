@@ -49,7 +49,7 @@ const Sidebar = () => {
               className={`${styles.navLink} ${pathname === item.href ? styles.active : ''}`}
             >
               <item.icon size={20} />
-              {item.name}
+              <span>{item.name}</span>
             </Link>
           ))}
         </div>
@@ -63,7 +63,7 @@ const Sidebar = () => {
               className={`${styles.navLink} ${pathname === item.href ? styles.active : ''}`}
             >
               <item.icon size={20} />
-              {item.name}
+              <span>{item.name}</span>
             </Link>
           ))}
         </div>
