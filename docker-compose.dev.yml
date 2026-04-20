@@ -1,0 +1,22 @@
+services:
+  musicarr:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: musicarr
+    ports:
+      - "3005:3000"
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./next.config.ts:/app/next.config.ts
+      - ./package.json:/app/package.json
+      - ./data:/app/data
+      - ${MUSIC_DIR:-/home/guilhem/Musique/}:/app/music
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+    restart: unless-stopped
+    # Pour le développement, on outrepasse la commande par défaut
+    command: npm run dev

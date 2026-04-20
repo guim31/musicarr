@@ -80,7 +80,7 @@
 
 .button {
   background-color: var(--accent);
-  color: white;
+  color: #000000;
   border: none;
   padding: 10px 24px;
   border-radius: var(--radius);
@@ -204,7 +204,7 @@
 
 .searchQuickBtn {
   background-color: var(--accent);
-  color: white;
+  color: #000000;
 }
 
 .searchQuickBtn:hover {

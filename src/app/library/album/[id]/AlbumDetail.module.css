@@ -92,7 +92,7 @@
 
 .button {
   background-color: var(--accent);
-  color: white;
+  color: #000000;
   border: none;
   padding: 12px 28px;
   border-radius: var(--radius);

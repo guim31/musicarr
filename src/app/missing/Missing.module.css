@@ -48,7 +48,7 @@
 
 .primaryButton {
   background-color: var(--accent);
-  color: white;
+  color: #000000;
   border: none;
 }
 
