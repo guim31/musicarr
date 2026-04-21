@@ -24,11 +24,32 @@ export class DeezerProvider implements MetadataProvider {
     }));
   }
 
-  async getArtistAlbums(deezerArtistId: string): Promise<RemoteAlbum[]> {
-    const data = await this.fetchDeezer(`artist/${deezerArtistId}/albums`, { limit: '100' });
-    if (!data || !data.data) return [];
+  async getArtistAlbums(deezerArtistId: string, onProgress?: (current: number, total: number) => void): Promise<RemoteAlbum[]> {
+    let allAlbums: any[] = [];
+    let index = 0;
+    let total = 0;
 
-    return data.data.map((r: any) => {
+    do {
+      const data = await this.fetchDeezer(`artist/${deezerArtistId}/albums`, { 
+        limit: '100',
+        index: index.toString()
+      });
+
+      if (!data || !data.data) break;
+
+      total = data.total || 0;
+      const albums = data.data;
+      allAlbums = [...allAlbums, ...albums];
+
+      index += albums.length;
+      if (onProgress) onProgress(allAlbums.length, total);
+
+      if (index < total) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    } while (index < total && index < 1000);
+
+    return allAlbums.map((r: any) => {
       let type: 'album' | 'single' | 'ep' | 'compilation' = 'album';
       if (r.record_type) {
         if (r.record_type.toLowerCase() === 'single') type = 'single';

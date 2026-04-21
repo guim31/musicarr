@@ -28,16 +28,33 @@ export class MusicBrainzProvider implements MetadataProvider {
     }));
   }
 
-  async getArtistAlbums(artistMbid: string): Promise<RemoteAlbum[]> {
-    const data = await this.fetchMB('release-group', {
-      artist: artistMbid,
-      limit: '100'
-    });
+  async getArtistAlbums(artistMbid: string, onProgress?: (current: number, total: number) => void): Promise<RemoteAlbum[]> {
+    let allReleaseGroups: any[] = [];
+    let offset = 0;
+    let total = 0;
 
-    const validReleaseGroups = (data['release-groups'] || []).filter((rg: any) => {
-      // On accepte plus de types maintenant pour permettre le tri dans l'UI
+    do {
+      const data = await this.fetchMB('release-group', {
+        artist: artistMbid,
+        limit: '100',
+        offset: offset.toString()
+      });
+
+      total = data['release-group-count'] || 0;
+      const groups = data['release-groups'] || [];
+      allReleaseGroups = [...allReleaseGroups, ...groups];
+      
+      offset += groups.length;
+      if (onProgress) onProgress(allReleaseGroups.length, total);
+      
+      // Petit délai pour respecter les limites de débit de MusicBrainz (1 req/sec recommandé)
+      if (offset < total) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } while (offset < total && offset < 1000); // On met une limite de sécurité à 1000 pour éviter les boucles infinies
+
+    const validReleaseGroups = allReleaseGroups.filter((rg: any) => {
       const primaryType = rg['primary-type']?.toLowerCase();
-      // On ignore juste les types vraiment non musicaux si besoin, mais ici on va être large
       if (!primaryType) return true;
       
       const secondaryTypes = rg['secondary-types'] || [];
@@ -54,7 +71,6 @@ export class MusicBrainzProvider implements MetadataProvider {
       
       let type: any = primaryType;
       if (secondaryTypes.includes('Compilation')) type = 'compilation';
-      // Si c'est un split, on peut le considérer comme une participation/apparition dans le tri
       if (secondaryTypes.includes('Split')) type = 'appearance';
 
       return {

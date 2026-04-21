@@ -86,7 +86,7 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
       const res = await fetch(`/api/sync/artist/${id}`, { method: 'POST' });
       const data = await res.json();
       if (data.success) {
-        showToast('Discographie actualisée !', 'success');
+        // Le toast de succès est maintenant géré globalement par l'activité
         await fetchData(); // Refresh list
       }
     } catch (err) {

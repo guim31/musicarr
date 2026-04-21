@@ -62,78 +62,65 @@ export class MetadataEngine {
     return mergedResults;
   }
 
-  async syncArtistDiscography(artistMbid?: string, discogsId?: string, deezerId?: string): Promise<RemoteAlbum[]> {
+  async syncArtistDiscography(
+    artistMbid?: string, 
+    discogsId?: string, 
+    deezerId?: string,
+    onProgress?: (provider: string, current: number, total: number) => void
+  ): Promise<RemoteAlbum[]> {
     const mbProvider = new MusicBrainzProvider();
     const dcProvider = new DiscogsProvider();
     const dzProvider = new DeezerProvider();
     
     const [mbAlbums, dcAlbums, dzAlbums] = await Promise.all([
-      artistMbid ? mbProvider.getArtistAlbums(artistMbid).catch(() => []) : [],
-      discogsId ? dcProvider.getArtistAlbums(discogsId).catch(() => []) : [],
-      deezerId ? dzProvider.getArtistAlbums(deezerId).catch(() => []) : []
+      artistMbid ? mbProvider.getArtistAlbums(artistMbid, (c, t) => onProgress?.('MusicBrainz', c, t)).catch(() => []) : [],
+      discogsId ? dcProvider.getArtistAlbums(discogsId, (c, t) => onProgress?.('Discogs', c, t)).catch(() => []) : [],
+      deezerId ? dzProvider.getArtistAlbums(deezerId, (c, t) => onProgress?.('Deezer', c, t)).catch(() => []) : []
     ]);
 
-    // Fusion des discographies par titre (insensible à la casse)
+    // Fusion des discographies par titre normalisé
     const merged = new Map<string, RemoteAlbum>();
 
-    // On commence par MusicBrainz car c'est la source la plus "propre"
-    mbAlbums.forEach(a => merged.set(a.name.toLowerCase().trim(), a));
+    const typePriority = (t: string | undefined) => {
+      if (t === 'album') return 10;
+      if (t === 'compilation') return 8;
+      if (t === 'ep') return 5;
+      if (t === 'single') return 1;
+      if (t === 'appearance') return 0.5;
+      return 0;
+    };
 
-    // On complète avec Discogs pour les releases manquantes
-    dcAlbums.forEach(a => {
-      const key = a.name.toLowerCase().trim();
-      if (!merged.has(key)) {
-        merged.set(key, a);
-      } else {
-        const existing = merged.get(key)!;
-        // On privilégie les types plus "importants" (album > ep > single)
-        const typePriority = (t: string | undefined) => {
-          if (t === 'album') return 10;
-          if (t === 'ep') return 5;
-          if (t === 'single') return 1;
-          if (t === 'compilation') return 8;
-          return 0;
-        };
-        const isBetterType = typePriority(a.type) > typePriority(existing.type);
-        
-        merged.set(key, {
-          ...existing,
-          discogsId: a.discogsId || existing.discogsId,
-          type: isBetterType ? a.type : existing.type,
-          // On garde la date la plus ancienne trouvée pour le "first release"
-          releaseDate: a.releaseDate && (!existing.releaseDate || a.releaseDate < existing.releaseDate) 
-            ? a.releaseDate 
-            : existing.releaseDate
-        });
-      }
-    });
+    const processResults = (albums: RemoteAlbum[], source: string) => {
+      albums.forEach(a => {
+        const key = CompareUtils.normalize(a.name);
+        if (!key) return;
 
-    // On complète avec Deezer
-    dzAlbums.forEach(a => {
-      const key = a.name.toLowerCase().trim();
-      if (!merged.has(key)) {
-        merged.set(key, a);
-      } else {
-        const existing = merged.get(key)!;
-        const typePriority = (t: string | undefined) => {
-          if (t === 'album') return 10;
-          if (t === 'ep') return 5;
-          if (t === 'single') return 1;
-          if (t === 'compilation') return 8;
-          return 0;
-        };
-        const isBetterType = typePriority(a.type) > typePriority(existing.type);
+        if (!merged.has(key)) {
+          merged.set(key, a);
+        } else {
+          const existing = merged.get(key)!;
+          const isBetterType = typePriority(a.type) > typePriority(existing.type);
+          
+          merged.set(key, {
+            ...existing,
+            mbid: a.mbid || existing.mbid,
+            discogsId: a.discogsId || existing.discogsId,
+            deezerId: a.deezerId || existing.deezerId,
+            type: isBetterType ? a.type : existing.type,
+            // On garde la date la plus ancienne trouvée pour le "first release"
+            releaseDate: a.releaseDate && (!existing.releaseDate || a.releaseDate < existing.releaseDate) 
+              ? a.releaseDate 
+              : existing.releaseDate,
+            image: existing.image || a.image
+          });
+        }
+      });
+    };
 
-        merged.set(key, {
-          ...existing,
-          deezerId: a.deezerId || existing.deezerId,
-          type: isBetterType ? a.type : existing.type,
-          releaseDate: a.releaseDate && (!existing.releaseDate || a.releaseDate < existing.releaseDate) 
-            ? a.releaseDate 
-            : existing.releaseDate
-        });
-      }
-    });
+    // Priorité à MusicBrainz, puis Discogs, puis Deezer
+    processResults(mbAlbums, 'MusicBrainz');
+    processResults(dcAlbums, 'Discogs');
+    processResults(dzAlbums, 'Deezer');
 
     return Array.from(merged.values()).sort((a, b) => 
       (b.releaseDate || '').localeCompare(a.releaseDate || '')

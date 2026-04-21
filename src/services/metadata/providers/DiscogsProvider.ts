@@ -38,11 +38,35 @@ export class DiscogsProvider implements MetadataProvider {
     }));
   }
 
-  async getArtistAlbums(discogsArtistId: string): Promise<RemoteAlbum[]> {
-    const data = await this.fetchDiscogs(`artists/${discogsArtistId}/releases`, { per_page: '100', sort: 'year', sort_order: 'desc' });
-    if (!data) return [];
+  async getArtistAlbums(discogsArtistId: string, onProgress?: (current: number, total: number) => void): Promise<RemoteAlbum[]> {
+    let allReleases: any[] = [];
+    let page = 1;
+    let totalPages = 1;
 
-    return (data.releases || [])
+    do {
+      const data = await this.fetchDiscogs(`artists/${discogsArtistId}/releases`, { 
+        per_page: '100', 
+        page: page.toString(),
+        sort: 'year', 
+        sort_order: 'desc' 
+      });
+
+      if (!data) break;
+
+      totalPages = data.pagination?.pages || 1;
+      const releases = data.releases || [];
+      allReleases = [...allReleases, ...releases];
+
+      if (onProgress) onProgress(allReleases.length, data.pagination?.items || allReleases.length);
+      
+      page++;
+      // Petit délai pour l'API Discogs (60 req/min max avec auth)
+      if (page <= totalPages) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    } while (page <= totalPages && page <= 10); // Sécurité à 10 pages (1000 items)
+
+    return allReleases
       .filter((r: any) => r.type === 'release' || r.type === 'master')
       .map((r: any) => ({
         name: r.title,
@@ -51,11 +75,15 @@ export class DiscogsProvider implements MetadataProvider {
         type: (() => {
           if (r.role === 'Appearance' || r.role === 'TrackAppearance') return 'appearance';
           
-          const fmt = r.format?.toLowerCase() || '';
-          if (fmt.includes('album')) return 'album';
-          if (fmt.includes('ep')) return 'ep';
-          if (fmt.includes('compilation')) return 'compilation';
-          return 'single';
+          const formats = Array.isArray(r.format) ? r.format.join(',').toLowerCase() : (r.format?.toLowerCase() || '');
+          const label = r.label?.toLowerCase() || '';
+          
+          if (formats.includes('album') || formats.includes('lp') || formats.includes('vinyl')) return 'album';
+          if (formats.includes('ep')) return 'ep';
+          if (formats.includes('compilation') || label.includes('compilation')) return 'compilation';
+          if (formats.includes('single')) return 'single';
+          
+          return 'album'; // Par défaut on tente album si on ne sait pas, car MusicBrainz fera le tri
         })() as any,
         image: r.thumb
       }));

@@ -1,9 +1,9 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { CheckCircle2, XCircle, Info, AlertCircle, X, Download, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, Info, AlertCircle, X, Download, Loader2, RefreshCw } from 'lucide-react';
 
-export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'download' | 'scan';
+export type ToastType = 'success' | 'error' | 'info' | 'warning' | 'download' | 'scan' | 'sync';
 
 interface Toast {
   id: string;
@@ -88,8 +88,8 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
           // 1. Update active toasts
           activeDownloads.forEach((item: any) => {
             const isDownload = item.type === 'download' || item.type === 'move';
-            if (isDownload) {
-              const toastId = `dl-${item.id}`;
+            if (isDownload || item.type === 'sync') {
+              const toastId = item.type === 'sync' ? `sync-${item.artist_id || item.id}` : `dl-${item.id}`;
               const existsIndex = updatedToasts.findIndex(t => t.id === toastId);
               
               let progress = 0;
@@ -101,6 +101,9 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                 if (isDeemix) {
                   progress = details.total > 0 ? (details.current / details.total) * 100 : 0;
                   label = `${details.current} / ${details.total} titres`;
+                } else if (item.type === 'sync') {
+                  progress = details.progress || 0;
+                  label = details.provider ? `${details.provider} : ${details.current || 0} / ${details.total || '?'}` : item.message;
                 } else {
                   progress = details.percentage || 0;
                   label = `${details.speed || '0 KB/s'} - ${details.timeleft || ''}`;
@@ -110,19 +113,19 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
               if (existsIndex !== -1) {
                 updatedToasts = updatedToasts.map((t, index) => index === existsIndex ? {
                   ...t,
-                  message: item.title,
+                  message: item.type === 'sync' ? label : item.title,
                   progress,
-                  details: label,
+                  details: item.type === 'sync' ? undefined : label,
                   keep: false 
                 } : t);
               } else {
                 updatedToasts.push({
                   id: toastId,
-                  type: 'download',
-                  title: item.title || 'Téléchargement en cours',
-                  message: item.title || '',
+                  type: item.type as ToastType,
+                  title: item.type === 'sync' ? 'Synchronisation' : (item.title || 'Téléchargement en cours'),
+                  message: item.type === 'sync' ? label : (item.title || ''),
                   progress,
-                  details: label
+                  details: item.type === 'sync' ? undefined : label
                 });
               }
             }
@@ -207,7 +210,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
 
           // 3. Cleanup: remove inactive download toasts that aren't marked as 'keep'
           return updatedToasts.filter(t => {
-            if (t.type !== 'download') return true; 
+            if (t.type !== 'download' && t.type !== 'sync') return true; 
             if (t.keep) return true;
             
             const stillActive = activeDownloads.some((ad: any) => 
@@ -347,7 +350,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
               </button>
             </div>
             
-            {(toast.type === 'download' || toast.type === 'scan') && typeof toast.progress === 'number' && (
+            {(toast.type === 'download' || toast.type === 'scan' || toast.type === 'sync') && typeof toast.progress === 'number' && (
               <div style={{ width: '100%', marginTop: '4px' }}>
                 <div style={{ 
                   height: '8px', 
@@ -362,7 +365,9 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                     height: '100%', 
                     background: toast.type === 'download' 
                       ? 'linear-gradient(90deg, #a238ff, #ff3bce)'
-                      : 'linear-gradient(90deg, var(--accent), #00d2ff)',
+                      : toast.type === 'sync'
+                        ? 'linear-gradient(90deg, #ff9a9e, #fecfef)'
+                        : 'linear-gradient(90deg, var(--accent), #00d2ff)',
                     transition: 'width 0.4s cubic-bezier(0.1, 0.7, 0.1, 1)',
                     position: 'relative',
                     borderRadius: '4px'
@@ -384,8 +389,8 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                   fontFamily: 'monospace',
                   color: 'var(--text-muted)'
                 }}>
-                  <span style={{ color: 'var(--accent)' }}>{toast.details || 'Progression...'}</span>
-                  <span style={{ color: toast.type === 'download' ? '#ff3bce' : 'var(--accent)' }}>{Math.round(toast.progress)}%</span>
+                  <span style={{ color: 'var(--accent)' }}>{toast.details || ''}</span>
+                  <span style={{ color: toast.type === 'download' ? '#ff3bce' : (toast.type === 'sync' ? '#ff9a9e' : 'var(--accent)') }}>{Math.round(toast.progress)}%</span>
                 </div>
               </div>
             )}
@@ -419,6 +424,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
         .toast-warning { border-left: 4px solid var(--warning) !important; }
         .toast-download { border-left: 4px solid #a238ff !important; }
         .toast-scan { border-left: 4px solid var(--accent) !important; }
+        .toast-sync { border-left: 4px solid #ff9a9e !important; }
       `}</style>
     </ToastContext.Provider>
   );
@@ -431,6 +437,7 @@ const ToastIcon = ({ type }: { type: ToastType }) => {
     case 'warning': return <AlertCircle size={20} color="var(--warning)" />;
     case 'download': return <Download size={20} color="#a238ff" />;
     case 'scan': return <Loader2 size={20} color="var(--accent)" className="animate-spin" />;
+    case 'sync': return <RefreshCw size={20} color="#ff9a9e" className="animate-spin" />;
     default: return <Info size={20} color="var(--accent)" />;
   }
 };
