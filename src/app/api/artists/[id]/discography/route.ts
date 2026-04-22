@@ -42,16 +42,19 @@ export async function GET(
 
     // 3. Marquer les albums distants comme "possédés" s'ils sont en local
     // On utilise les MBID, DiscogsID ou le nom normalisé
-    const localSlugs = new Set(localAlbums.map(a => CompareUtils.normalize(a.name)));
-    const localMbids = new Set(localAlbums.map(a => a.mbid).filter(Boolean));
-    const localDiscogsIds = new Set(localAlbums.map(a => a.discogs_id).filter(Boolean));
+    // On trie les albums locaux pour prioriser le statut 'downloaded' en cas de doublons de noms
+    const sortedLocalAlbums = [...localAlbums].sort((a, b) => {
+      if (a.status === 'downloaded' && b.status !== 'downloaded') return -1;
+      if (a.status !== 'downloaded' && b.status === 'downloaded') return 1;
+      return 0;
+    });
 
     const artist = db.prepare('SELECT name FROM artists WHERE id = ?').get(artistId) as any;
     const normalizedArtist = artist ? CompareUtils.normalize(artist.name) : '';
 
     Object.keys(discography).forEach(provider => {
       discography[provider] = discography[provider].map(item => {
-        const matchingLocal = localAlbums.find(a => {
+        const matchingLocal = sortedLocalAlbums.find(a => {
           // 1. Match par MBID (si présent des deux côtés)
           if (item.mbid && a.mbid && item.mbid === a.mbid) return true;
           
