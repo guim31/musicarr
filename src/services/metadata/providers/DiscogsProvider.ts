@@ -98,9 +98,10 @@ export class DiscogsProvider implements MetadataProvider {
         const normalizedTitle = (r.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
         const dedupeKey = `${type}-${normalizedTitle}`;
 
-        // Si on n'a pas encore cette release, ou si la nouvelle est un "master" (meilleure qualité de métadonnées)
-        // on la garde.
-        if (!uniqueReleases.has(dedupeKey) || r.type === 'master') {
+        // Si on n'a pas encore cette release, on la garde.
+        // Si elle existe déjà et que c'est un "master", on met à jour les données (image, ID)
+        // MAIS on préserve toujours l'année de sortie la plus ancienne.
+        if (!uniqueReleases.has(dedupeKey)) {
           uniqueReleases.set(dedupeKey, {
             name: r.title,
             discogsId: r.id.toString(),
@@ -108,6 +109,27 @@ export class DiscogsProvider implements MetadataProvider {
             type,
             image: r.thumb
           });
+        } else if (r.type === 'master') {
+          const existing = uniqueReleases.get(dedupeKey);
+          // Garder la plus petite année valide
+          let bestYear = existing.releaseDate;
+          if (r.year && r.year > 0) {
+            if (!bestYear || parseInt(r.year) < parseInt(bestYear)) {
+              bestYear = r.year.toString();
+            }
+          }
+          uniqueReleases.set(dedupeKey, {
+            ...existing,
+            discogsId: r.id.toString(),
+            releaseDate: bestYear,
+            image: r.thumb || existing.image
+          });
+        } else {
+          // Même si on ne met pas à jour avec un master, si la release courante a une année plus ancienne, on la garde
+          const existing = uniqueReleases.get(dedupeKey);
+          if (r.year && r.year > 0 && (!existing.releaseDate || parseInt(r.year) < parseInt(existing.releaseDate))) {
+            existing.releaseDate = r.year.toString();
+          }
         }
       });
 

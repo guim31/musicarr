@@ -14,7 +14,8 @@ import {
   Search,
   Trash2,
   CheckCircle2,
-  Clock
+  Clock,
+  Shield
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -111,6 +112,52 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
     }
   };
 
+  const [fixingPermissions, setFixingPermissions] = useState(false);
+
+  const [scanning, setScanning] = useState(false);
+
+  const handleScan = async () => {
+    try {
+      setScanning(true);
+      showToast(`Scan des dossiers locaux pour ${artist?.name}...`, 'info');
+      const res = await fetch(`/api/artists/${id}/scan`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Scan terminé : ${data.processed} fichiers traités.`, 'success');
+        fetchData();
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Erreur lors du scan local.', 'error');
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const handleFixPermissions = async () => {
+    try {
+      setFixingPermissions(true);
+      showToast(`Correction des permissions en cours...`, 'info');
+      const res = await fetch(`/api/artists/${id}/permissions`, { 
+        method: 'POST'
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(data.message, 'success');
+        showToast(`Lancement d'un scan pour intégrer les fichiers...`, 'info');
+        await fetch(`/api/artists/${id}/scan`, { method: 'POST' });
+        fetchData();
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Erreur lors de la correction des permissions.', 'error');
+    } finally {
+      setFixingPermissions(false);
+    }
+  };
+
   const handleManualSearch = (albumName?: string) => {
     setSearchQuery(albumName ? `${artist?.name} ${albumName}` : artist?.name || '');
     setActiveAlbumId(undefined); // On ne lie pas à un album ID local car il n'existe peut-être pas encore
@@ -174,6 +221,22 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
           </div>
           <div className={styles.artistActions}>
             <button className={styles.iconButton}><Heart size={20} /></button>
+            <button 
+              className={`${styles.button} ${styles.outlineButton}`} 
+              onClick={handleScan}
+              disabled={scanning}
+              title="Scanner les dossiers locaux"
+            >
+              <Search size={18} className={scanning ? 'animate-spin' : ''} />
+            </button>
+            <button 
+              className={`${styles.button} ${styles.outlineButton}`} 
+              onClick={handleFixPermissions}
+              disabled={fixingPermissions}
+              title="Corriger les permissions"
+            >
+              <Shield size={18} className={fixingPermissions ? 'animate-pulse' : ''} />
+            </button>
             <button 
               className={`${styles.button} ${styles.outlineButton}`} 
               onClick={() => setIsSyncModalOpen(true)}

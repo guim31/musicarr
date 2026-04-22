@@ -21,11 +21,11 @@ export class CompareUtils {
       .normalize('NFD') // Décompose les caractères accentués (ex: é -> e + ´)
       .replace(/[\u0300-\u036f]/g, '') // Supprime les marques d'accents
       .toLowerCase()
-      // Gestion des articles au début (français et anglais)
-      .replace(/^(the|a|an|le|la|les|l'|der|die|das)\s+/i, '')
-      .replace(/^l'/i, '')
-      // Gestion des conjonctions communes pour les aligner
-      .replace(/\s+&\s+/g, 'and')
+      // Suppression de tous les articles, peu importe leur position
+      .replace(/\b(the|a|an|le|la|les|der|die|das)\b/gi, '')
+      .replace(/l'/gi, '')
+      // Gestion des conjonctions communes pour les aligner (suppression pour éviter les écarts 'et' vs '&' vs '-')
+      .replace(/\s+(&|and|et)\s+/g, '')
       // Suppression de tout ce qui n'est pas lettre ou chiffre
       .replace(/[^a-z0-9]/g, '');
   }

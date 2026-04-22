@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { CompareUtils } from '@/lib/CompareUtils';
 
+export const dynamic = 'force-dynamic';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -61,12 +63,7 @@ export async function GET(
           const normalizedLocal = CompareUtils.normalize(a.name);
           if (normalizedItem === normalizedLocal) return true;
 
-          // 4. Match "contient" pour les titres longs/courts (ex: Best Of vs Best Of 1990-2011)
-          if (normalizedItem.length > 8 && normalizedLocal.length > 8) {
-            if (normalizedItem.includes(normalizedLocal) || normalizedLocal.includes(normalizedItem)) return true;
-          }
-
-          // 5. Match en ignorant le nom de l'artiste au début du nom de l'album (ex: "Iron Maiden - Killers" vs "Killers")
+          // 4. Match en ignorant le nom de l'artiste au début du nom de l'album (ex: "Iron Maiden - Killers" vs "Killers")
           if (normalizedArtist) {
             const itemWithoutArtist = normalizedItem.replace(new RegExp(`^${normalizedArtist}`), '').trim();
             const localWithoutArtist = normalizedLocal.replace(new RegExp(`^${normalizedArtist}`), '').trim();
@@ -78,7 +75,7 @@ export async function GET(
         
         return {
           ...item,
-          isOwned: !!matchingLocal,
+          isOwned: matchingLocal ? matchingLocal.status === 'downloaded' : false,
           localId: matchingLocal?.id
         };
       });
