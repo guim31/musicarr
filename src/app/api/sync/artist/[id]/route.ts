@@ -7,12 +7,18 @@ export async function POST(
 ) {
   try {
     const { id: artistId } = await params;
+    const { types } = await request.json().catch(() => ({}));
     const sync = new SyncService();
-    const count = await sync.syncArtist(parseInt(artistId));
+    
+    // On lance la synchro en arrière-plan car elle peut être longue
+    // SyncService gère lui-même son enregistrement dans la table 'activity'
+    sync.syncArtist(parseInt(artistId), types).catch(err => {
+      console.error(`Background Sync Error for artist ${artistId}:`, err);
+    });
     
     return NextResponse.json({ 
       success: true, 
-      newAlbumsFound: count 
+      message: 'Synchronisation démarrée en arrière-plan'
     });
   } catch (error: any) {
     console.error('Sync Error:', error);

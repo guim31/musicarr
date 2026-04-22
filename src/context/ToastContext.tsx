@@ -68,6 +68,8 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
         // Helper to match IDs across different formats
         const searchIdsMatch = (activeItem: any, toastId: string) => {
            if (`dl-${activeItem.id}` === toastId) return true;
+           if (`sync-${activeItem.artist_id || activeItem.id}` === toastId) return true;
+           if (`sync-local-${activeItem.id}` === toastId) return true;
            try {
              const details = JSON.parse(activeItem.details || '{}');
              if (details.nzo_id && `dl-sab-${details.nzo_id}` === toastId) return true;
@@ -78,66 +80,74 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
         // Collect side effects to run after state update
         const eventsToDispatch: any[] = [];
         const removalsToSchedule: { id: string, delay: number }[] = [];
-        const newlySeenIds: number[] = [];
+        const newlySeenIdsFromHistory: number[] = [];
 
-        // One single state update to avoid race conditions
-        setToasts((currentToasts) => {
-          let updatedToasts = [...currentToasts];
-          const history = data.history || [];
-          
-          // 1. Update active toasts
-          activeDownloads.forEach((item: any) => {
-            const isDownload = item.type === 'download' || item.type === 'move';
-            if (isDownload || item.type === 'sync') {
-              const toastId = item.type === 'sync' ? `sync-${item.artist_id || item.id}` : `dl-${item.id}`;
-              const existsIndex = updatedToasts.findIndex(t => t.id === toastId);
-              
-              let progress = 0;
-              let label = item.message;
-              try {
-                const details = JSON.parse(item.details || '{}');
-                const isDeemix = item.id.startsWith('local-') && item.type === 'download';
+        // 2. Process newly finished tasks from history
+        const history = data.history || [];
+        
+        history.forEach((entry: any) => {
+          if (!seenHistoryIds.current.has(entry.id)) {
+            newlySeenIdsFromHistory.push(entry.id);
+          }
+        });
 
-                if (isDeemix) {
-                  progress = details.total > 0 ? (details.current / details.total) * 100 : 0;
-                  label = `${details.current} / ${details.total} titres`;
-                } else if (item.type === 'sync') {
-                  progress = details.progress || 0;
-                  label = details.provider ? `${details.provider} : ${details.current || 0} / ${details.total || '?'}` : item.message;
+        // Update state and refs
+        if (newlySeenIdsFromHistory.length > 0 || activeDownloads.length > 0) {
+          setToasts((currentToasts) => {
+            let updatedToasts = [...currentToasts];
+            
+            // A. Update active toasts
+            activeDownloads.forEach((item: any) => {
+              const isDownload = item.type === 'download' || item.type === 'move';
+              if (isDownload || item.type === 'sync') {
+                const toastId = item.type === 'sync' ? `sync-${item.artist_id || item.id}` : `dl-${item.id}`;
+                const existsIndex = updatedToasts.findIndex(t => t.id === toastId);
+                
+                let progress = 0;
+                let label = item.message;
+                try {
+                  const details = JSON.parse(item.details || '{}');
+                  const isDeemix = item.id.startsWith('local-') && item.type === 'download';
+  
+                  if (isDeemix) {
+                    progress = details.total > 0 ? (details.current / details.total) * 100 : 0;
+                    label = `${details.current} / ${details.total} titres`;
+                  } else if (item.type === 'sync') {
+                    progress = details.progress || 0;
+                    label = details.provider ? `${details.provider} : ${details.current || 0} / ${details.total || '?'}` : item.message;
+                  } else {
+                    progress = details.percentage || 0;
+                    label = `${details.speed || '0 KB/s'} - ${details.timeleft || ''}`;
+                  }
+                } catch {}
+  
+                if (existsIndex !== -1) {
+                  updatedToasts = updatedToasts.map((t, index) => index === existsIndex ? {
+                    ...t,
+                    message: item.type === 'sync' ? label : item.title,
+                    progress,
+                    details: item.type === 'sync' ? undefined : label,
+                    keep: false 
+                  } : t);
                 } else {
-                  progress = details.percentage || 0;
-                  label = `${details.speed || '0 KB/s'} - ${details.timeleft || ''}`;
+                  updatedToasts.push({
+                    id: toastId,
+                    type: item.type as ToastType,
+                    title: item.type === 'sync' ? 'Synchronisation' : (item.title || 'Téléchargement en cours'),
+                    message: item.type === 'sync' ? label : (item.title || ''),
+                    progress,
+                    details: item.type === 'sync' ? undefined : label
+                  });
                 }
-              } catch {}
-
-              if (existsIndex !== -1) {
-                updatedToasts = updatedToasts.map((t, index) => index === existsIndex ? {
-                  ...t,
-                  message: item.type === 'sync' ? label : item.title,
-                  progress,
-                  details: item.type === 'sync' ? undefined : label,
-                  keep: false 
-                } : t);
-              } else {
-                updatedToasts.push({
-                  id: toastId,
-                  type: item.type as ToastType,
-                  title: item.type === 'sync' ? 'Synchronisation' : (item.title || 'Téléchargement en cours'),
-                  message: item.type === 'sync' ? label : (item.title || ''),
-                  progress,
-                  details: item.type === 'sync' ? undefined : label
-                });
               }
-            }
-          });
+            });
 
-          // 2. Process newly finished tasks from history
-          history.forEach((entry: any) => {
-            if (!seenHistoryIds.current.has(entry.id)) {
-              if (isFirstPoll.current) {
-                newlySeenIds.push(entry.id);
-                return;
-              }
+            // B. Process newly finished tasks
+            newlySeenIdsFromHistory.forEach((id) => {
+              const entry = history.find((e: any) => e.id === id);
+              if (!entry) return;
+
+              if (isFirstPoll.current) return;
 
               let detailsObj: any = {};
               try { detailsObj = JSON.parse(entry.details || '{}'); } catch {}
@@ -146,13 +156,13 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
               const searchIds = [
                 `dl-${entry.id}`,
                 `dl-local-${entry.id}`,
+                `sync-${entry.artist_id}`,
+                `sync-local-${entry.id}`,
                 nzoId ? `dl-sab-${nzoId}` : null
               ].filter(Boolean) as string[];
 
-              const isDownload = entry.type === 'download' || entry.type === 'move';
-
               if (entry.status === 'completed') {
-                const targetToastIndex = updatedToasts.findIndex(t => searchIds.some(id => t.id === id));
+                const targetToastIndex = updatedToasts.findIndex(t => searchIds.some(sid => t.id === sid));
                 
                 if (targetToastIndex !== -1) {
                   const targetToast = updatedToasts[targetToastIndex];
@@ -160,68 +170,69 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
                     ...targetToast,
                     id: searchIds[0], 
                     type: 'success',
-                    title: 'Téléchargement réussi',
-                    message: `${entry.title} est prêt !`,
+                    title: entry.type === 'sync' ? 'Synchronisation terminée' : 'Téléchargement réussi',
+                    message: entry.type === 'sync' ? entry.message : `${entry.title} est prêt !`,
                     progress: 100,
-                    details: 'Traitement terminé',
+                    details: 'Terminé',
                     keep: true
                   };
                   removalsToSchedule.push({ id: searchIds[0], delay: 6000 });
                 } else {
+                  const toastId = `finish-${entry.id}`;
                   updatedToasts.push({
-                    id: `finish-${entry.id}`,
+                    id: toastId,
                     type: 'success',
                     title: 'Terminé',
-                    message: `${entry.title} : Terminé avec succès`,
+                    message: entry.type === 'sync' ? entry.message : `${entry.title} : Terminé avec succès`,
                     autoClose: 5000
                   });
-                  removalsToSchedule.push({ id: `finish-${entry.id}`, delay: 5000 });
+                  removalsToSchedule.push({ id: toastId, delay: 5000 });
                 }
-                
-                // Collect global events for refreshing
                 eventsToDispatch.push({ ...entry, nzo_id: nzoId });
               } else if (entry.status === 'failed') {
-                const targetToastIndex = updatedToasts.findIndex(t => searchIds.some(id => t.id === id));
+                const targetToastIndex = updatedToasts.findIndex(t => searchIds.some(sid => t.id === sid));
                 if (targetToastIndex !== -1) {
                   updatedToasts[targetToastIndex] = {
                     ...updatedToasts[targetToastIndex],
                     id: searchIds[0],
                     type: 'error',
-                    title: 'Échec du téléchargement',
+                    title: 'Échec',
                     message: entry.message || 'Erreur inconnue',
                     progress: 0,
                     keep: true
                   };
                   removalsToSchedule.push({ id: searchIds[0], delay: 10000 });
                 } else {
+                  const toastId = `fail-${entry.id}`;
                   updatedToasts.push({
-                    id: `fail-${entry.id}`,
+                    id: toastId,
                     type: 'error',
                     title: 'Échec',
                     message: `${entry.title} : ${entry.message || 'Erreur'}`,
                     autoClose: 8000
                   });
-                  removalsToSchedule.push({ id: `fail-${entry.id}`, delay: 8000 });
+                  removalsToSchedule.push({ id: toastId, delay: 8000 });
                 }
               }
-              newlySeenIds.push(entry.id);
-            }
+            });
+
+            // C. Cleanup inactive download/sync toasts
+            return updatedToasts.filter(t => {
+              if (t.type !== 'download' && t.type !== 'sync') return true; 
+              if (t.keep) return true;
+              
+              const stillActive = activeDownloads.some((ad: any) => 
+                 searchIdsMatch(ad, t.id)
+              );
+              return stillActive;
+            });
           });
 
-          // 3. Cleanup: remove inactive download toasts that aren't marked as 'keep'
-          return updatedToasts.filter(t => {
-            if (t.type !== 'download' && t.type !== 'sync') return true; 
-            if (t.keep) return true;
-            
-            const stillActive = activeDownloads.some((ad: any) => 
-               searchIdsMatch(ad, t.id)
-            );
-            return stillActive;
-          });
-        });
+          // Finalize seen IDs
+          newlySeenIdsFromHistory.forEach(id => seenHistoryIds.current.add(id));
+        }
 
         // Side effects after state update
-        newlySeenIds.forEach(id => seenHistoryIds.current.add(id));
         eventsToDispatch.forEach(detail => {
           window.dispatchEvent(new CustomEvent('musicarr:activity-finished', { detail }));
         });

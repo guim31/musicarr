@@ -28,7 +28,7 @@ export class MusicBrainzProvider implements MetadataProvider {
     }));
   }
 
-  async getArtistAlbums(artistMbid: string, onProgress?: (current: number, total: number) => void): Promise<RemoteAlbum[]> {
+  async getArtistAlbums(artistMbid: string, onProgress?: (current: number, total: number) => void, filterTypes?: string[]): Promise<RemoteAlbum[]> {
     let allReleaseGroups: any[] = [];
     let offset = 0;
     let total = 0;
@@ -51,7 +51,7 @@ export class MusicBrainzProvider implements MetadataProvider {
       if (offset < total) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    } while (offset < total && offset < 1000); // On met une limite de sécurité à 1000 pour éviter les boucles infinies
+    } while (offset < total && offset < 5000); // On met une limite de sécurité à 5000 pour éviter les boucles infinies
 
     const validReleaseGroups = allReleaseGroups.filter((rg: any) => {
       const primaryType = rg['primary-type']?.toLowerCase();
@@ -62,8 +62,22 @@ export class MusicBrainzProvider implements MetadataProvider {
         ['Interview', 'Spokenword', 'Audiobook'].includes(t)
       );
       
-      return !isInvalidSecondary;
+      if (isInvalidSecondary) return false;
+
+      // Filter by requested types
+      if (filterTypes && filterTypes.length > 0) {
+        let type = primaryType;
+        if (secondaryTypes.includes('Compilation')) type = 'compilation';
+        if (secondaryTypes.includes('Split')) type = 'appearance';
+        
+        // Map MB types to our types
+        if (!filterTypes.includes(type)) return false;
+      }
+
+      return true;
     });
+
+    console.log(`[MusicBrainz] Filtered ${allReleaseGroups.length} items down to ${validReleaseGroups.length} valid items.`);
 
     return validReleaseGroups.map((rg: any) => {
       const primaryType = rg['primary-type']?.toLowerCase() || 'album';

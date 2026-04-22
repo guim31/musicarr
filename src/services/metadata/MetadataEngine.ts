@@ -18,18 +18,25 @@ export class MetadataEngine {
       ? this.providers.filter(p => p.name.toLowerCase() === providerName.toLowerCase())
       : this.providers;
 
+    const withTimeout = <T>(promise: Promise<T[]>, providerName: string): Promise<T[]> => {
+      return Promise.race([
+        promise,
+        new Promise<T[]>((_, reject) => setTimeout(() => reject(new Error(`Timeout ${providerName}`)), 15000))
+      ]).catch(err => {
+        console.warn(`Search: Provider ${providerName} failed or timed out:`, err.message);
+        return [] as T[];
+      });
+    };
+
     const allResults = await Promise.all(
-      providersToUse.map(p => p.searchArtist(query).catch(err => {
-        console.error(`Provider ${p.name} search error:`, err);
-        return [];
-      }))
+      providersToUse.map(p => withTimeout(p.searchArtist(query), p.name))
     );
     
     // Fusion intelligente par nom normalisé
     const merged = new Map<string, RemoteArtist>();
     
     for (const providerResults of allResults) {
-      providerResults.forEach(a => {
+      providerResults.forEach((a: RemoteArtist) => {
         const key = CompareUtils.normalize(a.name);
         if (!merged.has(key)) {
           merged.set(key, a);
@@ -39,11 +46,11 @@ export class MetadataEngine {
             ...a, 
             ...existing, // Priorise les premiers fournisseurs
             image: existing.image || a.image, // Garde l'image si le provider prioritaire n'en a pas
-            mbid: a.mbid || existing.mbid,
-            discogsId: a.discogsId || existing.discogsId,
-            deezerId: a.deezerId || existing.deezerId,
-            itunesId: a.itunesId || existing.itunesId,
-            genres: Array.from(new Set([...(a.genres || []), ...(existing.genres || [])]))
+            mbid: existing.mbid || a.mbid,
+            discogsId: existing.discogsId || a.discogsId,
+            deezerId: existing.deezerId || a.deezerId,
+            itunesId: existing.itunesId || a.itunesId,
+            genres: Array.from(new Set([...(existing.genres || []), ...(a.genres || [])]))
           });
         }
       });
@@ -51,11 +58,14 @@ export class MetadataEngine {
 
     const mergedResults = Array.from(merged.values());
 
-    // Enrichissement final des images via iTunes si manquantes
+    // Enrichissement final des images via iTunes si manquantes (avec timeout court)
     const itunes = new ITunesProvider();
-    await Promise.all(mergedResults.map(async (artist) => {
+    await Promise.all(mergedResults.slice(0, 5).map(async (artist) => {
       if (!artist.image) {
-        artist.image = await itunes.getArtistImage(artist.name).catch(() => undefined);
+        artist.image = await Promise.race<string | undefined>([
+          itunes.getArtistImage(artist.name),
+          new Promise<undefined>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]).catch(() => undefined);
       }
     }));
 
@@ -66,17 +76,34 @@ export class MetadataEngine {
     artistMbid?: string, 
     discogsId?: string, 
     deezerId?: string,
-    onProgress?: (provider: string, current: number, total: number) => void
+    onProgress?: (provider: string, current: number, total: number) => void,
+    filterTypes?: string[]
   ): Promise<RemoteAlbum[]> {
     const mbProvider = new MusicBrainzProvider();
     const dcProvider = new DiscogsProvider();
     const dzProvider = new DeezerProvider();
     
+    const withTimeout = <T>(promise: Promise<T[]>, providerName: string): Promise<T[]> => {
+      return Promise.race([
+        promise,
+        new Promise<T[]>((_, reject) => setTimeout(() => reject(new Error(`Timeout ${providerName}`)), 30000))
+      ]).catch(err => {
+        console.warn(`Provider ${providerName} failed or timed out:`, err.message);
+        return [] as T[];
+      });
+    };
+
+    const providerNames = [artistMbid && 'MusicBrainz', discogsId && 'Discogs', deezerId && 'Deezer'].filter(Boolean);
+    console.log(`[Sync] Starting parallel fetch for ${providerNames.join(', ')}`);
+    
     const [mbAlbums, dcAlbums, dzAlbums] = await Promise.all([
-      artistMbid ? mbProvider.getArtistAlbums(artistMbid, (c, t) => onProgress?.('MusicBrainz', c, t)).catch(() => []) : [],
-      discogsId ? dcProvider.getArtistAlbums(discogsId, (c, t) => onProgress?.('Discogs', c, t)).catch(() => []) : [],
-      deezerId ? dzProvider.getArtistAlbums(deezerId, (c, t) => onProgress?.('Deezer', c, t)).catch(() => []) : []
+      artistMbid ? withTimeout(mbProvider.getArtistAlbums(artistMbid, (c, t) => onProgress?.('MusicBrainz', c, t), filterTypes), 'MusicBrainz') : Promise.resolve([] as RemoteAlbum[]),
+      discogsId ? withTimeout(dcProvider.getArtistAlbums(discogsId, (c, t) => onProgress?.('Discogs', c, t), filterTypes), 'Discogs') : Promise.resolve([] as RemoteAlbum[]),
+      deezerId ? withTimeout(dzProvider.getArtistAlbums(deezerId, (c, t) => onProgress?.('Deezer', c, t), filterTypes), 'Deezer') : Promise.resolve([] as RemoteAlbum[]),
     ]);
+
+    console.log(`[Sync] Fetch finished. MB: ${mbAlbums.length}, DC: ${dcAlbums.length}, DZ: ${dzAlbums.length}`);
+    onProgress?.('Finalisation', 0, 1);
 
     // Fusion des discographies par titre normalisé
     const merged = new Map<string, RemoteAlbum>();

@@ -80,38 +80,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // Fetch albums
-    const engine = new MetadataEngine();
-    const albums = await engine.syncArtistDiscography(mbid, discogsId, deezerId);
-      
-    if (albums.length > 0) {
-      const insertAlbum = db.prepare(`
-        INSERT OR IGNORE INTO albums (artist_id, name, release_date, type, status, metadata)
-        VALUES (?, ?, ?, ?, 'missing', ?)
-      `);
-
-      albums.forEach(album => {
-        // Here album type is already filtered mostly by providers, but we can trust MetadataEngine
-        // However Deezer might include some singles if we let them.
-        insertAlbum.run(
-          artistId,
-          album.name,
-          album.releaseDate || null,
-          album.type || 'album',
-          JSON.stringify({
-            mbid: album.mbid,
-            discogsId: album.discogsId,
-            deezerId: album.deezerId,
-            artworkUrl: album.image,
-            primaryType: album.type
-          })
-        );
-      });
-    }
-
     // Add activity log
     db.prepare('INSERT INTO activity (type, status, title, artist_id, message) VALUES (?, ?, ?, ?, ?)')
-      .run('scan', 'completed', name, artistId, 'Artiste ajouté et albums synchronisés avec la base de données');
+      .run('scan', 'completed', name, artistId, 'Artiste ajouté à la bibliothèque');
 
     return NextResponse.json({ success: true, id: artistId });
   } catch (error: any) {

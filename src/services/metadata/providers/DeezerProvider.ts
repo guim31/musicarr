@@ -8,8 +8,13 @@ export class DeezerProvider implements MetadataProvider {
     const url = new URL(`${this.baseUrl}/${endpoint}`);
     Object.entries(params).forEach(([key, val]) => url.searchParams.append(key, val));
 
-    const res = await fetch(url);
-    if (!res.ok) return null;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    });
+    if (!res.ok) {
+      console.warn(`[Deezer] HTTP Error ${res.status} on ${endpoint}`);
+      return null;
+    }
     return res.json();
   }
 
@@ -24,7 +29,7 @@ export class DeezerProvider implements MetadataProvider {
     }));
   }
 
-  async getArtistAlbums(deezerArtistId: string, onProgress?: (current: number, total: number) => void): Promise<RemoteAlbum[]> {
+  async getArtistAlbums(deezerArtistId: string, onProgress?: (current: number, total: number) => void, filterTypes?: string[]): Promise<RemoteAlbum[]> {
     let allAlbums: any[] = [];
     let index = 0;
     let total = 0;
@@ -49,22 +54,29 @@ export class DeezerProvider implements MetadataProvider {
       }
     } while (index < total && index < 1000);
 
-    return allAlbums.map((r: any) => {
-      let type: 'album' | 'single' | 'ep' | 'compilation' = 'album';
-      if (r.record_type) {
-        if (r.record_type.toLowerCase() === 'single') type = 'single';
-        if (r.record_type.toLowerCase() === 'ep') type = 'ep';
-        if (r.record_type.toLowerCase() === 'compilation') type = 'compilation';
-      }
+    return allAlbums
+      .map((r: any) => {
+        let type: 'album' | 'single' | 'ep' | 'compilation' = 'album';
+        if (r.record_type) {
+          if (r.record_type.toLowerCase() === 'single') type = 'single';
+          if (r.record_type.toLowerCase() === 'ep') type = 'ep';
+          if (r.record_type.toLowerCase() === 'compilation') type = 'compilation';
+        }
 
-      return {
-        name: r.title,
-        deezerId: r.id.toString(),
-        releaseDate: r.release_date || undefined,
-        type,
-        image: r.cover_xl || r.cover_medium || r.cover,
-      };
-    });
+        return {
+          name: r.title,
+          deezerId: r.id.toString(),
+          releaseDate: r.release_date || undefined,
+          type,
+          image: r.cover_xl || r.cover_medium || r.cover,
+        };
+      })
+      .filter(album => {
+        if (filterTypes && filterTypes.length > 0) {
+          return filterTypes.includes(album.type);
+        }
+        return true;
+      });
   }
 
   async getAlbumTracks(deezerAlbumId: string): Promise<RemoteTrack[]> {

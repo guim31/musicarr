@@ -71,6 +71,24 @@ export default function ActivityPage() {
     }
   };
 
+  const handleDeleteActivity = async (id: string) => {
+    if (!confirm('Voulez-vous supprimer cette activité ?')) return;
+    try {
+      const numericId = id.startsWith('local-') ? id.replace('local-', '') : id;
+      const res = await fetch('/api/activity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_history', id: numericId })
+      });
+      if (res.ok) {
+        showToast('Activité supprimée.', 'success');
+        fetchActivity(false);
+      }
+    } catch (err) {
+      showToast('Erreur lors de la suppression.', 'error');
+    }
+  };
+
   const getIcon = (type: string) => {
     switch (type) {
       case 'download': return <Download size={18} />;
@@ -137,6 +155,9 @@ export default function ActivityPage() {
               if (isDeemix) {
                 progressPercent = details.total > 0 ? (details.current / details.total) * 100 : 0;
                 statusLabel = `${details.current} / ${details.total} titres`;
+              } else if (item.type === 'sync') {
+                progressPercent = details.progress || 0;
+                statusLabel = details.provider ? `${details.provider} : ${details.current || 0} / ${details.total || '?'}` : item.message;
               } else {
                 progressPercent = details.percentage || 0;
                 statusLabel = `${details.speed || '0 KB/s'} / ${details.timeleft || 'calcul...'}`;
@@ -150,6 +171,13 @@ export default function ActivityPage() {
                       <h4 title={item.title}>{item.title}</h4>
                       <span>{statusLabel}</span>
                     </div>
+                    <button 
+                      className={styles.deleteBtn}
+                      onClick={() => handleDeleteActivity(item.id)}
+                      title="Supprimer l'activité"
+                    >
+                      <XCircle size={16} />
+                    </button>
                   </div>
                   <div className={styles.progressArea}>
                     <div className={styles.progressBar}>

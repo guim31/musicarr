@@ -38,7 +38,7 @@ export class DiscogsProvider implements MetadataProvider {
     }));
   }
 
-  async getArtistAlbums(discogsArtistId: string, onProgress?: (current: number, total: number) => void): Promise<RemoteAlbum[]> {
+  async getArtistAlbums(discogsArtistId: string, onProgress?: (current: number, total: number) => void, filterTypes?: string[]): Promise<RemoteAlbum[]> {
     let allReleases: any[] = [];
     let page = 1;
     let totalPages = 1;
@@ -64,15 +64,18 @@ export class DiscogsProvider implements MetadataProvider {
       if (page <= totalPages) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    } while (page <= totalPages && page <= 10); // Sécurité à 10 pages (1000 items)
+    } while (page <= totalPages && page <= 50);
 
-    return allReleases
+    console.log(`[Discogs] Fetch terminé. Transformation de ${allReleases.length} releases...`);
+    
+    // On dé-duplique les résultats car Discogs renvoie TOUS les pressages (vinyle, CD, remaster...)
+    // Ce qui crée des milliers de doublons pour un même album.
+    const uniqueReleases = new Map<string, any>();
+    
+    allReleases
       .filter((r: any) => r.type === 'release' || r.type === 'master')
-      .map((r: any) => ({
-        name: r.title,
-        discogsId: r.id.toString(),
-        releaseDate: r.year?.toString(),
-        type: (() => {
+      .forEach((r: any) => {
+        const type = (() => {
           if (r.role === 'Appearance' || r.role === 'TrackAppearance') return 'appearance';
           
           const formats = Array.isArray(r.format) ? r.format.join(',').toLowerCase() : (r.format?.toLowerCase() || '');
@@ -83,9 +86,31 @@ export class DiscogsProvider implements MetadataProvider {
           if (formats.includes('compilation') || label.includes('compilation')) return 'compilation';
           if (formats.includes('single')) return 'single';
           
-          return 'album'; // Par défaut on tente album si on ne sait pas, car MusicBrainz fera le tri
-        })() as any,
-        image: r.thumb
-      }));
+          return 'album';
+        })();
+
+        // Ignorer si ça ne correspond pas au filtre demandé par l'utilisateur
+        if (filterTypes && filterTypes.length > 0 && !filterTypes.includes(type)) {
+          return;
+        }
+
+        // Clé de déduplication : titre normalisé + type (pour ne pas fusionner un single et un album du même nom)
+        const normalizedTitle = (r.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const dedupeKey = `${type}-${normalizedTitle}`;
+
+        // Si on n'a pas encore cette release, ou si la nouvelle est un "master" (meilleure qualité de métadonnées)
+        // on la garde.
+        if (!uniqueReleases.has(dedupeKey) || r.type === 'master') {
+          uniqueReleases.set(dedupeKey, {
+            name: r.title,
+            discogsId: r.id.toString(),
+            releaseDate: r.year?.toString(),
+            type,
+            image: r.thumb
+          });
+        }
+      });
+
+    return Array.from(uniqueReleases.values());
   }
 }

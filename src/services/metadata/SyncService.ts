@@ -1,13 +1,21 @@
 import db from '@/lib/db';
 import { MetadataEngine } from './MetadataEngine';
 import { CompareUtils } from '@/lib/CompareUtils';
+import { RemoteAlbum } from './types';
+import { MusicBrainzProvider } from './providers/MusicBrainzProvider';
+import { DiscogsProvider } from './providers/DiscogsProvider';
+import { DeezerProvider } from './providers/DeezerProvider';
 
 export class SyncService {
   private engine = new MetadataEngine();
 
-  async syncArtist(artistId: number) {
+  async syncArtist(artistId: number, filterTypes?: string[]) {
     const artist = db.prepare('SELECT * FROM artists WHERE id = ?').get(artistId) as any;
     if (!artist) throw new Error('Artiste non trouvé');
+
+    // Nettoyage des anciennes tâches bloquées pour cet artiste
+    db.prepare("UPDATE activity SET status = 'failed', message = 'Annulé par une nouvelle synchronisation' WHERE type = 'sync' AND artist_id = ? AND status = 'processing'")
+      .run(artistId);
 
     // Création de l'activité initiale
     const activityResult = db.prepare(`
@@ -20,7 +28,7 @@ export class SyncService {
     const updateProgress = (provider: string, current: number, total: number) => {
       const percentage = total > 0 ? (current / total) * 100 : 0;
       db.prepare('UPDATE activity SET details = ? WHERE id = ?')
-        .run(JSON.stringify({ progress: percentage, provider, current, total }), activityId);
+        .run(JSON.stringify({ progress: Math.min(99, percentage), provider, current, total }), activityId);
     };
 
     let mbid = artist.mbid;
@@ -30,101 +38,97 @@ export class SyncService {
     let deezerId = meta.deezerId;
 
     try {
-      // 1. Search missing IDs if necessary
-      if (!mbid || !discogsId || !deezerId) {
-        updateProgress('Recherche d\'identifiants', 0, 1);
-        const results = await this.engine.searchArtist(artist.name);
-        const targetSlug = CompareUtils.normalize(artist.name);
-        const match = results.find(r => CompareUtils.normalize(r.name) === targetSlug) || results[0];
-        
-        if (match) {
-          mbid = mbid || match.mbid;
-          discogsId = discogsId || match.discogsId;
-          deezerId = deezerId || match.deezerId;
-          meta.deezerId = deezerId;
-          
-          db.prepare('UPDATE artists SET mbid = ?, discogs_id = ?, metadata = ? WHERE id = ?')
-            .run(mbid || null, discogsId || null, JSON.stringify(meta), artistId);
+      const mbProvider = new MusicBrainzProvider();
+      const dcProvider = new DiscogsProvider();
+      const dzProvider = new DeezerProvider();
+
+      const withTimeout = <T>(promise: Promise<T[]>, providerName: string): Promise<T[]> => {
+        return Promise.race([
+          promise,
+          new Promise<T[]>((_, reject) => setTimeout(() => reject(new Error(`Timeout ${providerName}`)), 300000)) // 5 minutes max
+        ]).catch(err => {
+          console.warn(`[Sync] ${providerName} a échoué ou expiré :`, err.message);
+          return [] as T[];
+        });
+      };
+
+      const saveToCache = (provider: string, data: any[]) => {
+        db.prepare(`
+          INSERT INTO artist_cache (artist_id, provider, data, updated_at)
+          VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(artist_id, provider) DO UPDATE SET 
+            data = excluded.data,
+            updated_at = CURRENT_TIMESTAMP
+        `).run(artistId, provider, JSON.stringify(data));
+      };
+
+      // ÉTAPE 1 : DEEZER
+      try {
+        db.prepare('UPDATE activity SET message = ? WHERE id = ?').run(`Scan Deezer en cours...`, activityId);
+        let dzId = deezerId;
+        if (!dzId) {
+          const search = await dzProvider.searchArtist(artist.name);
+          const match = search.find(r => CompareUtils.normalize(r.name) === CompareUtils.normalize(artist.name)) || search[0];
+          if (match) dzId = match.deezerId;
         }
-      }
+        if (dzId) {
+          console.log(`[Sync] Deezer ID trouvé : ${dzId}`);
+          const albums = await withTimeout(dzProvider.getArtistAlbums(dzId, (c, t) => updateProgress('Deezer', c, t), filterTypes), 'Deezer');
+          console.log(`[Sync] Deezer scan fini, sauvegarde en cache (${albums.length} items)...`);
+          saveToCache('deezer', albums);
+        }
+      } catch (e) { console.error('Deezer step failed', e); }
 
-      // 2. Fetch discography from all available sources
-      const remoteAlbums = await this.engine.syncArtistDiscography(mbid, discogsId, deezerId, (provider, current, total) => {
-        updateProgress(provider, current, total);
-      });
+      // ÉTAPE 2 : MUSICBRAINZ
+      try {
+        db.prepare('UPDATE activity SET message = ? WHERE id = ?').run(`Scan MusicBrainz en cours...`, activityId);
+        let mbId = mbid;
+        if (!mbId) {
+          const search = await mbProvider.searchArtist(artist.name);
+          const match = search.find(r => CompareUtils.normalize(r.name) === CompareUtils.normalize(artist.name)) || search[0];
+          if (match) mbId = match.mbid;
+        }
+        if (mbId) {
+          console.log(`[Sync] MusicBrainz ID trouvé : ${mbId}`);
+          const albums = await withTimeout(mbProvider.getArtistAlbums(mbId, (c, t) => updateProgress('MusicBrainz', c, t), filterTypes), 'MusicBrainz');
+          console.log(`[Sync] MusicBrainz scan fini, sauvegarde en cache (${albums.length} items)...`);
+          saveToCache('musicbrainz', albums);
+        }
+      } catch (e) { console.error('MusicBrainz step failed', e); }
 
-      // 3. Merge with local DB
-      let newFound = 0;
-      const localAlbums = db.prepare('SELECT id, name, mbid, discogs_id, type, status, metadata FROM albums WHERE artist_id = ?').all(artistId) as any[];
+      // ÉTAPE 3 : DISCOGS
+      try {
+        db.prepare('UPDATE activity SET message = ? WHERE id = ?').run(`Scan Discogs en cours...`, activityId);
+        let dcId = discogsId;
+        if (!dcId) {
+          const search = await dcProvider.searchArtist(artist.name);
+          const match = search.find(r => CompareUtils.normalize(r.name) === CompareUtils.normalize(artist.name)) || search[0];
+          if (match) dcId = match.discogsId;
+        }
+        if (dcId) {
+          console.log(`[Sync] Discogs ID trouvé : ${dcId}`);
+          const albums = await withTimeout(dcProvider.getArtistAlbums(dcId, (c, t) => updateProgress('Discogs', c, t), filterTypes), 'Discogs');
+          console.log(`[Sync] Discogs scan fini, sauvegarde en cache (${albums.length} items)...`);
+          saveToCache('discogs', albums);
+          console.log(`[Sync] Discogs cache sauvegardé.`);
+        }
+      } catch (e) { console.error('Discogs step failed', e); }
 
-      for (const remote of remoteAlbums) {
-        const remoteSlug = CompareUtils.normalize(remote.name);
-        const existing = localAlbums.find(a => 
-          (remote.mbid && a.mbid === remote.mbid) || 
-          (remote.discogsId && a.discogs_id === remote.discogsId) ||
-          (CompareUtils.normalize(a.name) === remoteSlug)
+      // TERMINÉ
+      // TERMINÉ
+      console.log(`[Sync] Mise à jour terminée pour ${artist.name}. Passage au statut completed.`);
+      db.prepare("UPDATE activity SET status = 'completed', message = ?, details = ? WHERE id = ?")
+        .run(
+          `Mise à jour terminée pour ${artist.name}.`, 
+          JSON.stringify({ progress: 100, provider: 'Terminé', current: 1, total: 1 }),
+          activityId
         );
 
-        if (existing) {
-          let albumMeta: any = {};
-          try { albumMeta = existing.metadata ? JSON.parse(existing.metadata) : {}; } catch {}
-          if (remote.image && !albumMeta.artworkUrl) albumMeta.artworkUrl = remote.image;
-          if (remote.deezerId && !albumMeta.deezerId) albumMeta.deezerId = remote.deezerId;
-          
-          const typePriority = (t: string | null | undefined) => {
-            if (t === 'album') return 10;
-            if (t === 'compilation') return 8;
-            if (t === 'ep') return 5;
-            if (t === 'single') return 1;
-            return 0;
-          };
-
-          const currentType = existing.type;
-          const remoteType = remote.type;
-          let newType = remoteType || currentType;
-          
-          if (existing.status === 'downloaded' && currentType === 'album' && typePriority(remoteType) < 10) {
-            newType = 'album';
-          } else if (typePriority(currentType) > typePriority(remoteType)) {
-            newType = currentType;
-          }
-
-          db.prepare('UPDATE albums SET mbid = ?, discogs_id = ?, type = ?, metadata = ? WHERE id = ?')
-            .run(
-              remote.mbid || existing.mbid, 
-              remote.discogsId || existing.discogs_id, 
-              newType,
-              JSON.stringify(albumMeta), 
-              existing.id
-            );
-        } else {
-          const albumMeta: any = {};
-          if (remote.image) albumMeta.artworkUrl = remote.image;
-          if (remote.deezerId) albumMeta.deezerId = remote.deezerId;
-          db.prepare(`
-            INSERT INTO albums (artist_id, name, mbid, discogs_id, release_date, type, status, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, 'missing', ?)
-          `).run(
-            artistId,
-            remote.name,
-            remote.mbid || null,
-            remote.discogsId || null,
-            remote.releaseDate || null,
-            remote.type || 'album',
-            JSON.stringify(albumMeta)
-          );
-          newFound++;
-        }
-      }
-
-      // Marquer comme terminé
-      db.prepare('UPDATE activity SET status = "completed", message = ? WHERE id = ?')
-        .run(`Sync terminée pour ${artist.name} : ${newFound} nouveaux albums trouvés.`, activityId);
-
-      return newFound;
+      return 0;
     } catch (error: any) {
-      db.prepare('UPDATE activity SET status = "failed", message = ? WHERE id = ?')
-        .run(`Erreur de sync pour ${artist.name} : ${error.message}`, activityId);
+      console.error(`[Sync] Erreur fatale :`, error);
+      db.prepare("UPDATE activity SET status = 'failed', message = ? WHERE id = ?")
+        .run(`Erreur lors de la mise à jour : ${error.message}`, activityId);
       throw error;
     }
   }

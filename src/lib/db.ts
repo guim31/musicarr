@@ -13,7 +13,7 @@ if (!fs.existsSync(dataDir)) {
   fs.mkdirSync(dataDir, { recursive: true });
 }
 
-const db = new Database(DB_PATH);
+const db = new Database(DB_PATH, { timeout: 10000 });
 db.pragma('journal_mode = WAL');
 
 // Initialize schema
@@ -96,6 +96,15 @@ db.exec(`
     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE SET NULL,
     FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS artist_cache (
+    artist_id INTEGER NOT NULL,
+    provider TEXT NOT NULL,
+    data TEXT NOT NULL, -- JSON blob of results
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (artist_id, provider),
+    FOREIGN KEY (artist_id) REFERENCES artists(id) ON DELETE CASCADE
   );
 `);
 

@@ -52,7 +52,7 @@ export async function GET(request: Request) {
 
     // 4. Get local processing activities (Deemix, Scan, etc.)
     const localActive = db.prepare(`
-      SELECT id, type, status, title, message, details, timestamp
+      SELECT id, type, status, title, message, details, timestamp, artist_id
       FROM activity
       WHERE status = 'processing'
       ORDER BY timestamp DESC

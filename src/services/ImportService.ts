@@ -31,6 +31,10 @@ export class ImportService {
     if (now - this.lastScanTime < this.SCAN_INTERVAL) {
       return;
     }
+
+    // Ne pas scanner si une sync d'artiste est en cours (pour éviter les verrous DB)
+    const activeSync = db.prepare("SELECT id FROM activity WHERE type = 'sync' AND status = 'processing'").get();
+    if (activeSync) return;
     
     const { libraryPath, readOnly } = this.getSettings();
 

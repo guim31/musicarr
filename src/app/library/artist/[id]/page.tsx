@@ -19,15 +19,23 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import styles from './ArtistDetail.module.css';
+import DiscographyColumn from '@/components/artist/DiscographyColumn';
 import SearchModal from '@/components/modals/SearchModal';
+import SyncOptionsModal from '@/components/modals/SyncOptionsModal';
 import { useToast } from '@/context/ToastContext';
 
 export default function ArtistDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
   const [artist, setArtist] = useState<any>(null);
-  const [albums, setAlbums] = useState<any[]>([]);
+  const [localAlbums, setLocalAlbums] = useState<any[]>([]);
+  const [discography, setDiscography] = useState<Record<string, any[]>>({
+    deezer: [],
+    musicbrainz: [],
+    discogs: []
+  });
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const { showToast } = useToast();
 
   // Modal search state
@@ -41,19 +49,29 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
   const [deleteWithFiles, setDeleteWithFiles] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // Filter state
+  const [filterQuery, setFilterQuery] = useState('');
+
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [artistRes, albumsRes] = await Promise.all([
+      const [artistRes, discoRes] = await Promise.all([
         fetch(`/api/artists/${id}`),
-        fetch(`/api/artists/${id}/albums`)
+        fetch(`/api/artists/${id}/discography`)
       ]);
       
       const artistData = await artistRes.json();
-      const albumsData = await albumsRes.json();
+      const discoData = await discoRes.json();
       
       setArtist(artistData);
-      setAlbums(albumsData);
+      if (discoData.success) {
+        setDiscography(discoData.discography);
+        // On simule localAlbums pour les compteurs à partir du cache marqué "isOwned"
+        // Ou on pourrait ajouter un endpoint spécifique pour les albums locaux filtrés par 'downloaded'
+        const albumsRes = await fetch(`/api/artists/${id}/albums`);
+        const albumsData = await albumsRes.json();
+        setLocalAlbums(albumsData.filter((a: any) => a.status === 'downloaded'));
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -65,41 +83,37 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
     fetchData();
 
     const handleRefresh = (event: any) => {
-      const detail = event.detail;
-      // Rafraîchir si c'est un scan global ou si l'activité concerne cet artiste
-      const isThisArtist = detail.artist_id === Number(id);
-      const isAlbumOfThisArtist = albums.some(a => a.id === detail.album_id);
-      
-      if (detail.type === 'scan' || isThisArtist || isAlbumOfThisArtist) {
-        console.log('Refreshing artist detail due to activity finish');
-        fetchData();
-      }
+      fetchData();
     };
 
     window.addEventListener('musicarr:activity-finished', handleRefresh);
     return () => window.removeEventListener('musicarr:activity-finished', handleRefresh);
   }, [id]);
 
-  const handleSync = async () => {
+  const handleSync = async (types?: string[]) => {
     try {
       setSyncing(true);
-      const res = await fetch(`/api/sync/artist/${id}`, { method: 'POST' });
+      showToast(`Démarrage de la mise à jour pour ${artist?.name}...`, 'info');
+      const res = await fetch(`/api/sync/artist/${id}`, { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ types })
+      });
       const data = await res.json();
       if (data.success) {
-        // Le toast de succès est maintenant géré globalement par l'activité
-        await fetchData(); // Refresh list
+        // Le rafraîchissement se fera via l'événement d'activité
       }
     } catch (err) {
-      showToast('Erreur lors de la synchronisation.', 'error');
+      showToast('Erreur lors de la mise à jour.', 'error');
       console.error('Sync failed:', err);
     } finally {
       setSyncing(false);
     }
   };
 
-  const handleManualSearch = (albumId?: number, albumName?: string) => {
+  const handleManualSearch = (albumName?: string) => {
     setSearchQuery(albumName ? `${artist?.name} ${albumName}` : artist?.name || '');
-    setActiveAlbumId(albumId);
+    setActiveAlbumId(undefined); // On ne lie pas à un album ID local car il n'existe peut-être pas encore
     setIsModalOpen(true);
   };
 
@@ -118,20 +132,6 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
       showToast(err.message, 'error');
       console.error('Delete failed:', err);
       setDeleting(false);
-    }
-  };
-
-  const handleScanAlbum = async (albumId: number, albumName: string) => {
-    try {
-      showToast(`Scan de l'album "${albumName}" en cours...`, 'info');
-      const res = await fetch(`/api/albums/${albumId}/scan`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        showToast('Scan terminé !', 'success');
-        await fetchData();
-      }
-    } catch (err) {
-      showToast('Erreur lors du scan.', 'error');
     }
   };
 
@@ -168,7 +168,7 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
           <div className={styles.artistInfo}>
             <h1>{artist.name}</h1>
             <div className={styles.artistMeta}>
-              <span>{albums.filter(a => a.status === 'downloaded').length} / {albums.length} Release{albums.length > 1 ? 's' : ''}</span>
+              <span>{localAlbums.length} Album{localAlbums.length > 1 ? 's' : ''} collectés</span>
               <span className={styles.badge}><Monitor size={14} /> Surveillé</span>
             </div>
           </div>
@@ -176,145 +176,80 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
             <button className={styles.iconButton}><Heart size={20} /></button>
             <button 
               className={`${styles.button} ${styles.outlineButton}`} 
-              onClick={handleSync}
+              onClick={() => setIsSyncModalOpen(true)}
               disabled={syncing}
             >
               <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
-              {syncing ? 'Synchronisation...' : 'Actualiser discographie'}
-            </button>
-            <button className={styles.button} onClick={() => handleManualSearch()}>
-              <Search size={18} />
-              Tout rechercher
+              {syncing ? 'Mise à jour...' : 'Actualiser discographie'}
             </button>
             <button 
               className={`${styles.button} ${styles.dangerButton}`} 
               onClick={() => setIsDeleteModalOpen(true)}
-              title="Supprimer l'artiste de la bibliothèque"
+              title="Supprimer l'artiste"
             >
               <Trash2 size={18} />
-              Supprimer
             </button>
           </div>
         </div>
       </header>
 
-      <section className={styles.albumsSection}>
-        {(() => {
-          // Group albums by type
-          const grouped = albums.reduce((acc: any, album) => {
-            const type = album.type || 'album';
-            if (!acc[type]) acc[type] = [];
-            acc[type].push(album);
-            return acc;
-          }, {});
+      <div className={styles.filterSection}>
+        <div className={styles.searchBar}>
+          <Search size={18} className={styles.searchIcon} />
+          <input 
+            type="text" 
+            placeholder="Filtrer les albums, singles, EPs..." 
+            value={filterQuery}
+            onChange={(e) => setFilterQuery(e.target.value)}
+            className={styles.searchInput}
+          />
+          {filterQuery && (
+            <button className={styles.clearButton} onClick={() => setFilterQuery('')}>
+              Effacer
+            </button>
+          )}
+        </div>
+      </div>
 
-          // Sort order: albums first, then EPs, then singles, then others
-          const order = ['album', 'ep', 'single', 'compilation', 'appearance'];
-          const sortedTypes = Object.keys(grouped).sort((a, b) => {
-            const indexA = order.indexOf(a);
-            const indexB = order.indexOf(b);
-            if (indexA !== -1 && indexB !== -1) return indexA - indexB;
-            if (indexA !== -1) return -1;
-            if (indexB !== -1) return 1;
-            return a.localeCompare(b);
-          });
-
-          const typeLabels: Record<string, string> = {
-            album: 'Albums',
-            ep: 'EP',
-            single: 'Singles',
-            compilation: 'Compilations',
-            appearance: 'Apparitions & Participations'
-          };
-
-          return sortedTypes.map(type => (
-            <div key={type} className={styles.typeGroup}>
-              <div className={styles.sectionHeader}>
-                <h2>{typeLabels[type] || type.charAt(0).toUpperCase() + type.slice(1)}</h2>
-                <span className={styles.countBadge}>{grouped[type].length}</span>
-              </div>
-
-              <div className={styles.albumsList} style={{ marginBottom: '48px' }}>
-                {grouped[type].map((album: any) => (
-                  <div key={album.id} className={styles.albumListItemWrapper}>
-                    <Link href={`/library/album/${album.id}`} className={styles.albumListItemLink}>
-                      <div className={`${styles.albumListItem} ${album.status !== 'downloaded' ? styles.missingAlbum : ''}`}>
-                        <div className={styles.albumCover}>
-                          <img 
-                            src={`/api/albums/${album.id}/cover?v=${new Date(album.metadata?.last_scan || Date.now()).getTime()}`} 
-                            alt={album.name} 
-                            onError={(e: any) => {
-                              e.target.style.display = 'none';
-                            }}
-                          />
-                          <div className={styles.coverOverlay}>
-                            <Disc size={48} strokeWidth={1} />
-                          </div>
-                        </div>
-                        
-                        <div className={styles.albumInfo}>
-                          <div className={styles.albumMainDetails}>
-                            <h3 title={album.name}>{album.name}</h3>
-                            <div className={styles.albumMeta}>
-                              <span>{album.release_date ? album.release_date.toString().substring(0, 4) : 'Année inconnue'}</span>
-                              {album.quality && <span className={styles.qualityBadge}>{album.quality}</span>}
-                            </div>
-                          </div>
-
-                          <div className={styles.albumSecondaryDetails}>
-                            <div className={styles.tagList}>
-                              {album.metadata?.bitrate && <span>{album.metadata.bitrate} kbps</span>}
-                              {album.metadata?.sampleRate && <span>{album.metadata.sampleRate / 1000} kHz</span>}
-                              {album.metadata?.genre && <span>{album.metadata.genre}</span>}
-                            </div>
-                            <div className={styles.albumStatus}>
-                              {album.status === 'downloaded' ? (
-                                <span className={styles.downloaded}><CheckCircle2 size={14} /> Collecté</span>
-                              ) : (
-                                <span className={styles.missing}><Clock size={14} /> Manquant</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </Link>
-                    <div className={styles.albumActions}>
-                      <button 
-                        className={`${styles.actionBtn} ${styles.scanQuickBtn}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleScanAlbum(album.id, album.name);
-                        }}
-                        title="Scanner les fichiers locaux"
-                      >
-                        <RefreshCw size={18} />
-                      </button>
-                      <button 
-                        className={`${styles.actionBtn} ${styles.searchQuickBtn}`}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleManualSearch(album.id, album.name);
-                        }}
-                        title="Rechercher / Mettre à jour cet album"
-                      >
-                        <Search size={18} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ));
-        })()}
-      </section>
+      <div className={styles.columnsGrid}>
+        <DiscographyColumn 
+          title="Deezer" 
+          icon={<Music size={20} />} 
+          albums={discography.deezer.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
+          onSearch={(a) => handleManualSearch(a.name)}
+          color="#00C7F2"
+          isFiltering={!!filterQuery}
+        />
+        <DiscographyColumn 
+          title="MusicBrainz" 
+          icon={<Database size={20} />} 
+          albums={discography.musicbrainz.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
+          onSearch={(a) => handleManualSearch(a.name)}
+          color="#EB4C39"
+          isFiltering={!!filterQuery}
+        />
+        <DiscographyColumn 
+          title="Discogs" 
+          icon={<Disc size={20} />} 
+          albums={discography.discogs.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
+          onSearch={(a) => handleManualSearch(a.name)}
+          color="#333333"
+          isFiltering={!!filterQuery}
+        />
+      </div>
 
       <SearchModal 
         isOpen={isModalOpen} 
         onClose={() => setIsModalOpen(false)} 
         query={searchQuery}
         albumId={activeAlbumId}
+      />
+
+      <SyncOptionsModal 
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        onSync={handleSync}
+        artistName={artist.name}
       />
 
       {isDeleteModalOpen && (
@@ -325,34 +260,9 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
               Supprimer l'artiste
             </h2>
             <p style={{ marginBottom: '24px', color: 'var(--text-muted)' }}>
-              Êtes-vous sûr de vouloir supprimer <strong>{artist.name}</strong> ? Cette action est irréversible et supprimera la trace des albums depuis la base de données.
+              Êtes-vous sûr de vouloir supprimer <strong>{artist.name}</strong> ?
             </p>
 
-            {(() => {
-              const downloadedCount = albums.filter(a => a.status === 'downloaded').length;
-              if (downloadedCount > 0) {
-                return (
-                  <div style={{ 
-                    padding: '12px 16px', 
-                    backgroundColor: 'rgba(245, 158, 11, 0.1)', 
-                    border: '1px solid rgba(245, 158, 11, 0.2)',
-                    borderRadius: 'var(--radius)',
-                    marginBottom: '24px',
-                    display: 'flex',
-                    gap: '12px',
-                    color: 'var(--warning)',
-                    fontSize: '0.9rem'
-                  }}>
-                    <AlertCircle size={20} style={{ flexShrink: 0 }} />
-                    <p>
-                      <strong>Attention :</strong> {downloadedCount} album{downloadedCount > 1 ? 's sont' : ' est'} déjà présent{downloadedCount > 1 ? 's' : ''} sur votre disque dur.
-                    </p>
-                  </div>
-                );
-              }
-              return null;
-            })()}
-            
             <label style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', cursor: 'pointer', padding: '16px', backgroundColor: 'var(--bg-color)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
               <input 
                 type="checkbox" 
@@ -360,29 +270,13 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
                 onChange={(e) => setDeleteWithFiles(e.target.checked)}
                 style={{ width: '18px', height: '18px', accentColor: 'var(--danger)' }}
               />
-              <span style={{ display: 'flex', flexDirection: 'column' }}>
-                <strong>Supprimer les fichiers associés</strong>
-                <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                  Supprime définitivement les {albums.filter(a => a.status === 'downloaded').length} dossier{albums.filter(a => a.status === 'downloaded').length > 1 ? 's' : ''} d'albums du disque dur.
-                </span>
-              </span>
+              <span>Supprimer les fichiers du disque</span>
             </label>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button 
-                className={`${styles.button} ${styles.outlineButton}`}
-                onClick={() => setIsDeleteModalOpen(false)}
-                disabled={deleting}
-              >
-                Annuler
-              </button>
-              <button 
-                className={styles.button}
-                onClick={handleDelete}
-                disabled={deleting}
-                style={{ backgroundColor: 'var(--danger)' }}
-              >
-                {deleting ? 'Suppression...' : 'Oui, supprimer'}
+              <button className={`${styles.button} ${styles.outlineButton}`} onClick={() => setIsDeleteModalOpen(false)}>Annuler</button>
+              <button className={styles.button} onClick={handleDelete} disabled={deleting} style={{ backgroundColor: 'var(--danger)' }}>
+                {deleting ? 'Suppression...' : 'Supprimer'}
               </button>
             </div>
           </div>
