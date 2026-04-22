@@ -86,14 +86,18 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
         const history = data.history || [];
         
         history.forEach((entry: any) => {
-          if (!seenHistoryIds.current.has(entry.id)) {
+          if ((entry.status === 'completed' || entry.status === 'failed') && !seenHistoryIds.current.has(entry.id)) {
             newlySeenIdsFromHistory.push(entry.id);
           }
         });
 
         // Update state and refs
-        if (newlySeenIdsFromHistory.length > 0 || activeDownloads.length > 0) {
-          setToasts((currentToasts) => {
+        setToasts((currentToasts) => {
+          // Check if we even need to update
+          const hasActiveToasts = currentToasts.some(t => !t.keep && (t.type === 'download' || t.type === 'sync'));
+          if (newlySeenIdsFromHistory.length === 0 && activeDownloads.length === 0 && !hasActiveToasts) {
+            return currentToasts;
+          }
             let updatedToasts = [...currentToasts];
             
             // A. Update active toasts
@@ -228,9 +232,8 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
             });
           });
 
-          // Finalize seen IDs
+          // Finalize seen IDs (only for completed/failed which were pushed)
           newlySeenIdsFromHistory.forEach(id => seenHistoryIds.current.add(id));
-        }
 
         // Side effects after state update
         eventsToDispatch.forEach(detail => {
