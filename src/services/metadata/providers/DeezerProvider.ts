@@ -29,10 +29,16 @@ export class DeezerProvider implements MetadataProvider {
     }));
   }
 
-  async getArtistAlbums(deezerArtistId: string, onProgress?: (current: number, total: number) => void, filterTypes?: string[]): Promise<RemoteAlbum[]> {
+  async getArtistAlbums(
+    deezerArtistId: string, 
+    onProgress?: (current: number, total: number) => void, 
+    filterTypes?: string[],
+    deep?: boolean
+  ): Promise<RemoteAlbum[]> {
     let allAlbums: any[] = [];
     let index = 0;
     let total = 0;
+    const maxAlbums = deep ? 1000 : 300; // Limite à 300 albums max par défaut pour éviter d'importer trop de doublons
 
     do {
       const data = await this.fetchDeezer(`artist/${deezerArtistId}/albums`, { 
@@ -49,10 +55,10 @@ export class DeezerProvider implements MetadataProvider {
       index += albums.length;
       if (onProgress) onProgress(allAlbums.length, total);
 
-      if (index < total) {
+      if (index < total && index < maxAlbums) {
         await new Promise(resolve => setTimeout(resolve, 500));
       }
-    } while (index < total && index < 1000);
+    } while (index < total && index < maxAlbums);
 
     return allAlbums
       .map((r: any) => {

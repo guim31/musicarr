@@ -230,3 +230,26 @@
   opacity: 1;
   transform: scale(1.1);
 }
+
+.loadMoreBtn {
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.2s ease;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.loadMoreBtn:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--accent-color, var(--accent));
+  color: var(--foreground);
+}

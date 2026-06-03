@@ -34,6 +34,6 @@ export interface RemoteTrack {
 export interface MetadataProvider {
   name: string;
   searchArtist(query: string): Promise<RemoteArtist[]>;
-  getArtistAlbums(artistId: string, onProgress?: (current: number, total: number) => void, filterTypes?: string[]): Promise<RemoteAlbum[]>;
+  getArtistAlbums(artistId: string, onProgress?: (current: number, total: number) => void, filterTypes?: string[], deep?: boolean): Promise<RemoteAlbum[]>;
   getAlbumTracks?(albumId: string): Promise<RemoteTrack[]>;
 }

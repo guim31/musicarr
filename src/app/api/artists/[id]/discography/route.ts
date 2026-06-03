@@ -52,9 +52,27 @@ export async function GET(
     const artist = db.prepare('SELECT name FROM artists WHERE id = ?').get(artistId) as any;
     const normalizedArtist = artist ? CompareUtils.normalize(artist.name) : '';
 
+    // Pre-calculate normalized local names to avoid O(N * M) complex normalize calls
+    const localAlbumsWithNormalized = sortedLocalAlbums.map(a => {
+      const normalizedLocal = CompareUtils.normalize(a.name);
+      return {
+        album: a,
+        normalizedLocal,
+        localWithoutArtist: normalizedArtist
+          ? normalizedLocal.replace(new RegExp(`^${normalizedArtist}`), '').trim()
+          : ''
+      };
+    });
+
     Object.keys(discography).forEach(provider => {
       discography[provider] = discography[provider].map(item => {
-        const matchingLocal = sortedLocalAlbums.find(a => {
+        const normalizedItem = CompareUtils.normalize(item.name);
+        const itemWithoutArtist = normalizedArtist
+          ? normalizedItem.replace(new RegExp(`^${normalizedArtist}`), '').trim()
+          : '';
+
+        const matchingLocal = localAlbumsWithNormalized.find(local => {
+          const a = local.album;
           // 1. Match par MBID (si présent des deux côtés)
           if (item.mbid && a.mbid && item.mbid === a.mbid) return true;
           
@@ -62,19 +80,13 @@ export async function GET(
           if (item.discogsId && a.discogs_id && item.discogsId.toString() === a.discogs_id.toString()) return true;
           
           // 3. Match par Nom normalisé
-          const normalizedItem = CompareUtils.normalize(item.name);
-          const normalizedLocal = CompareUtils.normalize(a.name);
-          if (normalizedItem === normalizedLocal) return true;
+          if (normalizedItem === local.normalizedLocal) return true;
 
           // 4. Match en ignorant le nom de l'artiste au début du nom de l'album (ex: "Iron Maiden - Killers" vs "Killers")
-          if (normalizedArtist) {
-            const itemWithoutArtist = normalizedItem.replace(new RegExp(`^${normalizedArtist}`), '').trim();
-            const localWithoutArtist = normalizedLocal.replace(new RegExp(`^${normalizedArtist}`), '').trim();
-            if (itemWithoutArtist && localWithoutArtist && itemWithoutArtist === localWithoutArtist) return true;
-          }
+          if (normalizedArtist && itemWithoutArtist && local.localWithoutArtist && itemWithoutArtist === local.localWithoutArtist) return true;
           
           return false;
-        });
+        })?.album;
         
         return {
           ...item,

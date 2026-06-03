@@ -28,17 +28,42 @@ export class MusicBrainzProvider implements MetadataProvider {
     }));
   }
 
-  async getArtistAlbums(artistMbid: string, onProgress?: (current: number, total: number) => void, filterTypes?: string[]): Promise<RemoteAlbum[]> {
+  async getArtistAlbums(
+    artistMbid: string, 
+    onProgress?: (current: number, total: number) => void, 
+    filterTypes?: string[],
+    deep?: boolean
+  ): Promise<RemoteAlbum[]> {
     let allReleaseGroups: any[] = [];
     let offset = 0;
     let total = 0;
+    const maxLimit = deep ? 5000 : 500;
+
+    // Map filterTypes to MusicBrainz primary types
+    const mbTypes: string[] = [];
+    if (filterTypes && filterTypes.length > 0) {
+      if (filterTypes.includes('album') || filterTypes.includes('compilation')) mbTypes.push('album');
+      if (filterTypes.includes('ep')) mbTypes.push('ep');
+      if (filterTypes.includes('single')) mbTypes.push('single');
+      if (filterTypes.includes('appearance')) {
+        mbTypes.push('album');
+        mbTypes.push('ep');
+        mbTypes.push('single');
+      }
+    }
 
     do {
-      const data = await this.fetchMB('release-group', {
+      const params: Record<string, string> = {
         artist: artistMbid,
         limit: '100',
         offset: offset.toString()
-      });
+      };
+
+      if (mbTypes.length > 0) {
+        params.type = mbTypes.join('|');
+      }
+
+      const data = await this.fetchMB('release-group', params);
 
       total = data['release-group-count'] || 0;
       const groups = data['release-groups'] || [];
@@ -48,10 +73,10 @@ export class MusicBrainzProvider implements MetadataProvider {
       if (onProgress) onProgress(allReleaseGroups.length, total);
       
       // Petit délai pour respecter les limites de débit de MusicBrainz (1 req/sec recommandé)
-      if (offset < total) {
+      if (offset < total && offset < maxLimit) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    } while (offset < total && offset < 5000); // On met une limite de sécurité à 5000 pour éviter les boucles infinies
+    } while (offset < total && offset < maxLimit); // On met une limite basée sur deep pour éviter les lenteurs
 
     const validReleaseGroups = allReleaseGroups.filter((rg: any) => {
       const primaryType = rg['primary-type']?.toLowerCase();

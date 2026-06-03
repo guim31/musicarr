@@ -38,10 +38,16 @@ export class DiscogsProvider implements MetadataProvider {
     }));
   }
 
-  async getArtistAlbums(discogsArtistId: string, onProgress?: (current: number, total: number) => void, filterTypes?: string[]): Promise<RemoteAlbum[]> {
+  async getArtistAlbums(
+    discogsArtistId: string, 
+    onProgress?: (current: number, total: number) => void, 
+    filterTypes?: string[],
+    deep?: boolean
+  ): Promise<RemoteAlbum[]> {
     let allReleases: any[] = [];
     let page = 1;
     let totalPages = 1;
+    const maxPages = deep ? 50 : 5; // Limite à 5 pages (500 releases) par défaut pour éviter de figer et respecter les limites API
 
     do {
       const data = await this.fetchDiscogs(`artists/${discogsArtistId}/releases`, { 
@@ -61,10 +67,10 @@ export class DiscogsProvider implements MetadataProvider {
       
       page++;
       // Petit délai pour l'API Discogs (60 req/min max avec auth)
-      if (page <= totalPages) {
+      if (page <= totalPages && page <= maxPages) {
         await new Promise(resolve => setTimeout(resolve, 1000));
       }
-    } while (page <= totalPages && page <= 50);
+    } while (page <= totalPages && page <= maxPages);
 
     console.log(`[Discogs] Fetch terminé. Transformation de ${allReleases.length} releases...`);
     

@@ -7,12 +7,13 @@ import styles from './SyncOptionsModal.module.css';
 interface SyncOptionsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSync: (types: string[]) => void;
+  onSync: (types: string[], deep: boolean) => void;
   artistName: string;
 }
 
 export default function SyncOptionsModal({ isOpen, onClose, onSync, artistName }: SyncOptionsModalProps) {
   const [selectedTypes, setSelectedTypes] = useState<string[]>(['album', 'ep']);
+  const [deepSync, setDeepSync] = useState(false);
   
   const options = [
     { id: 'album', label: 'Albums Studio', description: 'Les albums officiels de l\'artiste' },
@@ -31,7 +32,7 @@ export default function SyncOptionsModal({ isOpen, onClose, onSync, artistName }
   };
 
   const handleSync = () => {
-    onSync(selectedTypes);
+    onSync(selectedTypes, deepSync);
     onClose();
   };
 
@@ -72,6 +73,24 @@ export default function SyncOptionsModal({ isOpen, onClose, onSync, artistName }
                 </div>
               </label>
             ))}
+          </div>
+
+          <div className={styles.deepSyncSection}>
+            <label className={`${styles.optionItem} ${deepSync ? styles.active : ''}`}>
+              <input 
+                type="checkbox" 
+                checked={deepSync}
+                onChange={() => setDeepSync(!deepSync)}
+                className={styles.hiddenInput}
+              />
+              <div className={styles.checkbox}>
+                {deepSync && <Check size={14} />}
+              </div>
+              <div className={styles.optionText}>
+                <strong>Recherche approfondie (Deep Sync)</strong>
+                <span>Scanne l'intégralité du catalogue (plus lent, recommandé pour artistes peu connus)</span>
+              </div>
+            </label>
           </div>
 
           <div className={styles.infoBox}>

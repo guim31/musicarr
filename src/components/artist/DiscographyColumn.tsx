@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Search, CheckCircle, ExternalLink, Calendar, Music } from 'lucide-react';
 import Link from 'next/link';
 import styles from './DiscographyColumn.module.css';
@@ -27,12 +27,16 @@ interface DiscographyColumnProps {
 }
 
 export default function DiscographyColumn({ title, icon, albums, onSearch, color, isFiltering }: DiscographyColumnProps) {
+  const [visibleCount, setVisibleCount] = useState(100);
+
   // Sort by date DESC
   const sortedAlbums = [...albums].sort((a, b) => {
     const dateA = a.releaseDate || '0000';
     const dateB = b.releaseDate || '0000';
     return dateB.localeCompare(dateA);
   });
+
+  const displayedAlbums = sortedAlbums.slice(0, visibleCount);
 
   return (
     <div className={styles.column} style={{ '--accent-color': color } as any}>
@@ -50,68 +54,79 @@ export default function DiscographyColumn({ title, icon, albums, onSearch, color
             {isFiltering ? 'Aucun album ne correspond.' : 'Aucun résultat en cache. Lancez un scan.'}
           </div>
         ) : (
-          sortedAlbums.map((album, idx) => {
-            const cardContent = (
-              <div className={`${styles.card} ${album.isOwned ? styles.owned : styles.missing}`}>
-                <div className={styles.cover}>
-                  {album.image ? (
-                    <img src={album.image} alt={album.name} loading="lazy" />
-                  ) : (
-                    <div className={styles.placeholder}><Music size={20} /></div>
-                  )}
-                  {album.isOwned && (
-                    <div className={styles.ownedBadge}>
-                      <CheckCircle size={14} fill="var(--success)" color="white" />
-                    </div>
-                  )}
-                </div>
-                
-                <div className={styles.info}>
-                  <h4 title={album.name}>{album.name}</h4>
-                  <div className={styles.meta}>
-                    {album.releaseDate && (
-                      <span className={styles.date}>
-                        <Calendar size={12} />
-                        {album.releaseDate.split('-')[0]}
-                      </span>
+          <>
+            {displayedAlbums.map((album, idx) => {
+              const cardContent = (
+                <div className={`${styles.card} ${album.isOwned ? styles.owned : styles.missing}`}>
+                  <div className={styles.cover}>
+                    {album.image ? (
+                      <img src={album.image} alt={album.name} loading="lazy" />
+                    ) : (
+                      <div className={styles.placeholder}><Music size={20} /></div>
                     )}
-                    <span className={styles.typeBadge}>{album.type}</span>
+                    {album.isOwned && (
+                      <div className={styles.ownedBadge}>
+                        <CheckCircle size={14} fill="var(--success)" color="white" />
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className={styles.info}>
+                    <h4 title={album.name}>{album.name}</h4>
+                    <div className={styles.meta}>
+                      {album.releaseDate && (
+                        <span className={styles.date}>
+                          <Calendar size={12} />
+                          {album.releaseDate.split('-')[0]}
+                        </span>
+                      )}
+                      <span className={styles.typeBadge}>{album.type}</span>
+                    </div>
+                  </div>
+
+                  <div className={styles.actions}>
+                    {!album.isOwned && (
+                      <button 
+                        className={styles.searchBtn} 
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onSearch(album);
+                        }}
+                        title="Chercher pour téléchargement"
+                      >
+                        <Search size={16} />
+                      </button>
+                    )}
+                    {album.isOwned && (
+                      <div className={styles.checkIcon} title="Déjà dans la collection">
+                        <ExternalLink size={18} color="var(--success)" />
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                <div className={styles.actions}>
-                  {!album.isOwned && (
-                    <button 
-                      className={styles.searchBtn} 
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onSearch(album);
-                      }}
-                      title="Chercher pour téléchargement"
-                    >
-                      <Search size={16} />
-                    </button>
-                  )}
-                  {album.isOwned && (
-                    <div className={styles.checkIcon} title="Déjà dans la collection">
-                      <ExternalLink size={18} color="var(--success)" />
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-
-            if (album.isOwned && album.localId) {
-              return (
-                <Link key={`${album.name}-${idx}`} href={`/library/album/${album.localId}`} className={styles.cardLink}>
-                  {cardContent}
-                </Link>
               );
-            }
 
-            return <React.Fragment key={`${album.name}-${idx}`}>{cardContent}</React.Fragment>;
-          })
+              if (album.isOwned && album.localId) {
+                return (
+                  <Link key={`${album.name}-${idx}`} href={`/library/album/${album.localId}`} className={styles.cardLink}>
+                    {cardContent}
+                  </Link>
+                );
+              }
+
+              return <React.Fragment key={`${album.name}-${idx}`}>{cardContent}</React.Fragment>;
+            })}
+            
+            {sortedAlbums.length > visibleCount && (
+              <button 
+                className={styles.loadMoreBtn} 
+                onClick={() => setVisibleCount(prev => prev + 100)}
+              >
+                Afficher plus (+{sortedAlbums.length - visibleCount})
+              </button>
+            )}
+          </>
         )}
       </div>
     </div>

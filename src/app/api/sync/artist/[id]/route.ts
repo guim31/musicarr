@@ -7,12 +7,12 @@ export async function POST(
 ) {
   try {
     const { id: artistId } = await params;
-    const { types } = await request.json().catch(() => ({}));
+    const { types, deep } = await request.json().catch(() => ({}));
     const sync = new SyncService();
     
     // On lance la synchro en arrière-plan car elle peut être longue
     // SyncService gère lui-même son enregistrement dans la table 'activity'
-    sync.syncArtist(parseInt(artistId), types).catch(err => {
+    sync.syncArtist(parseInt(artistId), types, deep).catch(err => {
       console.error(`Background Sync Error for artist ${artistId}:`, err);
     });
     

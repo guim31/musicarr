@@ -91,14 +91,14 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
     return () => window.removeEventListener('musicarr:activity-finished', handleRefresh);
   }, [id]);
 
-  const handleSync = async (types?: string[]) => {
+  const handleSync = async (types?: string[], deep?: boolean) => {
     try {
       setSyncing(true);
       showToast(`Démarrage de la mise à jour pour ${artist?.name}...`, 'info');
       const res = await fetch(`/api/sync/artist/${id}`, { 
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ types })
+        body: JSON.stringify({ types, deep })
       });
       const data = await res.json();
       if (data.success) {

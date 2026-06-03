@@ -9,7 +9,7 @@ import { DeezerProvider } from './providers/DeezerProvider';
 export class SyncService {
   private engine = new MetadataEngine();
 
-  async syncArtist(artistId: number, filterTypes?: string[]) {
+  async syncArtist(artistId: number, filterTypes?: string[], deep?: boolean) {
     const artist = db.prepare('SELECT * FROM artists WHERE id = ?').get(artistId) as any;
     if (!artist) throw new Error('Artiste non trouvé');
 
@@ -57,8 +57,8 @@ export class SyncService {
           INSERT INTO artist_cache (artist_id, provider, data, updated_at)
           VALUES (?, ?, ?, CURRENT_TIMESTAMP)
           ON CONFLICT(artist_id, provider) DO UPDATE SET 
-            data = excluded.data,
-            updated_at = CURRENT_TIMESTAMP
+             data = excluded.data,
+             updated_at = CURRENT_TIMESTAMP
         `).run(artistId, provider, JSON.stringify(data));
       };
 
@@ -73,7 +73,7 @@ export class SyncService {
         }
         if (dzId) {
           console.log(`[Sync] Deezer ID trouvé : ${dzId}`);
-          const albums = await withTimeout(dzProvider.getArtistAlbums(dzId, (c, t) => updateProgress('Deezer', c, t), filterTypes), 'Deezer');
+          const albums = await withTimeout(dzProvider.getArtistAlbums(dzId, (c, t) => updateProgress('Deezer', c, t), filterTypes, deep), 'Deezer');
           console.log(`[Sync] Deezer scan fini, sauvegarde en cache (${albums.length} items)...`);
           saveToCache('deezer', albums);
         }
@@ -90,7 +90,7 @@ export class SyncService {
         }
         if (mbId) {
           console.log(`[Sync] MusicBrainz ID trouvé : ${mbId}`);
-          const albums = await withTimeout(mbProvider.getArtistAlbums(mbId, (c, t) => updateProgress('MusicBrainz', c, t), filterTypes), 'MusicBrainz');
+          const albums = await withTimeout(mbProvider.getArtistAlbums(mbId, (c, t) => updateProgress('MusicBrainz', c, t), filterTypes, deep), 'MusicBrainz');
           console.log(`[Sync] MusicBrainz scan fini, sauvegarde en cache (${albums.length} items)...`);
           saveToCache('musicbrainz', albums);
         }
@@ -107,7 +107,7 @@ export class SyncService {
         }
         if (dcId) {
           console.log(`[Sync] Discogs ID trouvé : ${dcId}`);
-          const albums = await withTimeout(dcProvider.getArtistAlbums(dcId, (c, t) => updateProgress('Discogs', c, t), filterTypes), 'Discogs');
+          const albums = await withTimeout(dcProvider.getArtistAlbums(dcId, (c, t) => updateProgress('Discogs', c, t), filterTypes, deep), 'Discogs');
           console.log(`[Sync] Discogs scan fini, sauvegarde en cache (${albums.length} items)...`);
           saveToCache('discogs', albums);
           console.log(`[Sync] Discogs cache sauvegardé.`);
