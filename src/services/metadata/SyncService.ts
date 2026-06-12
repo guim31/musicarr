@@ -42,13 +42,13 @@ export class SyncService {
       const dcProvider = new DiscogsProvider();
       const dzProvider = new DeezerProvider();
 
-      const withTimeout = <T>(promise: Promise<T[]>, providerName: string): Promise<T[]> => {
+      const withTimeout = <T>(promise: Promise<T[]>, providerName: string): Promise<T[] | null> => {
         return Promise.race([
           promise,
           new Promise<T[]>((_, reject) => setTimeout(() => reject(new Error(`Timeout ${providerName}`)), 300000)) // 5 minutes max
         ]).catch(err => {
           console.warn(`[Sync] ${providerName} a échoué ou expiré :`, err.message);
-          return [] as T[];
+          return null;
         });
       };
 
@@ -74,8 +74,10 @@ export class SyncService {
         if (dzId) {
           console.log(`[Sync] Deezer ID trouvé : ${dzId}`);
           const albums = await withTimeout(dzProvider.getArtistAlbums(dzId, (c, t) => updateProgress('Deezer', c, t), filterTypes, deep), 'Deezer');
-          console.log(`[Sync] Deezer scan fini, sauvegarde en cache (${albums.length} items)...`);
-          saveToCache('deezer', albums);
+          if (albums !== null) {
+            console.log(`[Sync] Deezer scan fini, sauvegarde en cache (${albums.length} items)...`);
+            saveToCache('deezer', albums);
+          }
         }
       } catch (e) { console.error('Deezer step failed', e); }
 
@@ -91,8 +93,10 @@ export class SyncService {
         if (mbId) {
           console.log(`[Sync] MusicBrainz ID trouvé : ${mbId}`);
           const albums = await withTimeout(mbProvider.getArtistAlbums(mbId, (c, t) => updateProgress('MusicBrainz', c, t), filterTypes, deep), 'MusicBrainz');
-          console.log(`[Sync] MusicBrainz scan fini, sauvegarde en cache (${albums.length} items)...`);
-          saveToCache('musicbrainz', albums);
+          if (albums !== null) {
+            console.log(`[Sync] MusicBrainz scan fini, sauvegarde en cache (${albums.length} items)...`);
+            saveToCache('musicbrainz', albums);
+          }
         }
       } catch (e) { console.error('MusicBrainz step failed', e); }
 
@@ -108,9 +112,11 @@ export class SyncService {
         if (dcId) {
           console.log(`[Sync] Discogs ID trouvé : ${dcId}`);
           const albums = await withTimeout(dcProvider.getArtistAlbums(dcId, (c, t) => updateProgress('Discogs', c, t), filterTypes, deep), 'Discogs');
-          console.log(`[Sync] Discogs scan fini, sauvegarde en cache (${albums.length} items)...`);
-          saveToCache('discogs', albums);
-          console.log(`[Sync] Discogs cache sauvegardé.`);
+          if (albums !== null) {
+            console.log(`[Sync] Discogs scan fini, sauvegarde en cache (${albums.length} items)...`);
+            saveToCache('discogs', albums);
+            console.log(`[Sync] Discogs cache sauvegardé.`);
+          }
         }
       } catch (e) { console.error('Discogs step failed', e); }
 

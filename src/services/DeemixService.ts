@@ -480,18 +480,6 @@ export class DeemixService {
       timeout: 30000 // 30s timeout pour le début du flux
     });
 
-    const totalLengthRaw = response.headers['content-length'];
-    const totalLength = totalLengthRaw ? parseInt(totalLengthRaw, 10) : 0;
-    let downloadedLength = 0;
-    let activityIdToUpdate = 0;
-
-    // Retrouver l'ID d'activité si l'albumName est connu
-    try {
-      const row = db.prepare("SELECT id FROM activity WHERE status = 'processing' AND title LIKE ? ORDER BY timestamp DESC LIMIT 1").get(`Téléchargement de l'album ${trackInfo.albumName || '%'}%`) as { id: number };
-      if (row) activityIdToUpdate = row.id;
-    } catch (e) { /* ignore */ }
-
-    let lastReportedProgress = 0;
     const CHUNK_SIZE = 2048;
 
     return new Promise((resolve, reject) => {
@@ -501,27 +489,10 @@ export class DeemixService {
 
       response.data.on('data', (chunk: Buffer) => {
         buffer = Buffer.concat([buffer, chunk]);
-        downloadedLength += chunk.length;
-
-        // Mettre à jour la progression du titre courant (si on a un total)
-        if (totalLength > 0 && activityIdToUpdate > 0) {
-          const currentProgress = Math.floor((downloadedLength / totalLength) * 100);
-          if (currentProgress - lastReportedProgress >= 5 || currentProgress === 100) {
-              lastReportedProgress = currentProgress;
-              try {
-                const currentActivity = db.prepare("SELECT details FROM activity WHERE id = ?").get(activityIdToUpdate) as any;
-                if (currentActivity?.details) {
-                  const detailsObj = JSON.parse(currentActivity.details);
-                  detailsObj.percentage = currentProgress;
-                  db.prepare("UPDATE activity SET details = ? WHERE id = ?").run(JSON.stringify(detailsObj), activityIdToUpdate);
-                }
-              } catch(e) {}
-          }
-        }
 
         // Traitement des blocs de 2048 bytes
         while (buffer.length >= CHUNK_SIZE) {
-          let processChunk = buffer.subarray(0, CHUNK_SIZE);
+          const processChunk = buffer.subarray(0, CHUNK_SIZE);
           buffer = buffer.subarray(CHUNK_SIZE);
 
           if (chunkIndex % 3 === 0 && processChunk.length === CHUNK_SIZE) {

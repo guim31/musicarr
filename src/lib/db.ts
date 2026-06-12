@@ -131,4 +131,12 @@ const migrate = () => {
 
 migrate();
 
+// Nettoyage au démarrage : supprime les verrous de scan bloqués et marque les activités orphelines comme échouées
+try {
+  db.prepare("DELETE FROM settings WHERE key = 'scan_progress'").run();
+  db.prepare("UPDATE activity SET status = 'failed', message = 'Interrompu par le redémarrage du serveur' WHERE status = 'processing'").run();
+} catch (e: any) {
+  console.error('[DB] Erreur lors du nettoyage de démarrage :', e.message);
+}
+
 export default db;
