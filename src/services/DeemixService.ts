@@ -447,8 +447,15 @@ export class DeemixService {
 
       const streamUrl = mediaData.media[0].sources[0].url;
       return this.processDownloadStream(streamUrl, filePath, trackInfo, actualTrackId, headers);
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Erreur téléchargement piste ${trackId}:`, error);
+      if (axios.isAxiosError(error) && error.response?.status === 403) {
+        const errors = error.response.data?.errors;
+        if (errors && errors[0]?.code === 1002) {
+          throw new Error("L'ARL Deezer configuré n'a pas les droits suffisants pour télécharger (compte Premium/HiFi requis)");
+        }
+        throw new Error("Accès refusé par Deezer (403). Veuillez vérifier ou renouveler votre ARL");
+      }
       throw error;
     }
   }
