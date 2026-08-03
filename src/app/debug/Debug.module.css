@@ -183,3 +183,58 @@ input:checked + .slider:before {
   transform: translateX(16px);
   background-color: #000000;
 }
+
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+
+  .titleArea h1 {
+    font-size: 1.8rem;
+  }
+
+  .actions {
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .toggleArea {
+    flex: 1;
+    min-width: 130px;
+    margin-right: 0;
+  }
+
+  .button {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .terminalContainer {
+    height: calc(100vh - 330px);
+  }
+}
+
+@media (max-width: 480px) {
+  .terminalContent {
+    padding: 10px;
+    font-size: 0.8rem;
+  }
+
+  .logEntry {
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 0;
+  }
+
+  .timestamp, .level {
+    display: inline-block;
+    min-width: auto;
+  }
+
+  .level {
+    margin-left: 8px;
+  }
+}

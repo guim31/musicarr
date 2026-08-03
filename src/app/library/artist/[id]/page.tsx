@@ -52,6 +52,7 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
 
   // Filter state
   const [filterQuery, setFilterQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'deezer' | 'musicbrainz' | 'discogs'>('deezer');
 
   const fetchData = async () => {
     try {
@@ -274,31 +275,58 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
+      <div className={styles.mobileTabs}>
+        <button 
+          className={`${styles.mobileTab} ${activeTab === 'deezer' ? styles.mobileTabActive : ''}`}
+          onClick={() => setActiveTab('deezer')}
+        >
+          Deezer ({discography.deezer.length})
+        </button>
+        <button 
+          className={`${styles.mobileTab} ${activeTab === 'musicbrainz' ? styles.mobileTabActive : ''}`}
+          onClick={() => setActiveTab('musicbrainz')}
+        >
+          MusicBrainz ({discography.musicbrainz.length})
+        </button>
+        <button 
+          className={`${styles.mobileTab} ${activeTab === 'discogs' ? styles.mobileTabActive : ''}`}
+          onClick={() => setActiveTab('discogs')}
+        >
+          Discogs ({discography.discogs.length})
+        </button>
+      </div>
+
       <div className={styles.columnsGrid}>
-        <DiscographyColumn 
-          title="Deezer" 
-          icon={<Music size={20} />} 
-          albums={discography.deezer.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
-          onSearch={(a) => handleManualSearch(a.name)}
-          color="#00C7F2"
-          isFiltering={!!filterQuery}
-        />
-        <DiscographyColumn 
-          title="MusicBrainz" 
-          icon={<Database size={20} />} 
-          albums={discography.musicbrainz.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
-          onSearch={(a) => handleManualSearch(a.name)}
-          color="#EB4C39"
-          isFiltering={!!filterQuery}
-        />
-        <DiscographyColumn 
-          title="Discogs" 
-          icon={<Disc size={20} />} 
-          albums={discography.discogs.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
-          onSearch={(a) => handleManualSearch(a.name)}
-          color="#333333"
-          isFiltering={!!filterQuery}
-        />
+        <div className={activeTab !== 'deezer' ? styles.hideMobile : ''}>
+          <DiscographyColumn 
+            title="Deezer" 
+            icon={<Music size={20} />} 
+            albums={discography.deezer.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
+            onSearch={(a) => handleManualSearch(a.name)}
+            color="#00C7F2"
+            isFiltering={!!filterQuery}
+          />
+        </div>
+        <div className={activeTab !== 'musicbrainz' ? styles.hideMobile : ''}>
+          <DiscographyColumn 
+            title="MusicBrainz" 
+            icon={<Database size={20} />} 
+            albums={discography.musicbrainz.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
+            onSearch={(a) => handleManualSearch(a.name)}
+            color="#EB4C39"
+            isFiltering={!!filterQuery}
+          />
+        </div>
+        <div className={activeTab !== 'discogs' ? styles.hideMobile : ''}>
+          <DiscographyColumn 
+            title="Discogs" 
+            icon={<Disc size={20} />} 
+            albums={discography.discogs.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
+            onSearch={(a) => handleManualSearch(a.name)}
+            color="#333333"
+            isFiltering={!!filterQuery}
+          />
+        </div>
       </div>
 
       <SearchModal 

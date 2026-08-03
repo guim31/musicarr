@@ -194,6 +194,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .searchBtn {
@@ -208,6 +209,7 @@
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s;
+  flex-shrink: 0;
 }
 
 .searchBtn:hover {
@@ -224,6 +226,7 @@
   justify-content: center;
   opacity: 0.6;
   transition: all 0.2s;
+  flex-shrink: 0;
 }
 
 .card:hover .checkIcon {

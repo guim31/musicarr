@@ -12,3 +12,15 @@ services:
     environment:
       - NODE_ENV=production
     restart: unless-stopped
+
+  sqlite-web:
+    image: coleifer/sqlite-web
+    container_name: musicarr-db-admin
+    restart: unless-stopped
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./data:/data
+    environment:
+      - SQLITE_DATABASE=musicarr.db
+

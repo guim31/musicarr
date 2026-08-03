@@ -29,3 +29,10 @@
     padding-bottom: 80px; /* Space for mobile nav if added */
   }
 }
+
+@media (max-width: 480px) {
+  .mainContent {
+    padding: 12px;
+    padding-bottom: 80px;
+  }
+}

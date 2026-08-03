@@ -156,3 +156,34 @@
   color: var(--success);
   font-weight: 600;
 }
+
+@media (max-width: 768px) {
+  .searchHeader {
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  /* Allow table to scroll horizontally */
+  .resultsTableWrapper {
+    overflow-x: auto;
+  }
+
+  .resultsTable th, 
+  .resultsTable td {
+    padding: 10px 12px;
+    font-size: 0.8rem;
+  }
+}
+
+@media (max-width: 640px) {
+  /* Hide Indexer, Size, and Seeders/Peers on small screens */
+  .resultsTable th:nth-child(2),
+  .resultsTable td:nth-child(2),
+  .resultsTable th:nth-child(4),
+  .resultsTable td:nth-child(4),
+  .resultsTable th:nth-child(6),
+  .resultsTable td:nth-child(6) {
+    display: none;
+  }
+}

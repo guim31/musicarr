@@ -490,3 +490,97 @@
   from { transform: translateY(20px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
+
+.mobileTabs {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .artistHeader {
+    flex-direction: column;
+    text-align: center;
+    gap: 16px;
+  }
+
+  .artistAvatar {
+    width: 96px;
+    height: 96px;
+  }
+
+  .artistAvatar svg {
+    width: 48px;
+    height: 48px;
+  }
+
+  .artistInfo h1 {
+    font-size: 1.8rem;
+  }
+
+  .artistMeta {
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 0.85rem;
+  }
+
+  .artistActions {
+    flex-wrap: wrap;
+    justify-content: center;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .artistActions button {
+    flex: 1;
+    min-width: 120px;
+    padding: 8px 16px;
+    font-size: 0.8rem;
+    justify-content: center;
+  }
+
+  .artistActions .iconButton {
+    flex: 0 0 44px;
+    min-width: 44px;
+  }
+
+  .mobileTabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    width: 100%;
+    justify-content: space-around;
+  }
+
+  .mobileTab {
+    flex: 1;
+    text-align: center;
+    padding: 10px 8px;
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    border-top: none;
+    border-left: none;
+    border-right: none;
+    outline: none;
+    transition: var(--transition);
+  }
+
+  .mobileTabActive {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  .hideMobile {
+    display: none !important;
+  }
+
+  .columnsGrid {
+    grid-template-columns: 1fr;
+    gap: 0;
+    margin-top: 16px;
+  }
+}
