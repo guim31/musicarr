@@ -17,6 +17,12 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
+    # Note : contrairement à la production, ce conteneur tourne en root.
+    # L'étape `development` n'utilise pas docker-entrypoint.sh, car `next dev`
+    # doit écrire dans /app/.next, qui n'est pas monté depuis l'hôte.
+    # Conséquence : les fichiers touchés pendant le développement (tags,
+    # réorganisation) appartiendront à root. C'est sans effet sur la production,
+    # mais pensez-y si vous pointez MUSIC_DIR sur votre vraie bibliothèque.
     restart: unless-stopped
     # Pour le développement, on outrepasse la commande par défaut
     command: npm run dev
