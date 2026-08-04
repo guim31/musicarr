@@ -1,0 +1,38 @@
+name: ✨ Demande de fonctionnalité
+description: Proposer une amélioration
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problème à résoudre
+      description: Quel besoin cette fonctionnalité couvre-t-elle ?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Solution envisagée
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considérées
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Domaine concerné
+      options:
+        - Scan / bibliothèque
+        - Métadonnées (MusicBrainz, Discogs, Deezer, iTunes)
+        - Téléchargement (Prowlarr, SABnzbd, Deemix)
+        - Tags / organisation des fichiers
+        - Interface
+        - Déploiement / Docker
+        - Autre
+    validations:
+      required: true
