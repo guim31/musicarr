@@ -2,15 +2,12 @@ import axios from 'axios';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import * as mm from 'music-metadata';
 import Blowfish from 'blowfish-node';
 import db from '@/lib/db';
+import { runFfmpeg, metadataArgs } from '@/lib/ffmpeg';
 import { DeezerProvider } from './metadata/providers/DeezerProvider';
 import { LibraryService } from './library';
-
-const execAsync = promisify(exec);
 
 export class DeemixService {
   private static deezer = new DeezerProvider();
@@ -544,46 +541,44 @@ export class DeemixService {
 
     // FFmpeg : Injecter les tags et assurer un conteneur propre
     // L'ordre est CRUCIAL : entrées d'abord (-i), puis métadonnées, puis sortie
-    let cmd = `ffmpeg -y -i "${filePath}" `;
-    
+    const args = ['-y', '-i', filePath];
+
     // Deuxième entrée (cover) si dispo
     const coverPath = path.join(path.dirname(filePath), 'folder.jpg');
     const hasCover = fs.existsSync(coverPath);
     if (hasCover) {
-      cmd += `-i "${coverPath}" `;
+      args.push('-i', coverPath);
     }
 
     // Paramètres de mapping et codec
     if (hasCover) {
-      cmd += `-map 0:a -map 1:0 -disposition:v:0 attached_pic `;
+      args.push('-map', '0:a', '-map', '1:0', '-disposition:v:0', 'attached_pic');
     } else {
-      cmd += `-map 0:a `;
+      args.push('-map', '0:a');
     }
-    cmd += `-c:a copy `;
+    args.push('-c:a', 'copy');
 
     // Tags (doivent être placés après les inputs)
-    cmd += `-metadata title="${title.replace(/"/g, '\\"')}" `;
-    cmd += `-metadata artist="${artist.replace(/"/g, '\\"')}" `;
-    cmd += `-metadata album_artist="${albumArtist.replace(/"/g, '\\"')}" `;
-    cmd += `-metadata albumartist="${albumArtist.replace(/"/g, '\\"')}" `; // Pour compatibilité max
-    cmd += `-metadata album="${album.replace(/"/g, '\\"')}" `;
-    cmd += `-metadata track="${trackNum}" `;
-    cmd += `-metadata disc="${discNum}" `;
-    if (dateStr) {
-      cmd += `-metadata date="${dateStr}" `;
-    }
-    if (yearOnly) {
-      cmd += `-metadata year="${yearOnly}" `;
-    }
+    args.push(...metadataArgs({
+      title,
+      artist,
+      album_artist: albumArtist,
+      albumartist: albumArtist, // Pour compatibilité max
+      album,
+      track: trackNum,
+      disc: discNum,
+      date: dateStr || undefined,
+      year: yearOnly || undefined,
+    }));
 
     if (ext.toLowerCase() === '.mp3') {
-      cmd += '-id3v2_version 3 ';
+      args.push('-id3v2_version', '3');
     }
-    
-    cmd += `"${tempPath}"`;
+
+    args.push(tempPath);
 
     try {
-      await execAsync(cmd);
+      await runFfmpeg(args);
       if (fs.existsSync(tempPath)) {
         fs.unlinkSync(filePath);
         fs.renameSync(tempPath, filePath);
