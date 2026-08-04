@@ -24,12 +24,12 @@ deviennent critiques dès que le dépôt est publié ou l'application exposée.
 | Exploitation / Docker | 🟠 À améliorer | Conteneur root, admin de base exposé |
 | Architecture | 🟢 Correct | Séparation nette, motif provider bien appliqué |
 | Qualité de code | 🟠 À améliorer | Lint inutilisable, 186 `any`, aucun test |
-| Performances | 🟡 Acceptable | Aucun index SQL, polling systématique |
+| Performances | 🟡 Acceptable | Aucun index SQL (corrigé), polling systématique |
 | Documentation | 🟢 Correct | `AI_CONTEXT.md` et `.agents/rules/` de bonne tenue |
 
-**Traité dans cette intervention :** ██████████ 6 points sur 12
+**Traité dans cette intervention :** 8 points sur 14
 **Reste à traiter :** l'authentification, le chiffrement des secrets, les tests,
-les index SQL, la validation d'entrées, la robustesse du scan.
+la validation d'entrées, la robustesse du scan, les sauvegardes.
 
 ---
 
@@ -261,34 +261,31 @@ agent — peut raisonnablement conclure que le déchiffrement n'est pas impléme
 
 ## 4. Performances
 
-### 4.1 🟠 Aucun index SQL — **ouvert**
+### 4.1 🟠 Aucun index SQL — **corrigé** ([#15](https://github.com/guim31/musicarr/pull/15))
 
-Le schéma ne déclare **aucun `CREATE INDEX`**. Les colonnes suivantes sont
-pourtant interrogées en permanence :
+Le schéma ne déclarait **aucun `CREATE INDEX`**. Deux requêtes très chaudes
+faisaient un balayage complet de table, confirmé par `EXPLAIN QUERY PLAN` :
 
-| Table | Colonne | Utilisation |
+| Requête | Avant | Fréquence |
 |---|---|---|
-| `albums` | `artist_id` | Chaque affichage d'artiste |
-| `albums` | `status` | Pages Bibliothèque et Manquants |
-| `tracks` | `album_id` | Chaque affichage d'album |
-| `tracks` | `path` | Une fois **par fichier** pendant le scan |
-| `activity` | `status`, `timestamp` | Interrogé toutes les 3 s |
+| `tracks WHERE path = ?` | `SCAN tracks` | Une fois **par fichier** pendant un scan |
+| `albums WHERE status = ?` | `SCAN albums` | Pages Bibliothèque et Manquants |
 
-SQLite crée des index implicites pour les contraintes `UNIQUE`, ce qui couvre
-partiellement `tracks(album_id, title, number, disc)` — mais pas `tracks.path`,
-qui est la recherche la plus fréquente du scan.
+Également indexés : `albums.path`, `activity.status`, `activity.timestamp`.
 
-> **Recommandation.** Cinq `CREATE INDEX IF NOT EXISTS` dans `db.ts`. C'est
-> l'amélioration de performance la moins chère du projet.
+**À noter :** `albums(artist_id)` et `tracks(album_id)` semblaient manquer, mais
+`EXPLAIN QUERY PLAN` montre qu'ils sont déjà couverts par les index implicites
+des contraintes `UNIQUE`, dont ils sont le préfixe gauche. Les ajouter n'aurait
+fait que ralentir les écritures pendant les scans. Vérifier avant d'indexer.
 
-### 4.2 🟡 Rapprochement d'artistes en O(n) par album — **ouvert**
+### 4.2 🟡 Rapprochement d'artistes en O(n) par album — **corrigé** ([#15](https://github.com/guim31/musicarr/pull/15))
 
-`library.ts:39` charge **toute** la table `artists` en mémoire pour chaque album
-dont le nom ne correspond pas exactement, afin de comparer les noms normalisés.
+`saveAlbumTransaction` chargeait **toute** la table `artists` en mémoire pour
+chaque album dont le nom ne correspondait pas exactement, et recalculait la
+normalisation de chaque nom à chaque fois.
 
-> **Recommandation.** Charger la table une seule fois au début du scan dans une
-> `Map` indexée par nom normalisé. Ou, mieux, stocker une colonne
-> `normalized_name` indexée.
+L'index `nom normalisé → id` est désormais construit une fois par scan et tenu à
+jour lors des insertions.
 
 ### 4.3 🟡 Le scan sort avant le nettoyage si aucun fichier n'est trouvé — **ouvert**
 
@@ -352,11 +349,10 @@ demande un scan complet plus une resynchronisation de toutes les discographies.
    et c'est le seul point que je ne peux pas faire à votre place.
 2. **Ne plus renvoyer les clés au client** dans les routes GET (§1.5). Effort
    faible, gain immédiat.
-3. **Ajouter les index SQL** (§4.1). Une dizaine de lignes.
-4. **Authentification par mot de passe unique** (§1.3), avant toute exposition
+3. **Authentification par mot de passe unique** (§1.3), avant toute exposition
    hors du réseau local.
-5. **Premiers tests** sur `CompareUtils` et la logique de rapprochement (§3.2).
-6. Le reste au fil de l'eau : validation zod, typage, SSE, sauvegardes.
+4. **Premiers tests** sur `CompareUtils` et la logique de rapprochement (§3.2).
+5. Le reste au fil de l'eau : validation zod, typage, SSE, sauvegardes.
 
 ---
 
