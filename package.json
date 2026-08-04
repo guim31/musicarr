@@ -11,17 +11,17 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "axios": "^1.13.6",
+    "axios": "^1.19.0",
     "better-sqlite3": "^12.6.2",
     "blowfish-node": "^1.1.4",
     "form-data": "^4.0.5",
     "glob": "^13.0.6",
     "lucide-react": "^0.577.0",
-    "music-metadata": "^11.12.1",
-    "next": "16.1.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "zod": "^4.3.6"
+    "music-metadata": "^11.14.0",
+    "next": "16.2.12",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
@@ -29,7 +29,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.2.12",
     "typescript": "^5"
   }
 }
