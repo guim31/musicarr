@@ -29,9 +29,14 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
   const seenHistoryIds = React.useRef<Set<number>>(new Set());
   const isFirstPoll = React.useRef(true);
 
+  // Déclaré avant showToast : celui-ci l'appelle dans son setTimeout.
+  const removeToast = useCallback((id: string) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }, []);
+
   const showToast = useCallback((message: string, type: ToastType = 'info', id?: string) => {
     const toastId = id || Math.random().toString(36).substring(2, 9);
-    
+
     setToasts((prev) => {
       const exists = prev.find(t => t.id === toastId);
       if (exists) return prev;
@@ -44,20 +49,14 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
         removeToast(toastId);
       }, 5000);
     }
-  }, []);
+  }, [removeToast]);
 
   const updateToast = useCallback((id: string, updates: Partial<Toast>) => {
     setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
   }, []);
 
-  const removeToast = useCallback((id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  }, []);
-
   // Poll for activity to update download toasts
   React.useEffect(() => {
-    let interval: NodeJS.Timeout;
-
     const pollActivity = async () => {
       try {
         const res = await fetch('/api/activity');
@@ -252,13 +251,12 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    interval = setInterval(pollActivity, 3000);
+    const interval = setInterval(pollActivity, 3000);
     return () => clearInterval(interval);
   }, [removeToast]);
 
   // Poll for library scan progress
   React.useEffect(() => {
-    let interval: NodeJS.Timeout;
     let wasScanning = false;
 
     const pollScan = async () => {
@@ -307,7 +305,7 @@ export const ToastProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    interval = setInterval(pollScan, 2000);
+    const interval = setInterval(pollScan, 2000);
     return () => clearInterval(interval);
   }, [showToast, removeToast]);
 

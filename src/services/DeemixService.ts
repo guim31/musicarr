@@ -5,6 +5,7 @@ import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as mm from 'music-metadata';
+import Blowfish from 'blowfish-node';
 import db from '@/lib/db';
 import { DeezerProvider } from './metadata/providers/DeezerProvider';
 import { LibraryService } from './library';
@@ -333,7 +334,7 @@ export class DeemixService {
     // Sanitization plus stricte pour éviter les problèmes shell et filesystem
     const cleanTitle = trackInfo.name.replace(/[\s\?*:"<>|\\\/]+/g, '_');
     const fileName = `${trackInfo.number.toString().padStart(2, '0')}-${cleanTitle}.${extension}`;
-    let filePath = path.join(destDir, fileName);
+    const filePath = path.join(destDir, fileName);
 
     console.log(`Downloading track ${trackId} to ${filePath} (Quality: ${quality})`);
     
@@ -463,7 +464,6 @@ export class DeemixService {
   private static async processDownloadStream(streamUrl: string, filePath: string, trackInfo: any, actualTrackId: string, headers: any): Promise<string> {
     // Fonction de calcul de clé Blowfish pour Deezer
     const getDecryptionKey = (id: string) => {
-      const crypto = require('crypto');
       const secret = 'g4el58wc0zvf9na1';
       const idMd5 = crypto.createHash('md5').update(id.toString(), 'ascii').digest('hex');
       const bfKey = Buffer.alloc(16);
@@ -474,7 +474,6 @@ export class DeemixService {
     };
 
     const bfKey = getDecryptionKey(actualTrackId);
-    const Blowfish = require('blowfish-node');
     const bf = new Blowfish(bfKey, Blowfish.MODE.CBC, Blowfish.PADDING.NULL);
     bf.setIv(Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]));
 
@@ -538,8 +537,8 @@ export class DeemixService {
     const album = albumData.title;
     const albumArtist = (albumData.artist?.name || artist).toUpperCase();
     // Priorité à la date de la DB (car potentiellement issue de MusicBrainz/Discogs lors du sync)
-    let dateStr = fallbackDate || (albumData && albumData.release_date) || '';
-    let yearOnly = dateStr ? dateStr.split('-')[0] : '';
+    const dateStr = fallbackDate || (albumData && albumData.release_date) || '';
+    const yearOnly = dateStr ? dateStr.split('-')[0] : '';
     const trackNum = trackInfo.number;
     const discNum = trackInfo.disc || 1;
 
