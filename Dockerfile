@@ -62,10 +62,12 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# Sur NAS, alignez PUID/PGID sur le propriétaire du dossier musique
-# (Unraid : 99/100). Le conteneur démarre root puis abandonne ses privilèges.
-ENV PUID=1001
-ENV PGID=1001
+# UID/GID sous lesquels tourne l'application. Par défaut nobody:users, le
+# propriétaire des partages sur Unraid — la cible principale du projet.
+# Le conteneur démarre root puis abandonne ses privilèges (docker-entrypoint.sh).
+# Sur un autre hôte, surchargez via .env : stat -c '%u %g' /chemin/musique
+ENV PUID=99
+ENV PGID=100
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD wget --quiet --tries=1 --spider http://127.0.0.1:3000/ || exit 1
