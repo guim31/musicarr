@@ -47,12 +47,7 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
   const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const { showToast } = useToast();
 
-  useEffect(() => {
-    if (isOpen && query) {
-      handleSearch();
-    }
-  }, [isOpen, query]);
-
+  // Déclaré avant l'effet qui l'appelle, pour éviter l'accès en zone morte.
   const handleSearch = async () => {
     setLoading(true);
     setStatus(null);
@@ -68,6 +63,12 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isOpen && query) {
+      handleSearch();
+    }
+  }, [isOpen, query]);
 
   const handleDownload = async (result: SearchResult) => {
     setDownloading(result.guid);

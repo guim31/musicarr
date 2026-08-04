@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 # Dépendances système : ffmpeg pour le tagging, su-exec + shadow pour la
 # bascule d'utilisateur au démarrage (usermod/groupmod ne sont pas dans busybox)
@@ -6,7 +6,11 @@ RUN apk add --no-cache ffmpeg flac su-exec shadow
 
 # Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat
+# better-sqlite3 expose un binding.gyp : npm lui ajoute un script d'installation
+# `node-gyp rebuild` implicite et compile depuis les sources, même si le paquet
+# fournit un binaire musl précompilé. La chaîne de compilation est donc requise.
+# Elle reste confinée à cette étape : seul node_modules est copié ensuite.
+RUN apk add --no-cache libc6-compat python3 make g++
 WORKDIR /app
 
 # Install dependencies based on the preferred package manager

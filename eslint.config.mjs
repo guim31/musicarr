@@ -18,6 +18,14 @@ const eslintConfig = defineConfig([
       // omniprésents dans le JSX et l'échappement HTML nuirait à la lisibilité.
       "react/no-unescaped-entities": "off",
 
+      // Règle du React Compiler introduite par eslint-plugin-react-hooks 7.
+      // Elle vise le motif « charger des données dans un effet » : le
+      // `setLoading(true)` synchrone en tête de fonction de fetch déclenche un
+      // rendu supplémentaire. Ce n'est pas un bug, mais une optimisation
+      // manquée sur 6 composants. On la garde visible sans bloquer la CI ;
+      // la migration se fera composant par composant.
+      "react-hooks/set-state-in-effect": "warn",
+
       // Les catch de nettoyage best-effort (`catch (e) {}`) sont légitimes ici.
       "@typescript-eslint/no-unused-vars": [
         "warn",

@@ -46,35 +46,7 @@ export default function SettingsPage() {
   const [scanProgress, setScanProgress] = useState<{ processed: number, total: number } | null>(null);
   const { showToast } = useToast();
 
-  useEffect(() => {
-    fetchConfig();
-  }, []);
-
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval>;
-    if (scanning) {
-      interval = setInterval(async () => {
-        try {
-          const res = await fetch(`/api/library?t=${Date.now()}`);
-          if (res.ok) {
-            const data = await res.json();
-            if (data.progress) {
-              setScanProgress(data.progress);
-              if (data.stats) setLibraryStats(data.stats);
-            } else if (scanning && scanProgress && scanProgress.total !== -1) {
-              // Si la progression a disparu et qu'on n'est plus en phase d'initialisation (-1), le scan est fini
-              setScanning(false);
-              setScanProgress(null);
-              if (data.stats) setLibraryStats(data.stats);
-              clearInterval(interval);
-            }
-          }
-        } catch (e) {}
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [scanning, scanProgress, showToast]);
-
+  // Déclaré avant l'effet qui l'appelle, pour éviter l'accès en zone morte.
   const fetchConfig = async () => {
     try {
       const ts = Date.now();
@@ -124,6 +96,36 @@ export default function SettingsPage() {
       console.error('Failed to fetch config', error);
     }
   };
+
+  useEffect(() => {
+    fetchConfig();
+  }, []);
+
+  useEffect(() => {
+    let interval: ReturnType<typeof setInterval>;
+    if (scanning) {
+      interval = setInterval(async () => {
+        try {
+          const res = await fetch(`/api/library?t=${Date.now()}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data.progress) {
+              setScanProgress(data.progress);
+              if (data.stats) setLibraryStats(data.stats);
+            } else if (scanning && scanProgress && scanProgress.total !== -1) {
+              // Si la progression a disparu et qu'on n'est plus en phase d'initialisation (-1), le scan est fini
+              setScanning(false);
+              setScanProgress(null);
+              if (data.stats) setLibraryStats(data.stats);
+              clearInterval(interval);
+            }
+          }
+        } catch (e) {}
+      }, 1000);
+    }
+    return () => clearInterval(interval);
+  }, [scanning, scanProgress, showToast]);
+
 
   const handleTestProwlarr = async () => {
     setLoading(true);
