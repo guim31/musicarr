@@ -131,6 +131,20 @@ const migrate = () => {
 
 migrate();
 
+// Index sur les colonnes filtrées en permanence par l'interface et le scan.
+//
+// Volontairement absents : albums(artist_id) et tracks(album_id). Les
+// contraintes UNIQUE(artist_id, name) et UNIQUE(album_id, title, number, disc)
+// créent déjà des index dont ces colonnes sont le préfixe gauche : SQLite s'en
+// sert. Les dupliquer ne ferait que ralentir les écritures pendant les scans.
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_albums_status   ON albums(status);
+  CREATE INDEX IF NOT EXISTS idx_albums_path     ON albums(path);
+  CREATE INDEX IF NOT EXISTS idx_tracks_path     ON tracks(path);
+  CREATE INDEX IF NOT EXISTS idx_activity_status ON activity(status);
+  CREATE INDEX IF NOT EXISTS idx_activity_ts     ON activity(timestamp DESC);
+`);
+
 // Nettoyage au démarrage : supprime les verrous de scan bloqués et marque les activités orphelines comme échouées
 try {
   db.prepare("DELETE FROM settings WHERE key = 'scan_progress'").run();

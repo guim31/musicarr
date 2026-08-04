@@ -31,11 +31,11 @@ export class SyncService {
         .run(JSON.stringify({ progress: Math.min(99, percentage), provider, current, total }), activityId);
     };
 
-    let mbid = artist.mbid;
-    let discogsId = artist.discogs_id;
+    const mbid = artist.mbid;
+    const discogsId = artist.discogs_id;
     let meta: any = {};
     try { meta = artist.metadata ? JSON.parse(artist.metadata) : {}; } catch {}
-    let deezerId = meta.deezerId;
+    const deezerId = meta.deezerId;
 
     try {
       const mbProvider = new MusicBrainzProvider();

@@ -1,12 +1,9 @@
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import axios from 'axios';
 import db from '@/lib/db';
+import { runFfmpeg, metadataArgs } from '@/lib/ffmpeg';
 import { DeemixService } from './DeemixService';
-
-const execAsync = promisify(exec);
 
 export interface TrackTagUpdate {
   trackId: number;
@@ -40,42 +37,36 @@ export class TagService {
     const tempPath = `${filePath}.tmp${path.extname(filePath)}`;
     
     const ext = path.extname(filePath).toLowerCase();
-    const metadataFlags: string[] = [];
-    if (update.title) metadataFlags.push(`-metadata title="${update.title.replace(/"/g, '\\"')}"`);
-    if (update.artist) metadataFlags.push(`-metadata artist="${update.artist.replace(/"/g, '\\"')}"`);
-    if (update.album) metadataFlags.push(`-metadata album="${update.album.replace(/"/g, '\\"')}"`);
-    if (update.albumArtist) metadataFlags.push(`-metadata album_artist="${update.albumArtist.replace(/"/g, '\\"')}"`);
-    
-    if (update.number) {
-      const trackVal = update.trackTotal ? `${update.number}/${update.trackTotal}` : `${update.number}`;
-      metadataFlags.push(`-metadata track="${trackVal}"`);
-    }
-    
-    if (update.disc) {
-      const discVal = update.discTotal ? `${update.disc}/${update.discTotal}` : `${update.disc}`;
-      metadataFlags.push(`-metadata disc="${discVal}"`);
-    }
-    
-    if (update.year) {
-      metadataFlags.push(`-metadata date="${update.year}"`);
-      metadataFlags.push(`-metadata year="${update.year}"`);
-    }
-    if (update.genre) metadataFlags.push(`-metadata genre="${update.genre.replace(/"/g, '\\"')}"`);
-    if (update.bpm) metadataFlags.push(`-metadata bpm="${update.bpm}"`);
-    if (update.isrc) metadataFlags.push(`-metadata isrc="${update.isrc}"`);
-    if (update.barcode) metadataFlags.push(`-metadata barcode="${update.barcode}"`);
-    if (update.label) metadataFlags.push(`-metadata publisher="${update.label.replace(/"/g, '\\"')}"`);
+
+    const metadataFlags = metadataArgs({
+      title: update.title,
+      artist: update.artist,
+      album: update.album,
+      album_artist: update.albumArtist,
+      track: update.number
+        ? (update.trackTotal ? `${update.number}/${update.trackTotal}` : `${update.number}`)
+        : undefined,
+      disc: update.disc
+        ? (update.discTotal ? `${update.disc}/${update.discTotal}` : `${update.disc}`)
+        : undefined,
+      date: update.year,
+      year: update.year,
+      genre: update.genre,
+      bpm: update.bpm,
+      isrc: update.isrc,
+      barcode: update.barcode,
+      publisher: update.label,
+    });
 
     if (metadataFlags.length === 0) return;
 
-    // Use -map_metadata 0 to keep existing metadata not specified
-    // -id3v2_version 3 is important for MP3 compatibility (Navidrome/Plex)
-    let command = `ffmpeg -y -i "${filePath}" ${metadataFlags.join(' ')} `;
-    if (ext === '.mp3') command += '-id3v2_version 3 ';
-    command += `-c copy "${tempPath}"`;
-    
+    // -id3v2_version 3 est important pour la compatibilité MP3 (Navidrome/Plex).
+    const args = ['-y', '-i', filePath, ...metadataFlags];
+    if (ext === '.mp3') args.push('-id3v2_version', '3');
+    args.push('-c', 'copy', tempPath);
+
     try {
-      await execAsync(command);
+      await runFfmpeg(args);
       
       // Verification
       if (fs.existsSync(tempPath)) {
@@ -264,20 +255,31 @@ export class TagService {
       const ext = path.extname(track.path);
       const tempPath = `${track.path}.tmp_cover${ext}`;
       
-      // FFmpeg command to embed cover
-      // -map 0 -map 1:0 : take all streams from audio, first stream from image
-      // -disposition:v:0 attached_pic : mark image as attached picture
-      let cmd = `ffmpeg -y -i "${track.path}" -i "${coverPath}" -map 0 -map 1:0 -c copy -disposition:v:0 attached_pic`;
-      
-      // Specfic flags for MP3 id3v2 version
+      // -map 0 -map 1:0 : tous les flux de l'audio + le premier flux de l'image
+      // -disposition:v:0 attached_pic : marque l'image comme pochette
+      const args = [
+        '-y',
+        '-i', track.path,
+        '-i', coverPath,
+        '-map', '0',
+        '-map', '1:0',
+        '-c', 'copy',
+        '-disposition:v:0', 'attached_pic',
+      ];
+
+      // Drapeaux spécifiques à la version id3v2 pour les MP3
       if (ext.toLowerCase() === '.mp3') {
-        cmd += ' -id3v2_version 3 -metadata:s:v title="Album cover" -metadata:s:v comment="Cover (front)"';
+        args.push(
+          '-id3v2_version', '3',
+          '-metadata:s:v', 'title=Album cover',
+          '-metadata:s:v', 'comment=Cover (front)',
+        );
       }
-      
-      cmd += ` "${tempPath}"`;
-      
+
+      args.push(tempPath);
+
       try {
-        await execAsync(cmd);
+        await runFfmpeg(args);
         if (fs.existsSync(tempPath)) {
           fs.unlinkSync(track.path);
           fs.renameSync(tempPath, track.path);

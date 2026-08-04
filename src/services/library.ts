@@ -16,6 +16,29 @@ export interface ScanUpdate {
 export class LibraryService {
   private static isScanning = false;
 
+  /**
+   * Index nom normalisé -> id d'artiste, construit une fois par scan.
+   *
+   * Sans lui, chaque album dont le nom d'artiste ne correspond pas exactement
+   * relisait toute la table `artists` pour comparer les noms normalisés — soit
+   * une lecture complète par album sur une bibliothèque qui en compte des
+   * milliers.
+   */
+  private static artistIndex: Map<string, number> | null = null;
+
+  private static getArtistIndex(): Map<string, number> {
+    if (!this.artistIndex) {
+      this.artistIndex = new Map();
+      const rows = db.prepare('SELECT id, name FROM artists').all() as { id: number, name: string }[];
+      for (const row of rows) {
+        const key = CompareUtils.normalize(row.name);
+        // Premier arrivé conservé : correspond au comportement de find().
+        if (key && !this.artistIndex.has(key)) this.artistIndex.set(key, row.id);
+      }
+    }
+    return this.artistIndex;
+  }
+
   private static getMusicPath() {
     return db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
   }
@@ -36,12 +59,15 @@ export class LibraryService {
     if (exactArtist) {
       artistId = exactArtist.id;
     } else {
-      const allArtists = db.prepare('SELECT id, name FROM artists').all() as { id: number, name: string }[];
-      const match = allArtists.find(a => CompareUtils.normalize(a.name) === CompareUtils.normalize(artistName));
-      if (match) {
-        artistId = match.id;
+      const index = LibraryService.getArtistIndex();
+      const key = CompareUtils.normalize(artistName);
+      const match = index.get(key);
+      if (match !== undefined) {
+        artistId = match;
       } else {
         artistId = db.prepare('INSERT INTO artists (name) VALUES (?)').run(upperName).lastInsertRowid;
+        // Garde l'index cohérent pour les albums suivants du même scan.
+        if (key) index.set(key, Number(artistId));
       }
     }
 
@@ -213,6 +239,8 @@ export class LibraryService {
     }
 
     this.isScanning = true;
+    // Reconstruit à la volée au premier besoin, sur l'état actuel de la table.
+    this.artistIndex = null;
 
     try {
       const musicPathRes = this.getMusicPath();
@@ -447,6 +475,9 @@ export class LibraryService {
       return processedCount;
     } finally {
       this.isScanning = false;
+      // Ne pas garder l'index en mémoire entre deux scans : la table peut avoir
+      // changé entre-temps (ajout manuel d'artiste, suppression).
+      this.artistIndex = null;
       if (!targetPath) {
         db.prepare('DELETE FROM settings WHERE key = ?').run('scan_progress');
       }

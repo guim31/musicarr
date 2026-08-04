@@ -2,14 +2,12 @@ import axios from 'axios';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import * as mm from 'music-metadata';
+import Blowfish from 'blowfish-node';
 import db from '@/lib/db';
+import { runFfmpeg, metadataArgs } from '@/lib/ffmpeg';
 import { DeezerProvider } from './metadata/providers/DeezerProvider';
 import { LibraryService } from './library';
-
-const execAsync = promisify(exec);
 
 export class DeemixService {
   private static deezer = new DeezerProvider();
@@ -333,7 +331,7 @@ export class DeemixService {
     // Sanitization plus stricte pour éviter les problèmes shell et filesystem
     const cleanTitle = trackInfo.name.replace(/[\s\?*:"<>|\\\/]+/g, '_');
     const fileName = `${trackInfo.number.toString().padStart(2, '0')}-${cleanTitle}.${extension}`;
-    let filePath = path.join(destDir, fileName);
+    const filePath = path.join(destDir, fileName);
 
     console.log(`Downloading track ${trackId} to ${filePath} (Quality: ${quality})`);
     
@@ -463,7 +461,6 @@ export class DeemixService {
   private static async processDownloadStream(streamUrl: string, filePath: string, trackInfo: any, actualTrackId: string, headers: any): Promise<string> {
     // Fonction de calcul de clé Blowfish pour Deezer
     const getDecryptionKey = (id: string) => {
-      const crypto = require('crypto');
       const secret = 'g4el58wc0zvf9na1';
       const idMd5 = crypto.createHash('md5').update(id.toString(), 'ascii').digest('hex');
       const bfKey = Buffer.alloc(16);
@@ -474,7 +471,6 @@ export class DeemixService {
     };
 
     const bfKey = getDecryptionKey(actualTrackId);
-    const Blowfish = require('blowfish-node');
     const bf = new Blowfish(bfKey, Blowfish.MODE.CBC, Blowfish.PADDING.NULL);
     bf.setIv(Buffer.from([0, 1, 2, 3, 4, 5, 6, 7]));
 
@@ -538,53 +534,51 @@ export class DeemixService {
     const album = albumData.title;
     const albumArtist = (albumData.artist?.name || artist).toUpperCase();
     // Priorité à la date de la DB (car potentiellement issue de MusicBrainz/Discogs lors du sync)
-    let dateStr = fallbackDate || (albumData && albumData.release_date) || '';
-    let yearOnly = dateStr ? dateStr.split('-')[0] : '';
+    const dateStr = fallbackDate || (albumData && albumData.release_date) || '';
+    const yearOnly = dateStr ? dateStr.split('-')[0] : '';
     const trackNum = trackInfo.number;
     const discNum = trackInfo.disc || 1;
 
     // FFmpeg : Injecter les tags et assurer un conteneur propre
     // L'ordre est CRUCIAL : entrées d'abord (-i), puis métadonnées, puis sortie
-    let cmd = `ffmpeg -y -i "${filePath}" `;
-    
+    const args = ['-y', '-i', filePath];
+
     // Deuxième entrée (cover) si dispo
     const coverPath = path.join(path.dirname(filePath), 'folder.jpg');
     const hasCover = fs.existsSync(coverPath);
     if (hasCover) {
-      cmd += `-i "${coverPath}" `;
+      args.push('-i', coverPath);
     }
 
     // Paramètres de mapping et codec
     if (hasCover) {
-      cmd += `-map 0:a -map 1:0 -disposition:v:0 attached_pic `;
+      args.push('-map', '0:a', '-map', '1:0', '-disposition:v:0', 'attached_pic');
     } else {
-      cmd += `-map 0:a `;
+      args.push('-map', '0:a');
     }
-    cmd += `-c:a copy `;
+    args.push('-c:a', 'copy');
 
     // Tags (doivent être placés après les inputs)
-    cmd += `-metadata title="${title.replace(/"/g, '\\"')}" `;
-    cmd += `-metadata artist="${artist.replace(/"/g, '\\"')}" `;
-    cmd += `-metadata album_artist="${albumArtist.replace(/"/g, '\\"')}" `;
-    cmd += `-metadata albumartist="${albumArtist.replace(/"/g, '\\"')}" `; // Pour compatibilité max
-    cmd += `-metadata album="${album.replace(/"/g, '\\"')}" `;
-    cmd += `-metadata track="${trackNum}" `;
-    cmd += `-metadata disc="${discNum}" `;
-    if (dateStr) {
-      cmd += `-metadata date="${dateStr}" `;
-    }
-    if (yearOnly) {
-      cmd += `-metadata year="${yearOnly}" `;
-    }
+    args.push(...metadataArgs({
+      title,
+      artist,
+      album_artist: albumArtist,
+      albumartist: albumArtist, // Pour compatibilité max
+      album,
+      track: trackNum,
+      disc: discNum,
+      date: dateStr || undefined,
+      year: yearOnly || undefined,
+    }));
 
     if (ext.toLowerCase() === '.mp3') {
-      cmd += '-id3v2_version 3 ';
+      args.push('-id3v2_version', '3');
     }
-    
-    cmd += `"${tempPath}"`;
+
+    args.push(tempPath);
 
     try {
-      await execAsync(cmd);
+      await runFfmpeg(args);
       if (fs.existsSync(tempPath)) {
         fs.unlinkSync(filePath);
         fs.renameSync(tempPath, filePath);

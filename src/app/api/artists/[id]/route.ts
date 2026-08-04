@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { isInsideLibrary, resolveCoverPath } from '@/lib/paths';
 
 export async function GET(
   request: NextRequest,
@@ -41,19 +42,27 @@ export async function DELETE(
       const artistDirsToCleanup = new Set<string>();
 
       for (const album of albums) {
-        // Delete album folder if it exists
+        // Delete album folder if it exists.
+        // Garde-fou : un champ `path` corrompu (scan interrompu, migration)
+        // ne doit jamais faire cibler un dossier hors bibliothèque à rmSync.
         if (album.path && fs.existsSync(album.path)) {
-          try {
-            fs.rmSync(album.path, { recursive: true, force: true });
-            artistDirsToCleanup.add(path.dirname(album.path));
-          } catch (e) {
-            console.error(`Error deleting album folder ${album.path}:`, e);
+          if (!isInsideLibrary(album.path)) {
+            console.error(
+              `Suppression refusée : ${album.path} est hors de la bibliothèque configurée`,
+            );
+          } else {
+            try {
+              fs.rmSync(album.path, { recursive: true, force: true });
+              artistDirsToCleanup.add(path.dirname(album.path));
+            } catch (e) {
+              console.error(`Error deleting album folder ${album.path}:`, e);
+            }
           }
         }
-        
+
         // Delete cover cache if exists
-        const coverPath = path.join(process.cwd(), 'data', 'covers', `album_${album.id}.jpg`);
-        if (fs.existsSync(coverPath)) {
+        const coverPath = resolveCoverPath(String(album.id));
+        if (coverPath && fs.existsSync(coverPath)) {
           fs.rmSync(coverPath, { force: true });
         }
       }
@@ -61,7 +70,7 @@ export async function DELETE(
       // Try to delete artist directory if it's empty
       for (const dir of artistDirsToCleanup) {
         try {
-          if (fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
+          if (isInsideLibrary(dir) && fs.existsSync(dir) && fs.readdirSync(dir).length === 0) {
             fs.rmdirSync(dir);
           }
         } catch (e) {
