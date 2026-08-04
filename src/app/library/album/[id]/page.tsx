@@ -1,18 +1,13 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  ArrowLeft, 
-  Music, 
-  Disc, 
-  Clock, 
-  FileAudio, 
-  CheckCircle2, 
+import {
+  ArrowLeft,
+  Music,
+  Disc,
+  CheckCircle2,
   AlertCircle,
-  Play,
-  Volume2,
   HardDrive,
-  Type,
   RefreshCw,
   Tags
 } from 'lucide-react';
@@ -43,8 +38,8 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
       
       const albumData = await albumRes.json();
       const tracksData = await tracksRes.json();
-      
-      setAlbum(albumData);
+
+      setAlbum(albumRes.ok && !albumData.error ? albumData : null);
       
       // Sécurité tracks
       if (Array.isArray(tracksData)) {
@@ -87,6 +82,7 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
   }, [id, album, fetchData]);
 
   const formatDuration = (seconds: number) => {
+    if (!seconds || Number.isNaN(seconds)) return '-';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
@@ -116,24 +112,33 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
-        <Music className="animate-pulse" size={48} color="var(--accent)" />
+      <div className={styles.loadingState}>
+        <Disc className="animate-spin" size={48} color="var(--accent)" />
+        <p>Chargement de l&apos;album...</p>
       </div>
     );
   }
 
   if (!album) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px' }}>
+      <div className={styles.loadingState}>
         <AlertCircle size={48} color="var(--danger)" />
-        <h2 style={{ marginTop: '16px' }}>Album non trouvé</h2>
-        <Link href="/library" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Retour à la collection</Link>
+        <h2>Album non trouvé</h2>
+        <Link href="/library" className={styles.backLink}>
+          <ArrowLeft size={18} />
+          Retour à la collection
+        </Link>
       </div>
     );
   }
 
   return (
     <div className={styles.container}>
+      <Link href={`/library/artist/${album.artist_id}`} className={styles.backLink}>
+        <ArrowLeft size={18} />
+        {album.artist_name}
+      </Link>
+
       <header className={styles.header}>
         <div className={styles.albumHeader}>
           <div className={styles.albumCover}>
@@ -157,11 +162,7 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
               <span className={styles.qualityBadge}>{album.quality}</span>
             </div>
             <div className={styles.albumActions}>
-              <button className={styles.button}>
-                <Play size={18} fill="currentColor" />
-                Lire tout
-              </button>
-              <button 
+              <button
                 className={`${styles.button} ${styles.outlineButton}`}
                 onClick={() => setOrganizeModalOpen(true)}
                 disabled={renaming}
@@ -236,9 +237,9 @@ export default function AlbumDetailPage({ params }: { params: Promise<{ id: stri
 
       {/* Debug Info */}
       {(album.mbid || album.metadata?.deezerId) && (
-        <div style={{ marginTop: '24px', fontSize: '0.7rem', color: 'var(--text-muted)', opacity: 0.5, textAlign: 'center' }}>
+        <div className={styles.debugInfo}>
           {album.mbid && <span>MBID: {album.mbid}</span>}
-          {album.mbid && album.metadata?.deezerId && <span style={{ margin: '0 8px' }}>|</span>}
+          {album.mbid && album.metadata?.deezerId && <span> | </span>}
           {album.metadata?.deezerId && <span>Deezer: {album.metadata.deezerId}</span>}
         </div>
       )}

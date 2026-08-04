@@ -1,20 +1,16 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  ArrowLeft, 
-  Disc, 
-  Music, 
-  Database, 
-  FileAudio, 
+import {
+  ArrowLeft,
+  Disc,
+  Music,
+  Database,
   AlertCircle,
   Monitor,
-  Heart,
   RefreshCw,
   Search,
   Trash2,
-  CheckCircle2,
-  Clock,
   Shield
 } from 'lucide-react';
 import Link from 'next/link';
@@ -64,8 +60,8 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
       
       const artistData = await artistRes.json();
       const discoData = await discoRes.json();
-      
-      setArtist(artistData);
+
+      setArtist(artistRes.ok && !artistData.error ? artistData : null);
       if (discoData.success) {
         setDiscography(discoData.discography);
         // On simule localAlbums pour les compteurs à partir du cache marqué "isOwned"
@@ -91,6 +87,16 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
     window.addEventListener('musicarr:activity-finished', handleRefresh);
     return () => window.removeEventListener('musicarr:activity-finished', handleRefresh);
   }, [id]);
+
+  // Fermer la modale de suppression avec Échap
+  useEffect(() => {
+    if (!isDeleteModalOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !deleting) setIsDeleteModalOpen(false);
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [isDeleteModalOpen, deleting]);
 
   const handleSync = async (types?: string[], deep?: boolean) => {
     try {
@@ -185,18 +191,22 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
-        <Music className="animate-pulse" size={48} color="var(--accent)" />
+      <div className={styles.loadingState}>
+        <Disc className="animate-spin" size={48} color="var(--accent)" />
+        <p>Chargement de l&apos;artiste...</p>
       </div>
     );
   }
 
   if (!artist) {
     return (
-      <div style={{ textAlign: 'center', padding: '100px' }}>
+      <div className={styles.loadingState}>
         <AlertCircle size={48} color="var(--danger)" />
-        <h2 style={{ marginTop: '16px' }}>Artiste non trouvé</h2>
-        <Link href="/library" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>Retour à la collection</Link>
+        <h2>Artiste non trouvé</h2>
+        <Link href="/library" className={styles.backLink}>
+          <ArrowLeft size={18} />
+          Retour à la collection
+        </Link>
       </div>
     );
   }
@@ -221,20 +231,21 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
             </div>
           </div>
           <div className={styles.artistActions}>
-            <button className={styles.iconButton}><Heart size={20} /></button>
-            <button 
-              className={`${styles.button} ${styles.outlineButton}`} 
+            <button
+              className={`${styles.button} ${styles.outlineButton}`}
               onClick={handleScan}
               disabled={scanning}
               title="Scanner les dossiers locaux"
+              aria-label="Scanner les dossiers locaux"
             >
               <Search size={18} className={scanning ? 'animate-spin' : ''} />
             </button>
-            <button 
-              className={`${styles.button} ${styles.outlineButton}`} 
+            <button
+              className={`${styles.button} ${styles.outlineButton}`}
               onClick={handleFixPermissions}
               disabled={fixingPermissions}
               title="Corriger les permissions"
+              aria-label="Corriger les permissions"
             >
               <Shield size={18} className={fixingPermissions ? 'animate-pulse' : ''} />
             </button>
@@ -246,10 +257,11 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
               <RefreshCw size={18} className={syncing ? 'animate-spin' : ''} />
               {syncing ? 'Mise à jour...' : 'Actualiser discographie'}
             </button>
-            <button 
-              className={`${styles.button} ${styles.dangerButton}`} 
+            <button
+              className={`${styles.button} ${styles.dangerButton}`}
               onClick={() => setIsDeleteModalOpen(true)}
               title="Supprimer l'artiste"
+              aria-label="Supprimer l'artiste"
             >
               <Trash2 size={18} />
             </button>
@@ -344,29 +356,35 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
       />
 
       {isDeleteModalOpen && (
-        <div className={styles.modalOverlay}>
-          <div className={styles.modalContent}>
-            <h2 style={{ marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--danger)' }}>
+        <div
+          className={styles.modalOverlay}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !deleting) setIsDeleteModalOpen(false);
+          }}
+        >
+          <div className={styles.modalContent} role="dialog" aria-modal="true" aria-labelledby="delete-artist-title">
+            <h2 id="delete-artist-title" className={styles.modalTitle}>
               <AlertCircle size={24} />
-              Supprimer l'artiste
+              Supprimer l&apos;artiste
             </h2>
-            <p style={{ marginBottom: '24px', color: 'var(--text-muted)' }}>
+            <p className={styles.modalText}>
               Êtes-vous sûr de vouloir supprimer <strong>{artist.name}</strong> ?
             </p>
 
-            <label style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px', cursor: 'pointer', padding: '16px', backgroundColor: 'var(--bg-color)', borderRadius: 'var(--radius)', border: '1px solid var(--border)' }}>
-              <input 
-                type="checkbox" 
+            <label className={styles.modalCheckbox}>
+              <input
+                type="checkbox"
                 checked={deleteWithFiles}
                 onChange={(e) => setDeleteWithFiles(e.target.checked)}
-                style={{ width: '18px', height: '18px', accentColor: 'var(--danger)' }}
               />
               <span>Supprimer les fichiers du disque</span>
             </label>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px' }}>
-              <button className={`${styles.button} ${styles.outlineButton}`} onClick={() => setIsDeleteModalOpen(false)}>Annuler</button>
-              <button className={styles.button} onClick={handleDelete} disabled={deleting} style={{ backgroundColor: 'var(--danger)' }}>
+            <div className={styles.modalActions}>
+              <button className={`${styles.button} ${styles.outlineButton}`} onClick={() => setIsDeleteModalOpen(false)} disabled={deleting}>
+                Annuler
+              </button>
+              <button className={`${styles.button} ${styles.dangerButton}`} onClick={handleDelete} disabled={deleting}>
                 {deleting ? 'Suppression...' : 'Supprimer'}
               </button>
             </div>

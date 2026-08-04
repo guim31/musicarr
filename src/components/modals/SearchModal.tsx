@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import styles from './SearchModal.module.css';
 import { useToast } from '@/context/ToastContext';
+import { useEscapeToClose } from '@/hooks/useEscapeToClose';
 
 interface SearchResult {
   title: string;
@@ -46,6 +47,7 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
   const [downloading, setDownloading] = useState<string | null>(null);
   const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
   const { showToast } = useToast();
+  useEscapeToClose(isOpen, onClose);
 
   // Déclaré avant l'effet qui l'appelle, pour éviter l'accès en zone morte.
   const handleSearch = async () => {
@@ -114,13 +116,13 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
 
   return (
     <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={e => e.stopPropagation()}>
+      <div className={styles.modal} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Résultats de recherche">
         <header className={styles.header}>
           <div className={styles.headerTitle}>
             <Search size={20} color="var(--accent)" />
             <h3>Résultats de recherche pour "{query}"</h3>
           </div>
-          <button className={styles.closeBtn} onClick={onClose}>
+          <button className={styles.closeBtn} onClick={onClose} aria-label="Fermer">
             <X size={20} />
           </button>
         </header>

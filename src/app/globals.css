@@ -101,6 +101,19 @@ h1 {
   animation: global-spin 1s linear infinite;
 }
 
+@keyframes global-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animate-pulse {
+  animation: global-pulse 1.5s ease-in-out infinite;
+}
+
 /* Respecter la préférence utilisateur de réduction des animations */
 @media (prefers-reduced-motion: reduce) {
   *,
