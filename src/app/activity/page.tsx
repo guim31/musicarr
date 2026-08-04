@@ -108,6 +108,16 @@ export default function ActivityPage() {
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'completed': return 'Terminé';
+      case 'failed': return 'Échec';
+      case 'downloading': return 'En cours';
+      case 'pending': return 'En attente';
+      default: return status;
+    }
+  };
+
   if (loading && history.length === 0) {
     return (
       <div className={styles.loading}>
@@ -248,7 +258,7 @@ export default function ActivityPage() {
                   <td className={styles.statusCell}>
                     <div className={styles.statusBox}>
                       {getStatusIcon(entry.status)}
-                      <span>{entry.status}</span>
+                      <span>{getStatusLabel(entry.status)}</span>
                     </div>
                   </td>
                 </tr>
@@ -263,10 +273,11 @@ export default function ActivityPage() {
           
           {history.length > 0 && (
             <div className={styles.pagination}>
-              <button 
+              <button
                 className={styles.paginationBtn}
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1}
+                aria-label="Page précédente"
               >
                 <ChevronLeft size={20} />
               </button>
@@ -276,10 +287,11 @@ export default function ActivityPage() {
                 <span className={styles.totalCount}> ({total} opérations)</span>
               </div>
 
-              <button 
+              <button
                 className={styles.paginationBtn}
                 onClick={() => setPage(p => p + 1)}
                 disabled={page >= Math.ceil(total / pageSize)}
+                aria-label="Page suivante"
               >
                 <ChevronRight size={20} />
               </button>

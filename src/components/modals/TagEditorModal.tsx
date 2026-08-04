@@ -78,12 +78,24 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
   });
   const [coverPreview, setCoverPreview] = useState<string>(`/api/albums/${album.id}/cover`);
   const [newCover, setNewCover] = useState<string | null>(null);
+
+  // Photo de l'état initial pour détecter les modifications non sauvegardées
+  const initialSnapshot = React.useRef('');
+
+  const requestClose = React.useCallback(() => {
+    const dirty = JSON.stringify(trackEdits) !== initialSnapshot.current || newCover !== null;
+    if (dirty && !confirm('Des modifications non sauvegardées seront perdues. Fermer quand même ?')) {
+      return;
+    }
+    onClose();
+  }, [trackEdits, newCover, onClose]);
+
   // Pas de fermeture pendant l'écriture des tags
-  useEscapeToClose(isOpen && !loading, onClose);
+  useEscapeToClose(isOpen && !loading, requestClose);
 
   useEffect(() => {
     if (isOpen) {
-      setTrackEdits(tracks.map((t: any) => ({
+      const mappedEdits = tracks.map((t: any) => ({
         trackId: t.id,
         title: t.title,
         number: t.number,
@@ -100,7 +112,9 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
         isrc: t.isrc || '',
         barcode: album.barcode || '',
         label: album.label || ''
-      })));
+      }));
+      setTrackEdits(mappedEdits);
+      initialSnapshot.current = JSON.stringify(mappedEdits);
       setBulkData({
         artist: album.artist_name,
         albumArtist: album.album_artist || '',
@@ -291,14 +305,14 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
   if (!isOpen) return null;
 
   return (
-    <div className={styles.overlay} onClick={loading ? undefined : onClose}>
+    <div className={styles.overlay} onClick={loading ? undefined : requestClose}>
       <div className={styles.modal} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Éditeur de tags ID3">
         <header className={styles.header}>
           <div className={styles.headerTitle}>
             <Edit3 size={20} color="var(--accent)" />
             <h3>Éditeur de Tags ID3</h3>
           </div>
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Fermer">
+          <button className={styles.closeBtn} onClick={requestClose} aria-label="Fermer">
             <X size={20} />
           </button>
         </header>
@@ -506,12 +520,18 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
               <div className={styles.coverUrlInput}>
                 <label>URL de la pochette</label>
                 <div className={styles.inputGroup}>
-                  <input 
-                    type="text" 
-                    placeholder="https://..." 
-                    onChange={e => {
-                      setNewCover(e.target.value);
-                      setCoverPreview(e.target.value);
+                  <input
+                    type="text"
+                    placeholder="https://..."
+                    onBlur={e => {
+                      const url = e.target.value.trim();
+                      if (url) {
+                        setNewCover(url);
+                        setCoverPreview(url);
+                      }
+                    }}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
                     }}
                   />
                 </div>
@@ -554,7 +574,7 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
             <span>Les modifications sont écrites directement dans les fichiers.</span>
           </div>
           <div className={styles.actions}>
-            <button className={styles.cancelBtn} onClick={onClose} disabled={loading}>
+            <button className={styles.cancelBtn} onClick={requestClose} disabled={loading}>
               Annuler
             </button>
             <button className={styles.saveBtn} onClick={handleSave} disabled={loading}>
