@@ -2,6 +2,15 @@
   max-width: 800px;
 }
 
+.pageHeader {
+  margin-bottom: 32px;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 .section {
   background-color: var(--card-bg);
   border: 1px solid var(--border);
@@ -57,16 +66,114 @@
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .button:hover {
   background-color: var(--accent-hover);
 }
 
+.button:disabled {
+  opacity: 0.6;
+}
+
+.outlineButton {
+  background-color: transparent;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+.outlineButton:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-color: var(--text-muted);
+}
+
+.saveButton {
+  background-color: var(--success);
+  color: #ffffff;
+}
+
+.saveButton:hover {
+  background-color: #059669;
+}
+
+.actionsRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.actionsGroup {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+}
+
+.sectionHeader .title {
+  margin-bottom: 0;
+}
+
+.indexerGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.indexerItem {
+  padding: 12px;
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.indexerDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.indexerDotEnabled {
+  background-color: var(--success);
+}
+
+.indexerProtocol {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-left: auto;
+  font-weight: 400;
+}
+
 .hint {
   font-size: 0.75rem;
   color: var(--text-muted);
-  margin-top: 4px;
+  margin-top: 8px;
+}
+
+.hint a {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .switchContainer {
@@ -153,32 +260,20 @@ input:checked + .slider:before {
     margin-bottom: 20px;
   }
 
-  /* Stack action buttons containers */
-  .section > div[style*="display: flex"],
-  .section > div[style*="display:flex"] {
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 12px !important;
+  .actionsRow,
+  .actionsGroup,
+  .sectionHeader {
+    flex-direction: column;
+    align-items: stretch;
   }
 
-  .section > div[style*="display: flex"] > div,
-  .section > div[style*="display:flex"] > div {
-    flex-direction: column !important;
-    align-items: stretch !important;
-    gap: 8px !important;
+  .section button {
+    width: 100%;
+    justify-content: center;
   }
 
-  .section button,
-  .section a {
-    width: 100% !important;
-    justify-content: center !important;
-    text-align: center !important;
-  }
-
-  /* Indexers list */
-  .section div[style*="grid-template-columns: 1fr 1fr"],
-  .section div[style*="grid-template-columns:1fr 1fr"] {
-    grid-template-columns: 1fr !important;
+  .indexerGrid {
+    grid-template-columns: 1fr;
   }
 }
 
