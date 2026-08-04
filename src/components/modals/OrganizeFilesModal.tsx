@@ -31,12 +31,7 @@ export default function OrganizeFilesModal({ isOpen, onClose, albumId, onConfirm
   const [plan, setPlan] = useState<Change[]>([]);
   const [loadingPlan, setLoadingPlan] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && albumId) {
-      fetchPlan();
-    }
-  }, [isOpen, albumId]);
-
+  // Déclaré avant l'effet qui l'appelle, pour éviter l'accès en zone morte.
   const fetchPlan = async () => {
     setLoadingPlan(true);
     try {
@@ -51,6 +46,12 @@ export default function OrganizeFilesModal({ isOpen, onClose, albumId, onConfirm
       setLoadingPlan(false);
     }
   };
+
+  useEffect(() => {
+    if (isOpen && albumId) {
+      fetchPlan();
+    }
+  }, [isOpen, albumId]);
 
   if (!isOpen) return null;
 

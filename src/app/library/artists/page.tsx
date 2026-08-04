@@ -23,10 +23,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('');
 
-  useEffect(() => {
-    fetchArtists();
-  }, []);
-
+  // Déclaré avant l'effet qui l'appelle, pour éviter l'accès en zone morte.
   const fetchArtists = async () => {
     try {
       const res = await fetch('/api/artists');
@@ -38,6 +35,10 @@ export default function LibraryPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchArtists();
+  }, []);
 
   const filteredArtists = artists.filter(a => 
     a.name.toLowerCase().includes(filter.toLowerCase())
