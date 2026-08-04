@@ -1,13 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  AlertCircle,
+import {
   Search,
   Disc,
-  ArrowRight,
   RefreshCw,
-  SearchCode,
   CheckCircle2,
   Filter
 } from 'lucide-react';
@@ -73,10 +70,6 @@ export default function MissingAlbumsPage() {
           <button className={styles.button} onClick={fetchMissing}>
             <RefreshCw size={18} />
             Actualiser
-          </button>
-          <button className={`${styles.button} ${styles.primaryButton}`}>
-            <SearchCode size={18} />
-            Tout rechercher
           </button>
         </div>
       </header>

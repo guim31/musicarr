@@ -1,19 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Search, 
-  Plus, 
-  Filter, 
-  Music, 
-  Users, 
-  ArrowRight, 
-  ExternalLink, 
+import {
+  Search,
+  Plus,
+  Disc,
+  Users,
   ChevronRight,
   Monitor,
-  RefreshCw,
-  CheckCircle2,
-  Clock
+  RefreshCw
 } from 'lucide-react';
 import Link from 'next/link';
 import styles from '../Library.module.css';
@@ -51,79 +46,56 @@ export default function LibraryPage() {
           <h1>Ma Collection</h1>
           <p style={{ color: 'var(--text-muted)' }}>Gérez vos artistes et albums favoris.</p>
         </div>
-        <Link href="/library/add" style={{ textDecoration: 'none' }}>
-          <button className={styles.button}>
-            <Plus size={20} />
-            Ajouter un artiste
-          </button>
+        <Link href="/library/add" className={styles.button}>
+          <Plus size={20} />
+          Ajouter un artiste
         </Link>
       </header>
 
       {/* TABS NAVIGATION */}
-      <div style={{ display: 'flex', gap: '24px', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '0' }}>
-        <Link href="/library" style={{ textDecoration: 'none' }}>
-          <div style={{ 
-            padding: '8px 16px', 
-            color: 'var(--text-muted)', 
-            fontWeight: 600, 
-            cursor: 'pointer',
-            borderBottom: '2px solid transparent'
-          }}>
-            Albums
-          </div>
+      <nav className={styles.tabs} aria-label="Sections de la collection">
+        <Link href="/library" className={styles.tab}>
+          Albums
         </Link>
-        <div style={{ 
-          padding: '8px 16px', 
-          color: 'var(--accent)', 
-          fontWeight: 600, 
-          cursor: 'pointer',
-          borderBottom: '2px solid var(--accent)'
-        }}>
+        <span className={`${styles.tab} ${styles.tabActive}`} aria-current="page">
           Artistes
-        </div>
-      </div>
+        </span>
+      </nav>
 
       <div className={styles.searchHeader}>
         <div className={styles.searchInputWrapper}>
           <Search size={18} className={styles.searchIcon} />
-          <input 
-            type="text" 
-            placeholder="Filtrer ma collection..." 
+          <input
+            type="text"
+            placeholder="Filtrer ma collection..."
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             className={styles.searchInput}
           />
         </div>
-        <button className={`${styles.button} ${styles.outlineButton}`}>
-          <Filter size={18} />
-          Filtres
-        </button>
       </div>
 
       {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '100px' }}>
-          <Music className="animate-pulse" size={48} color="var(--accent)" />
+        <div className={styles.loadingState}>
+          <Disc className="animate-spin" size={48} color="var(--accent)" />
+          <p>Chargement de vos artistes...</p>
         </div>
       ) : artists.length === 0 ? (
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '120px 0', 
-          color: 'var(--text-muted)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '16px'
-        }}>
+        <div className={styles.emptyState}>
           <Users size={64} strokeWidth={1} />
           <div>
-            <h2 style={{ color: 'var(--foreground)', marginBottom: '8px' }}>Votre collection est vide</h2>
+            <h2>Votre collection est vide</h2>
             <p>Commencez par ajouter des artistes ou scannez votre bibliothèque locale.</p>
           </div>
-          <Link href="/settings">
-            <button className={`${styles.button} ${styles.outlineButton}`} style={{ marginTop: '16px' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+            <Link href="/library/add" className={styles.button}>
+              <Plus size={18} />
+              Ajouter un artiste
+            </Link>
+            <Link href="/settings" className={`${styles.button} ${styles.outlineButton}`}>
               Configurer le dossier musique
-            </button>
-          </Link>
+            </Link>
+          </div>
         </div>
       ) : (
         <div className={styles.tableWrapper}>

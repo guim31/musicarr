@@ -19,6 +19,10 @@ import styles from './Sidebar.module.css';
 const Sidebar = () => {
   const pathname = usePathname();
 
+  // Un lien reste actif sur ses sous-pages (ex : /library/album/12 → « Ma Collection »)
+  const isActive = (href: string) =>
+    href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
+
   const navItems = [
     { name: 'Tableau de bord', href: '/', icon: LayoutDashboard },
     { name: 'Ma Collection', href: '/library', icon: Library },
@@ -39,16 +43,18 @@ const Sidebar = () => {
         <span>Musicarr</span>
       </div>
 
-      <nav className={styles.nav}>
+      <nav className={styles.nav} aria-label="Navigation principale">
         <div className={styles.navSection}>
           <p className={styles.sectionTitle}>Menu</p>
           {navItems.map((item) => (
-            <Link 
-              key={item.href} 
+            <Link
+              key={item.href}
               href={item.href}
-              className={`${styles.navLink} ${pathname === item.href ? styles.active : ''}`}
+              className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+              title={item.name}
             >
-              <item.icon size={20} />
+              <item.icon size={20} aria-hidden="true" />
               <span>{item.name}</span>
             </Link>
           ))}
@@ -57,12 +63,14 @@ const Sidebar = () => {
         <div className={styles.navSection}>
           <p className={styles.sectionTitle}>Gestion</p>
           {configItems.map((item) => (
-            <Link 
-              key={item.href} 
+            <Link
+              key={item.href}
               href={item.href}
-              className={`${styles.navLink} ${pathname === item.href ? styles.active : ''}`}
+              className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+              title={item.name}
             >
-              <item.icon size={20} />
+              <item.icon size={20} aria-hidden="true" />
               <span>{item.name}</span>
             </Link>
           ))}

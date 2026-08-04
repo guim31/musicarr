@@ -3,8 +3,10 @@
 import React, { useState } from 'react';
 import { Search as SearchIcon, Download, Loader2, AlertCircle, ExternalLink, HardDrive } from 'lucide-react';
 import styles from './Search.module.css';
+import { useToast } from '@/context/ToastContext';
 
 export default function SearchPage() {
+  const { showToast } = useToast();
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
@@ -37,7 +39,7 @@ export default function SearchPage() {
 
   const handleDownload = async (result: any) => {
     if (result.protocol === 'torrent') {
-      alert("Le téléchargement de torrents n'est pas encore supporté par Musicarr.");
+      showToast("Le téléchargement de torrents n'est pas encore supporté par Musicarr.", 'warning');
       return;
     }
 
@@ -62,14 +64,14 @@ export default function SearchPage() {
         throw new Error(data.error || 'Erreur lors du téléchargement');
       }
       
-      const message = result.protocol === 'deemix' 
-        ? `🎵 Téléchargement depuis Deezer démarré pour :\n${result.title}`
-        : `✅ Ajouté à SABnzbd avec succès :\n${result.title}`;
-        
-      alert(message);
+      const message = result.protocol === 'deemix'
+        ? `Téléchargement Deezer démarré : ${result.title}`
+        : `Ajouté à SABnzbd : ${result.title}`;
+
+      showToast(message, 'success');
     } catch (err: any) {
       console.error(err);
-      setError(err.message);
+      showToast(err.message || 'Erreur lors du téléchargement', 'error');
     } finally {
       setDownloadingItems(prev => ({ ...prev, [itemId]: false }));
     }
@@ -97,7 +99,7 @@ export default function SearchPage() {
           type="submit" 
           className={styles.downloadButton}
           style={{ width: 'auto', padding: '0 24px', height: '48px' }}
-          disabled={searching}
+          disabled={searching || !query.trim()}
         >
           {searching ? <Loader2 size={20} className="animate-spin" /> : <SearchIcon size={20} />}
           <span style={{ marginLeft: '8px' }}>{searching ? 'Recherche...' : 'Rechercher'}</span>
