@@ -12,23 +12,23 @@
   },
   "dependencies": {
     "axios": "^1.13.6",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^13.0.2",
     "blowfish-node": "^1.1.4",
     "form-data": "^4.0.5",
     "glob": "^13.0.6",
-    "lucide-react": "^0.577.0",
+    "lucide-react": "^1.28.0",
     "music-metadata": "^11.12.1",
     "next": "^16.3.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "zod": "^4.3.6"
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/node": "^20",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^24.13.3",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
+    "eslint": "^9.39.5",
     "eslint-config-next": "^16.3.0",
     "typescript": "^5"
   }
