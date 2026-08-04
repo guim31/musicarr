@@ -11,16 +11,30 @@ services:
       - ${MUSIC_DIR:-/mnt/user/data/media/music}:/app/music
     environment:
       - NODE_ENV=production
+      # Aligner sur le propriétaire du partage musical (Unraid : 99/100),
+      # sinon l'application ne pourra pas réécrire les tags.
+      - PUID=${PUID:-99}
+      - PGID=${PGID:-100}
     restart: unless-stopped
 
+  # Interface d'administration de la base SQLite.
+  #
+  # ⚠️  Elle n'a AUCUNE authentification et la base contient les clés API en
+  #     clair (Prowlarr, SABnzbd, Discogs, ARL Deezer). Elle est donc :
+  #       - désactivée par défaut (profil "debug") ;
+  #       - liée à 127.0.0.1 uniquement, jamais exposée sur le réseau.
+  #
+  # Pour la lancer ponctuellement :
+  #     docker compose --profile debug up sqlite-web
+  # puis http://127.0.0.1:8090 (ou un tunnel SSH depuis le NAS).
   sqlite-web:
     image: coleifer/sqlite-web
     container_name: musicarr-db-admin
-    restart: unless-stopped
+    profiles: [debug]
+    restart: "no"
     ports:
-      - "8090:8080"
+      - "127.0.0.1:8090:8080"
     volumes:
       - ./data:/data
     environment:
       - SQLITE_DATABASE=musicarr.db
-
