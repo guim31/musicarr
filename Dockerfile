@@ -1,4 +1,4 @@
-FROM node:20-alpine AS base
+FROM node:26-alpine AS base
 
 # Dépendances système : ffmpeg pour le tagging, su-exec + shadow pour la
 # bascule d'utilisateur au démarrage (usermod/groupmod ne sont pas dans busybox)
