@@ -27,7 +27,7 @@ deviennent critiques dès que le dépôt est publié ou l'application exposée.
 | Performances | 🟡 Acceptable | Aucun index SQL (corrigé), polling systématique |
 | Documentation | 🟢 Correct | `AI_CONTEXT.md` et `.agents/rules/` de bonne tenue |
 
-**Traité dans cette intervention :** 8 points sur 14
+**Traité dans cette intervention :** 10 points sur 17
 **Reste à traiter :** l'authentification, le chiffrement des secrets, les tests,
 la validation d'entrées, la robustesse du scan, les sauvegardes.
 
@@ -316,7 +316,40 @@ que la dérive ne se reproduise pas.
 Le paquet npm `crypto` (une coquille vide de 2014) était déclaré et masquait le
 module natif de Node. Supprimé.
 
-### 5.3 🟡 Absence de sauvegarde de la base — **ouvert**
+### 5.3 🟠 Node 20 en fin de vie — **corrigé** ([#20](https://github.com/guim31/musicarr/pull/20))
+
+L'image tournait sur Node 20, sorti du support. La montée était de toute façon
+imposée par `better-sqlite3` 13 (`engines: node >= 22`).
+
+Passage à **Node 24 LTS « Krypton »**, et non Node 26 comme proposé par
+Dependabot : Node 26 est la ligne *Current*, non LTS. Pour un service qui tourne
+sans surveillance sur un NAS, la LTS s'impose.
+
+Effet de bord traité dans la même PR : `better-sqlite3` expose un `binding.gyp`,
+ce qui pousse npm à lui ajouter un `node-gyp rebuild` implicite. Le paquet
+compile donc depuis les sources sur Alpine même s'il fournit un binaire musl —
+d'où l'ajout de `python3`/`make`/`g++` à l'étape `deps` du Dockerfile.
+
+### 5.4 🟡 ESLint 10 inatteignable — **bloqué en amont**
+
+`eslint-plugin-react@7.37.5`, dernière version publiée et embarquée par
+`eslint-config-next`, déclare une compatibilité limitée à `eslint ^9.7` et
+utilise `context.getFilename()`, retirée dans ESLint 10. Le projet reste donc
+en ESLint 9 ; rien à corriger de son côté.
+
+### 5.5 🟡 Règles du React Compiler — **partiellement corrigé** ([#20](https://github.com/guim31/musicarr/pull/20))
+
+`eslint-plugin-react-hooks` 7 a révélé dix erreurs. Quatre étaient de vrais
+risques — une fonction appelée dans un `useEffect` avant sa déclaration — et ont
+été corrigées. Les six autres relèvent de `set-state-in-effect` : le
+`setLoading(true)` synchrone en tête des fonctions de chargement provoque un
+rendu supplémentaire.
+
+> **Recommandation.** Optimisation, pas correction de bug. À traiter composant
+> par composant, sans campagne dédiée. La règle reste en avertissement pour
+> garder la dette visible.
+
+### 5.6 🟡 Absence de sauvegarde de la base — **ouvert**
 
 Un `musicarr.db.bak` traîne dans `data/`, visiblement copié à la main. La base
 contient toute la correspondance entre fichiers et métadonnées : la reconstruire
@@ -338,6 +371,7 @@ demande un scan complet plus une resynchronisation de toutes les discographies.
 | CI | Lint, types, build, image Docker, audit npm — sur chaque PR |
 | Gabarits | Pull Request, rapport de bug, demande de fonctionnalité |
 | Dependabot | npm, GitHub Actions et Docker, groupés, ciblant `dev` |
+| Dépendances | Toutes à jour, 0 vulnérabilité, Node 24 LTS. Seul ESLint 10 reste hors d'atteinte (§5.4) |
 | Conventions | `CONTRIBUTING.md` : branches, commits, règles de sécurité |
 | Protections | `scripts/setup-branch-protection.sh`, à lancer au passage en public ou en plan Pro |
 
