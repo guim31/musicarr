@@ -5,6 +5,7 @@
   --sidebar-bg: #000000;
   --accent: #ffffff;
   --accent-hover: #e2e8f0;
+  --accent-contrast: #0a0a0c;
   --border: #27272a;
   --text-muted: #94a3b8;
   --success: #10b981;
@@ -12,7 +13,9 @@
   --danger: #ef4444;
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --radius: 12px;
-  --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --radius-sm: 8px;
+  --container-width: 1440px;
+  --transition: all 0.15s ease;
 }
 
 * {
@@ -36,14 +39,35 @@ a {
   text-decoration: none;
 }
 
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+  font-size: inherit;
+}
+
 button {
   cursor: pointer;
-  font-family: inherit;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Focus visible uniquement à la navigation clavier */
+:focus-visible {
+  outline: 2px solid var(--text-muted);
+  outline-offset: 2px;
 }
 
 h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
   letter-spacing: -0.025em;
+}
+
+h1 {
+  font-size: 1.75rem;
 }
 
 .scroll-thin::-webkit-scrollbar {
@@ -61,4 +85,42 @@ h1, h2, h3, h4, h5, h6 {
 
 .scroll-thin::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+}
+
+/* Spinner partagé (utilisé partout via className="animate-spin") */
+@keyframes global-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: global-spin 1s linear infinite;
+}
+
+@keyframes global-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.animate-pulse {
+  animation: global-pulse 1.5s ease-in-out infinite;
+}
+
+/* Respecter la préférence utilisateur de réduction des animations */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

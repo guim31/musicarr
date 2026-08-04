@@ -19,17 +19,22 @@ import styles from './Sidebar.module.css';
 const Sidebar = () => {
   const pathname = usePathname();
 
+  // Un lien reste actif sur ses sous-pages (ex : /library/album/12 → « Ma Collection »)
+  const isActive = (href: string) =>
+    href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
+
+  // `short` : libellé compact affiché sous l'icône dans la barre mobile
   const navItems = [
-    { name: 'Tableau de bord', href: '/', icon: LayoutDashboard },
-    { name: 'Ma Collection', href: '/library', icon: Library },
-    { name: 'Recherche', href: '/search', icon: Search },
-    { name: 'Activité', href: '/activity', icon: Clock },
+    { name: 'Tableau de bord', short: 'Accueil', href: '/', icon: LayoutDashboard },
+    { name: 'Ma Collection', short: 'Collection', href: '/library', icon: Library },
+    { name: 'Recherche', short: 'Recherche', href: '/search', icon: Search },
+    { name: 'Activité', short: 'Activité', href: '/activity', icon: Clock },
   ];
 
   const configItems = [
-    { name: 'Manquants', href: '/missing', icon: AlertCircle },
-    { name: 'Debug Logs', href: '/debug', icon: Terminal },
-    { name: 'Configuration', href: '/settings', icon: Settings },
+    { name: 'Manquants', short: 'Manquants', href: '/missing', icon: AlertCircle },
+    { name: 'Debug Logs', short: 'Debug', href: '/debug', icon: Terminal },
+    { name: 'Configuration', short: 'Config', href: '/settings', icon: Settings },
   ];
 
   return (
@@ -39,17 +44,20 @@ const Sidebar = () => {
         <span>Musicarr</span>
       </div>
 
-      <nav className={styles.nav}>
+      <nav className={styles.nav} aria-label="Navigation principale">
         <div className={styles.navSection}>
           <p className={styles.sectionTitle}>Menu</p>
           {navItems.map((item) => (
-            <Link 
-              key={item.href} 
+            <Link
+              key={item.href}
               href={item.href}
-              className={`${styles.navLink} ${pathname === item.href ? styles.active : ''}`}
+              className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+              title={item.name}
             >
-              <item.icon size={20} />
+              <item.icon size={20} aria-hidden="true" />
               <span>{item.name}</span>
+              <span className={styles.mobileLabel} aria-hidden="true">{item.short}</span>
             </Link>
           ))}
         </div>
@@ -57,13 +65,16 @@ const Sidebar = () => {
         <div className={styles.navSection}>
           <p className={styles.sectionTitle}>Gestion</p>
           {configItems.map((item) => (
-            <Link 
-              key={item.href} 
+            <Link
+              key={item.href}
               href={item.href}
-              className={`${styles.navLink} ${pathname === item.href ? styles.active : ''}`}
+              className={`${styles.navLink} ${isActive(item.href) ? styles.active : ''}`}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+              title={item.name}
             >
-              <item.icon size={20} />
+              <item.icon size={20} aria-hidden="true" />
               <span>{item.name}</span>
+              <span className={styles.mobileLabel} aria-hidden="true">{item.short}</span>
             </Link>
           ))}
         </div>

@@ -1,11 +1,17 @@
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 24px;
   margin-top: 24px;
 }
 
+.subtitle {
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
 .card {
+  display: block;
   background-color: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -14,7 +20,14 @@
 }
 
 .card:hover {
-  border-color: var(--accent);
+  border-color: var(--text-muted);
+  transform: translateY(-2px);
+}
+
+.cardContent {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
 }
 
 .statValue {
@@ -34,6 +47,37 @@
   align-items: center;
   margin-top: 48px;
   margin-bottom: 24px;
+}
+
+.viewAllButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: var(--transition);
+}
+
+.viewAllButton:hover {
+  border-color: var(--text-muted);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.emptyActivity {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 40px;
+  text-align: center;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
 }
 
 .table {

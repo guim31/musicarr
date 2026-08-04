@@ -11,6 +11,7 @@ import {
   Info
 } from 'lucide-react';
 import styles from './OrganizeFilesModal.module.css';
+import { useEscapeToClose } from '@/hooks/useEscapeToClose';
 
 interface Change {
   type: 'file' | 'folder' | 'artist';
@@ -30,6 +31,8 @@ interface OrganizeFilesModalProps {
 export default function OrganizeFilesModal({ isOpen, onClose, albumId, onConfirm, loading, albumName }: OrganizeFilesModalProps) {
   const [plan, setPlan] = useState<Change[]>([]);
   const [loadingPlan, setLoadingPlan] = useState(false);
+  // Pas de fermeture pendant le déplacement des fichiers
+  useEscapeToClose(isOpen && !loading, onClose);
 
   // Déclaré avant l'effet qui l'appelle, pour éviter l'accès en zone morte.
   const fetchPlan = async () => {
@@ -74,8 +77,8 @@ export default function OrganizeFilesModal({ isOpen, onClose, albumId, onConfirm
   };
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={e => e.stopPropagation()}>
+    <div className={styles.overlay} onClick={loading ? undefined : onClose}>
+      <div className={styles.modal} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Réorganiser la bibliothèque">
         <header className={styles.header}>
           <div className={styles.iconWrapper}>
             <FolderSync size={24} />

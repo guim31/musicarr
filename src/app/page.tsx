@@ -1,13 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, 
-  Disc, 
-  DownloadCloud, 
+import {
+  Users,
+  Disc,
+  DownloadCloud,
   FileAudio,
-  Search,
-  Music,
   ArrowRight,
   Clock
 } from 'lucide-react';
@@ -18,23 +16,24 @@ export default function Home() {
   const [statsData, setStatsData] = useState({
     artists: 0,
     albums: 0,
-    missing: 0,
-    quality: 'FLAC'
+    missing: 0
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch('/api/library');
-        const data = await res.json();
-        if (data.stats) {
-          setStatsData(prev => ({
-            ...prev,
-            artists: data.stats.artists,
-            albums: data.stats.albums
-          }));
-        }
+        const [libraryRes, missingRes] = await Promise.all([
+          fetch('/api/library'),
+          fetch('/api/albums/missing')
+        ]);
+        const library = await libraryRes.json();
+        const missing = missingRes.ok ? await missingRes.json() : [];
+        setStatsData({
+          artists: library.stats?.artists ?? 0,
+          albums: library.stats?.albums ?? 0,
+          missing: Array.isArray(missing) ? missing.length : 0
+        });
       } catch (err) {
         console.error(err);
       } finally {
@@ -45,64 +44,43 @@ export default function Home() {
   }, []);
 
   const stats = [
-    { label: 'Artistes', value: statsData.artists.toString(), icon: Users },
-    { label: 'Albums', value: statsData.albums.toString(), icon: Disc },
-    { label: 'Releases Manquantes', value: '0', icon: DownloadCloud }, // À implémenter avec MusicBrainz
-    { label: 'Qualité Cible', value: 'FLAC', icon: FileAudio },
+    { label: 'Artistes', value: statsData.artists.toString(), icon: Users, href: '/library/artists' },
+    { label: 'Albums', value: statsData.albums.toString(), icon: Disc, href: '/library' },
+    { label: 'Albums manquants', value: statsData.missing.toString(), icon: DownloadCloud, href: '/missing' },
+    { label: 'Qualité cible', value: 'FLAC', icon: FileAudio, href: '/settings', static: true },
   ];
 
   return (
     <div>
       <header>
         <h1>Tableau de bord</h1>
-        <p style={{ color: 'var(--text-muted)' }}>Bienvenue sur Musicarr. Voici un aperçu de votre bibliothèque.</p>
+        <p className={styles.subtitle}>Bienvenue sur Musicarr. Voici un aperçu de votre bibliothèque.</p>
       </header>
 
       <div className={styles.grid}>
-        {stats.map((stat, i) => (
-          <div key={i} className={styles.card}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        {stats.map((stat) => (
+          <Link key={stat.label} href={stat.href} className={styles.card}>
+            <div className={styles.cardContent}>
               <div>
                 <p className={styles.statLabel}>{stat.label}</p>
-                <h2 className={styles.statValue}>{stat.value}</h2>
+                <h2 className={styles.statValue}>{loading && !stat.static ? '…' : stat.value}</h2>
               </div>
-              <stat.icon size={24} color="var(--accent)" />
+              <stat.icon size={24} color="var(--accent)" aria-hidden="true" />
             </div>
-          </div>
+          </Link>
         ))}
       </div>
 
       <div className={styles.sectionHeader}>
         <h2>Activité récente</h2>
-        <Link href="/library">
-          <button style={{ 
-            backgroundColor: 'transparent', 
-            color: 'var(--accent)', 
-            border: '1px solid var(--accent)', 
-            padding: '6px 16px', 
-            borderRadius: 'var(--radius)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            fontSize: '0.875rem',
-            fontWeight: 600,
-            cursor: 'pointer'
-          }}>
-            Voir tout
-            <ArrowRight size={16} />
-          </button>
+        <Link href="/activity" className={styles.viewAllButton}>
+          Voir tout
+          <ArrowRight size={16} />
         </Link>
       </div>
 
-      <div style={{ 
-        backgroundColor: 'var(--card-bg)', 
-        border: '1px solid var(--border)', 
-        borderRadius: 'var(--radius)', 
-        padding: '40px',
-        textAlign: 'center',
-        color: 'var(--text-muted)'
-      }}>
-        <Clock size={48} strokeWidth={1} style={{ marginBottom: '16px', opacity: 0.5 }} />
+      <div className={styles.emptyActivity}>
+        <Clock size={48} strokeWidth={1} />
         <p>Aucune activité récente. Vos téléchargements apparaîtront ici.</p>
       </div>
     </div>

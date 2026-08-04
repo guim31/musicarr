@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import styles from './TagEditorModal.module.css';
 import { useToast } from '@/context/ToastContext';
+import { useEscapeToClose } from '@/hooks/useEscapeToClose';
 
 interface Track {
   id: number;
@@ -77,6 +78,8 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
   });
   const [coverPreview, setCoverPreview] = useState<string>(`/api/albums/${album.id}/cover`);
   const [newCover, setNewCover] = useState<string | null>(null);
+  // Pas de fermeture pendant l'écriture des tags
+  useEscapeToClose(isOpen && !loading, onClose);
 
   useEffect(() => {
     if (isOpen) {
@@ -288,14 +291,14 @@ export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveS
   if (!isOpen) return null;
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={e => e.stopPropagation()}>
+    <div className={styles.overlay} onClick={loading ? undefined : onClose}>
+      <div className={styles.modal} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Éditeur de tags ID3">
         <header className={styles.header}>
           <div className={styles.headerTitle}>
             <Edit3 size={20} color="var(--accent)" />
             <h3>Éditeur de Tags ID3</h3>
           </div>
-          <button className={styles.closeBtn} onClick={onClose}>
+          <button className={styles.closeBtn} onClick={onClose} aria-label="Fermer">
             <X size={20} />
           </button>
         </header>
