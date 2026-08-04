@@ -13,7 +13,7 @@ services:
       - ./next.config.ts:/app/next.config.ts
       - ./package.json:/app/package.json
       - ./data:/app/data
-      - ${MUSIC_DIR:-/home/guilhem/Musique/}:/app/music
+      - ${MUSIC_DIR:-/chemin/vers/votre/musique}:/app/music
     environment:
       - NODE_ENV=development
       - PORT=3000

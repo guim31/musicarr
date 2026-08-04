@@ -6,13 +6,14 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "lint:fix": "eslint --fix",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "axios": "^1.13.6",
     "better-sqlite3": "^12.6.2",
     "blowfish-node": "^1.1.4",
-    "crypto": "^1.0.1",
     "form-data": "^4.0.5",
     "glob": "^13.0.6",
     "lucide-react": "^0.577.0",

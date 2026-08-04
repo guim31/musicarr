@@ -1,4 +1,4 @@
-# Instructions de déploiement et de test sur le NAS (Unraid / IP: 192.168.100.150)
+# Instructions de déploiement et de test sur le NAS (Unraid / IP configurée via NAS_HOST)
 
 Ces instructions vous permettront de transférer et de lancer manuellement Musicarr sur votre NAS afin d'effectuer des tests rapides sans passer par un dépôt Git ou une CI/CD complexe.
 
@@ -13,14 +13,14 @@ rsync -avz --chown=99:100 \
   --exclude '.next' \
   --exclude '.git' \
   --exclude 'data' \
-  ./ root@192.168.100.150:/mnt/user/appdata/musicarr/
+  ./ root@${NAS_HOST}:/mnt/user/appdata/musicarr/
 ```
 
 ## 2. Se connecter au NAS
 Ouvrez une nouvelle fenêtre de terminal et connectez-vous au NAS en SSH :
 
 ```bash
-ssh root@192.168.100.150
+ssh root@${NAS_HOST}
 ```
 
 ## 3. Configurer l'environnement de Production
@@ -62,7 +62,7 @@ docker compose up -d --build
 ## 5. Tester l'application
 Sur votre ordinateur de développement, ouvrez simplement votre navigateur à l'adresse suivante :
 
-👉 **http://192.168.100.150:3005**
+👉 **http://${NAS_HOST}:3005**
 
 Vous voici sur l'instance de test côté NAS !
 
