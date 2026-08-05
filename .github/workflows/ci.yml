@@ -5,6 +5,7 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  workflow_call: # permet à docker-publish.yml de rejouer cette CI avant de publier
 
 # Une seule exécution par branche : les pushs successifs annulent les runs obsolètes.
 concurrency:
