@@ -1,5 +1,33 @@
 # Instructions de déploiement et de test sur le NAS (Unraid / IP configurée via NAS_HOST)
 
+## Installation recommandée : image Docker Hub (Unraid)
+
+À chaque release taguée (`vX.Y.Z`), la CI publie l'image officielle
+[`guilhem31/musicarr`](https://hub.docker.com/r/guilhem31/musicarr) sur Docker Hub
+(voir CONTRIBUTING.md, règle 8). C'est la méthode à privilégier en production :
+Unraid détecte automatiquement les nouvelles versions du tag `latest` et propose
+la mise à jour directement dans la webgui (onglet Docker → « update ready »).
+
+Dans Unraid : **Docker → Add Container**, puis :
+
+| Champ | Valeur |
+|---|---|
+| Repository | `guilhem31/musicarr:latest` |
+| Port | `3005` → `3000` (ou le port hôte de votre choix) |
+| Volume données | `/mnt/user/appdata/musicarr/data` → `/app/data` |
+| Volume musique | `/mnt/user/data/media/music` → `/app/music` (adaptez à votre partage) |
+
+Les variables `PUID`/`PGID` valent déjà `99`/`100` (`nobody:users`, le
+propriétaire des partages Unraid) — ne les surchargez que si votre partage
+musical appartient à un autre utilisateur (`stat -c '%u %g' /chemin/musique`).
+
+L'application est ensuite disponible sur `http://IP_DU_NAS:3005`, et les mises à
+jour s'installent en un clic depuis la webgui.
+
+---
+
+## Méthode manuelle (tests d'une version non publiée)
+
 Ces instructions vous permettront de transférer et de lancer manuellement Musicarr sur votre NAS afin d'effectuer des tests rapides sans passer par un dépôt Git ou une CI/CD complexe.
 
 ## 1. Transférer le code local vers le NAS
