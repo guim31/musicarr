@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { version } from '../../package.json';
 import { 
   Music, 
   Library, 
@@ -81,7 +82,7 @@ const Sidebar = () => {
       </nav>
 
       <div className={styles.footer}>
-        v0.1.0-alpha
+        v{version}
       </div>
     </aside>
   );
