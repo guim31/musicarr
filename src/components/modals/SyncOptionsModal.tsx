@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { RefreshCw, X, Check, Filter } from 'lucide-react';
 import styles from './SyncOptionsModal.module.css';
+import { useEscapeToClose } from '@/hooks/useEscapeToClose';
 
 interface SyncOptionsModalProps {
   isOpen: boolean;
@@ -14,7 +15,8 @@ interface SyncOptionsModalProps {
 export default function SyncOptionsModal({ isOpen, onClose, onSync, artistName }: SyncOptionsModalProps) {
   const [selectedTypes, setSelectedTypes] = useState<string[]>(['album', 'ep']);
   const [deepSync, setDeepSync] = useState(false);
-  
+  useEscapeToClose(isOpen, onClose);
+
   const options = [
     { id: 'album', label: 'Albums Studio', description: 'Les albums officiels de l\'artiste' },
     { id: 'ep', label: 'EPs', description: 'Extended Plays et sorties courtes' },
@@ -38,7 +40,7 @@ export default function SyncOptionsModal({ isOpen, onClose, onSync, artistName }
 
   return (
     <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.content} onClick={e => e.stopPropagation()}>
+      <div className={styles.content} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Options de synchronisation">
         <header className={styles.header}>
           <div className={styles.titleArea}>
             <RefreshCw size={24} color="var(--accent)" />

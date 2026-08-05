@@ -12,6 +12,90 @@
   gap: 16px;
 }
 
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  display: inline-block;
+  padding: 10px 16px;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: var(--transition);
+}
+
+.tab:hover {
+  color: var(--foreground);
+}
+
+.tabActive {
+  color: var(--foreground);
+  border-bottom-color: var(--accent);
+}
+
+.viewToggle {
+  display: flex;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  background-color: var(--background);
+}
+
+.viewToggleButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  transition: var(--transition);
+}
+
+.viewToggleButton:hover {
+  color: var(--foreground);
+}
+
+.viewToggleActive,
+.viewToggleActive:hover {
+  background-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.emptyState {
+  text-align: center;
+  padding: 100px 0;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.emptyState h2 {
+  color: var(--foreground);
+  margin-bottom: 8px;
+}
+
+.loadingState {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  gap: 16px;
+  padding: 100px 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
 .searchHeader {
   display: flex;
   gap: 16px;

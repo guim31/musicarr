@@ -15,9 +15,26 @@ Musicarr est une alternative moderne à Lidarr pour la gestion de votre biblioth
   tags, réorganisation physique des fichiers après modification.
 - 📊 **Suivi en direct** — journal d'activité et notifications de progression
   pour les scans, synchronisations et téléchargements.
-- 🐳 **Docker** — déploiement sur NAS Unraid via Docker Compose.
+- 🐳 **Docker** — image officielle sur Docker Hub, mises à jour détectées
+  automatiquement par Unraid.
 
 ## Installation rapide
+
+Avec l'image publiée sur Docker Hub
+([`guilhem31/musicarr`](https://hub.docker.com/r/guilhem31/musicarr)) :
+
+```bash
+docker run -d --name musicarr \
+  -p 3005:3000 \
+  -v /chemin/vers/appdata/musicarr/data:/app/data \
+  -v /chemin/vers/votre/musique:/app/music \
+  guilhem31/musicarr:latest
+```
+
+Sur Unraid, voir `DEPLOIEMENT_NAS.md` : le container s'installe depuis la
+webgui et les mises à jour y sont proposées automatiquement à chaque release.
+
+Ou depuis les sources, via Docker Compose :
 
 ```bash
 git clone https://github.com/guim31/musicarr.git

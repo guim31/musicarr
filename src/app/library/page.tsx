@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Search, 
-  Plus, 
-  Filter, 
-  Music, 
+import {
+  Search,
+  Plus,
+  Music,
   Disc, 
   ChevronRight,
   ChevronLeft,
@@ -174,38 +173,22 @@ export default function AlbumsPage() {
           <p style={{ color: 'var(--text-muted)' }}>Gérez vos artistes et albums favoris.</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <Link href="/library/add" style={{ textDecoration: 'none' }}>
-            <button className={styles.button}>
-              <Plus size={20} />
-              Ajouter un artiste
-            </button>
+          <Link href="/library/add" className={styles.button}>
+            <Plus size={20} />
+            Ajouter un artiste
           </Link>
         </div>
       </header>
 
       {/* TABS NAVIGATION */}
-      <div style={{ display: 'flex', gap: '24px', marginBottom: '24px', borderBottom: '1px solid var(--border)', paddingBottom: '0' }}>
-        <div style={{ 
-          padding: '8px 16px', 
-          color: 'var(--accent)', 
-          fontWeight: 600, 
-          cursor: 'pointer',
-          borderBottom: '2px solid var(--accent)'
-        }}>
+      <nav className={styles.tabs} aria-label="Sections de la collection">
+        <span className={`${styles.tab} ${styles.tabActive}`} aria-current="page">
           Albums
-        </div>
-        <Link href="/library/artists" style={{ textDecoration: 'none' }}>
-          <div style={{ 
-            padding: '8px 16px', 
-            color: 'var(--text-muted)', 
-            fontWeight: 600, 
-            cursor: 'pointer',
-            borderBottom: '2px solid transparent'
-          }}>
-            Artistes
-          </div>
+        </span>
+        <Link href="/library/artists" className={styles.tab}>
+          Artistes
         </Link>
-      </div>
+      </nav>
 
       <div className={styles.searchHeader}>
         <div className={styles.searchInputWrapper}>
@@ -218,30 +201,20 @@ export default function AlbumsPage() {
             className={styles.searchInput}
           />
         </div>
-        <div style={{ display: 'flex', gap: '8px', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '4px', backgroundColor: 'var(--background)' }}>
-          <button 
+        <div className={styles.viewToggle} role="group" aria-label="Mode d'affichage">
+          <button
              onClick={() => setViewMode('grid')}
-             className={styles.outlineButton}
-             style={{ 
-               padding: '6px', 
-               border: 'none',
-               backgroundColor: viewMode === 'grid' ? 'var(--accent)' : 'transparent',
-               color: viewMode === 'grid' ? 'white' : 'var(--text-muted)'
-             }}
-             title="Vue Jukebox"
+             className={`${styles.viewToggleButton} ${viewMode === 'grid' ? styles.viewToggleActive : ''}`}
+             title="Vue grille"
+             aria-pressed={viewMode === 'grid'}
           >
             <LayoutGrid size={18} />
           </button>
-          <button 
+          <button
              onClick={() => setViewMode('list')}
-             className={styles.outlineButton}
-             style={{ 
-               padding: '6px', 
-               border: 'none',
-               backgroundColor: viewMode === 'list' ? 'var(--accent)' : 'transparent',
-               color: viewMode === 'list' ? 'white' : 'var(--text-muted)'
-             }}
-             title="Vue Liste"
+             className={`${styles.viewToggleButton} ${viewMode === 'list' ? styles.viewToggleActive : ''}`}
+             title="Vue liste"
+             aria-pressed={viewMode === 'list'}
           >
             <List size={18} />
           </button>
@@ -304,25 +277,27 @@ export default function AlbumsPage() {
       </div>
 
       {loading ? (
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '100px', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+        <div className={styles.loadingState}>
           <Disc className={styles.spin} size={48} color="var(--accent)" />
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>Chargement de votre collection...</p>
+          <p>Chargement de votre collection...</p>
         </div>
       ) : albums.length === 0 ? (
-        <div style={{ 
-          textAlign: 'center', 
-          padding: '120px 0', 
-          color: 'var(--text-muted)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: '16px'
-        }}>
+        <div className={styles.emptyState}>
           <Disc size={64} strokeWidth={1} />
           <div>
-            <h2 style={{ color: 'var(--foreground)', marginBottom: '8px' }}>Aucun album trouvé</h2>
-            <p>Ajustez votre recherche ou scannez votre bibliothèque.</p>
+            <h2>Aucun album trouvé</h2>
+            <p>
+              {filter
+                ? 'Aucun résultat pour cette recherche. Essayez d\'autres mots-clés.'
+                : 'Ajoutez un artiste ou scannez votre bibliothèque pour commencer.'}
+            </p>
           </div>
+          {!filter && (
+            <Link href="/library/add" className={styles.button}>
+              <Plus size={18} />
+              Ajouter un artiste
+            </Link>
+          )}
         </div>
       ) : viewMode === 'grid' ? (
         <>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Terminal, Trash2, RefreshCw, ChevronLeft, Download } from 'lucide-react';
+import { Terminal, Trash2, RefreshCw, Download } from 'lucide-react';
 import styles from './Debug.module.css';
 
 export default function DebugPage() {
@@ -45,6 +45,19 @@ export default function DebugPage() {
     };
   }, [autoRefresh]);
 
+  // Suivre les nouveaux logs : coller au bas du terminal, sauf si
+  // l'utilisateur a remonté pour lire d'anciens messages
+  const prevCount = useRef(0);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || logs.length === 0) return;
+    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    if (prevCount.current === 0 || nearBottom) {
+      el.scrollTop = el.scrollHeight;
+    }
+    prevCount.current = logs.length;
+  }, [logs]);
+
   const downloadLogs = () => {
     const text = logs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] ${l.message}`).join('\n');
     const blob = new Blob([text], { type: 'text/plain' });
@@ -77,13 +90,13 @@ export default function DebugPage() {
             </label>
             <span>Auto-refresh</span>
           </div>
-          <button className={styles.button} onClick={fetchLogs} title="Actualiser">
+          <button className={styles.button} onClick={fetchLogs} title="Actualiser" aria-label="Actualiser les logs">
             <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
           </button>
-          <button className={styles.button} onClick={downloadLogs} title="Télécharger">
+          <button className={styles.button} onClick={downloadLogs} title="Télécharger" aria-label="Télécharger les logs" disabled={logs.length === 0}>
             <Download size={18} />
           </button>
-          <button className={`${styles.button} ${styles.danger}`} onClick={clearLogs} title="Effacer">
+          <button className={`${styles.button} ${styles.danger}`} onClick={clearLogs} title="Effacer" aria-label="Effacer les logs" disabled={logs.length === 0}>
             <Trash2 size={18} />
           </button>
         </div>

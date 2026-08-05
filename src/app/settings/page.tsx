@@ -40,7 +40,9 @@ export default function SettingsPage() {
   const [deezerArl, setDeezerArl] = useState('');
   const [deezerQuality, setDeezerQuality] = useState('MP3_320');
 
-  const [loading, setLoading] = useState(false);
+  // Action en cours (clé unique par bouton) : permet d'afficher le spinner
+  // sur le bon bouton au lieu d'un état global muet
+  const [busy, setBusy] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState<{ processed: number, total: number } | null>(null);
@@ -128,7 +130,7 @@ export default function SettingsPage() {
 
 
   const handleTestProwlarr = async () => {
-    setLoading(true);
+    setBusy('prowlarr-test');
     try {
       const res = await fetch('/api/prowlarr', {
         method: 'POST',
@@ -144,12 +146,12 @@ export default function SettingsPage() {
     } catch (error) {
       showToast('Erreur lors du test de connexion Prowlarr.', 'error');
     } finally {
-      setLoading(false);
+      setBusy(null);
     }
   };
 
   const handleSaveProwlarr = async () => {
-    setLoading(true);
+    setBusy('prowlarr-save');
     try {
       const res = await fetch('/api/prowlarr', {
         method: 'POST',
@@ -164,12 +166,12 @@ export default function SettingsPage() {
     } catch (error) {
       showToast('Erreur lors de l\'enregistrement Prowlarr.', 'error');
     } finally {
-      setLoading(false);
+      setBusy(null);
     }
   };
 
   const handleTestSab = async () => {
-    setLoading(true);
+    setBusy('sab-test');
     try {
       const res = await fetch('/api/sabnzbd', {
         method: 'POST',
@@ -185,12 +187,12 @@ export default function SettingsPage() {
     } catch (error) {
       showToast('Erreur lors du test de connexion SABnzbd.', 'error');
     } finally {
-      setLoading(false);
+      setBusy(null);
     }
   };
 
   const handleSaveSab = async () => {
-    setLoading(true);
+    setBusy('sab-save');
     try {
       const res = await fetch('/api/sabnzbd', {
         method: 'POST',
@@ -204,7 +206,7 @@ export default function SettingsPage() {
     } catch (error) {
       showToast('Erreur lors de l\'enregistrement SABnzbd.', 'error');
     } finally {
-      setLoading(false);
+      setBusy(null);
     }
   };
 
@@ -229,7 +231,7 @@ export default function SettingsPage() {
   };
 
   const handleSaveLibrary = async () => {
-    setLoading(true);
+    setBusy('library-save');
     try {
       const res = await fetch('/api/library', {
         method: 'POST',
@@ -242,7 +244,7 @@ export default function SettingsPage() {
     } catch (error) {
       showToast('Erreur lors de l\'enregistrement de la bibliothèque.', 'error');
     } finally {
-      setLoading(false);
+      setBusy(null);
     }
   };
 
@@ -315,7 +317,7 @@ export default function SettingsPage() {
   };
 
   const handleSaveMetadata = async () => {
-    setLoading(true);
+    setBusy('meta-save');
     try {
       const res = await fetch('/api/metadata', {
         method: 'POST',
@@ -328,18 +330,18 @@ export default function SettingsPage() {
     } catch (error) {
       showToast('Erreur lors de l\'enregistrement des métadonnées.', 'error');
     } finally {
-      setLoading(false);
+      setBusy(null);
     }
   };
 
   return (
     <div className={styles.container}>
-      <header style={{ marginBottom: '32px' }}>
+      <header className={styles.pageHeader}>
         <h1>Configuration</h1>
-        <p style={{ color: 'var(--text-muted)' }}>Gérez vos indexeurs et vos clients de téléchargement.</p>
+        <p className={styles.subtitle}>Gérez vos indexeurs et vos clients de téléchargement.</p>
       </header>
 
-            <div className={styles.section}>
+      <div className={styles.section}>
         <h2 className={styles.title}><Server size={24} color="var(--accent)" /> Bibliothèque</h2>
         <div className={styles.formGroup}>
           <label className={styles.label}>Chemin de la musique (NAS)</label>
@@ -350,7 +352,7 @@ export default function SettingsPage() {
             value={libraryPath}
             onChange={(e) => setLibraryPath(e.target.value)}
           />
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+          <p className={styles.hint}>
             💡 Dans Docker, utilisez le chemin interne du container : <strong>/app/music</strong> (mappé dans le docker-compose).
           </p>
         </div>
@@ -388,34 +390,32 @@ export default function SettingsPage() {
           </div>
         )}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
-          <div style={{ display: 'flex', gap: '12px' }}>
-            <button 
-              className={`${styles.button} ${styles.outlineButton}`} 
-              onClick={handlePreviewPath} 
+        <div className={styles.actionsRow}>
+          <div className={styles.actionsGroup}>
+            <button
+              className={`${styles.button} ${styles.outlineButton}`}
+              onClick={handlePreviewPath}
               disabled={previewing || !libraryPath}
             >
               {previewing ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-              <span style={{ marginLeft: '8px' }}>Aperçu des dossiers</span>
+              Aperçu des dossiers
             </button>
-            <button 
-              className={styles.button} 
-              style={{ backgroundColor: 'var(--accent)' }} 
+            <button
+              className={styles.button}
               onClick={handleScanLibrary}
-              disabled={loading || scanning || !libraryPath}
+              disabled={busy !== null || scanning || !libraryPath}
             >
               {scanning ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-              <span style={{ marginLeft: '8px' }}>Lancer le Scan</span>
+              Lancer le Scan
             </button>
           </div>
-          <button 
-            className={styles.button} 
-            onClick={handleSaveLibrary} 
-            disabled={loading || scanning}
-            style={{ backgroundColor: 'var(--success)' }}
+          <button
+            className={`${styles.button} ${styles.saveButton}`}
+            onClick={handleSaveLibrary}
+            disabled={busy !== null || scanning}
           >
-            <Save size={18} />
-            <span style={{ marginLeft: '8px' }}>Sauvegarder</span>
+            {busy === 'library-save' ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+            Sauvegarder
           </button>
         </div>
 
@@ -490,18 +490,17 @@ export default function SettingsPage() {
 
 
       <div className={styles.section}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-          <h2 className={styles.title} style={{ marginBottom: 0 }}>
+        <div className={styles.sectionHeader}>
+          <h2 className={styles.title}>
             <Search size={24} color="var(--accent)" /> Indexeurs (Prowlarr)
           </h2>
-          <button 
-            className={styles.button} 
-            style={{ backgroundColor: 'transparent', border: '1px solid var(--border)', color: 'var(--foreground)' }}
+          <button
+            className={`${styles.button} ${styles.outlineButton}`}
             onClick={handleSyncIndexers}
             disabled={syncing}
           >
             {syncing ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-            <span style={{ marginLeft: '8px' }}>Sync Indexeurs</span>
+            Sync Indexeurs
           </button>
         </div>
         
@@ -525,43 +524,37 @@ export default function SettingsPage() {
             placeholder="Clé API Prowlarr" 
           />
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
-          <button className={styles.button} onClick={handleTestProwlarr} disabled={loading}>
+        <div className={styles.actionsRow}>
+          <button
+            className={`${styles.button} ${styles.outlineButton}`}
+            onClick={handleTestProwlarr}
+            disabled={busy !== null}
+          >
+            {busy === 'prowlarr-test' && <Loader2 size={16} className="animate-spin" />}
             Tester la connexion
           </button>
-          <button 
-            className={styles.button} 
+          <button
+            className={`${styles.button} ${styles.saveButton}`}
             onClick={handleSaveProwlarr}
-            disabled={loading}
-            style={{ backgroundColor: 'var(--success)' }}
+            disabled={busy !== null}
           >
-            <Save size={18} />
-            <span style={{ marginLeft: '8px' }}>Sauvegarder & Sync</span>
+            {busy === 'prowlarr-save' ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+            Sauvegarder & Sync
           </button>
         </div>
 
         {indexers.length > 0 && (
           <div style={{ marginTop: '32px' }}>
             <h3 style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '12px', textTransform: 'uppercase' }}>Indexeurs synchronisés</h3>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className={styles.indexerGrid}>
               {indexers.map((idx) => (
-                <div key={idx.id} style={{ 
-                  padding: '12px', 
-                  backgroundColor: 'var(--background)', 
-                  border: '1px solid var(--border)', 
-                  borderRadius: 'var(--radius)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px'
-                }}>
-                  <div style={{ 
-                    width: '8px', 
-                    height: '8px', 
-                    borderRadius: '50%', 
-                    backgroundColor: idx.enabled ? 'var(--success)' : 'var(--text-muted)' 
-                  }} />
-                  <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{idx.name}</span>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{idx.protocol}</span>
+                <div key={idx.id} className={styles.indexerItem}>
+                  <div
+                    className={`${styles.indexerDot} ${idx.enabled ? styles.indexerDotEnabled : ''}`}
+                    title={idx.enabled ? 'Actif' : 'Inactif'}
+                  />
+                  <span>{idx.name}</span>
+                  <span className={styles.indexerProtocol}>{idx.protocol}</span>
                 </div>
               ))}
             </div>
@@ -601,18 +594,22 @@ export default function SettingsPage() {
             placeholder="music" 
           />
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px' }}>
-          <button className={styles.button} onClick={handleTestSab} disabled={loading}>
+        <div className={styles.actionsRow}>
+          <button
+            className={`${styles.button} ${styles.outlineButton}`}
+            onClick={handleTestSab}
+            disabled={busy !== null}
+          >
+            {busy === 'sab-test' && <Loader2 size={16} className="animate-spin" />}
             Tester la connexion
           </button>
-          <button 
-            className={styles.button} 
+          <button
+            className={`${styles.button} ${styles.saveButton}`}
             onClick={handleSaveSab}
-            disabled={loading}
-            style={{ backgroundColor: 'var(--success)' }}
+            disabled={busy !== null}
           >
-            <Save size={18} />
-            <span style={{ marginLeft: '8px' }}>Sauvegarder</span>
+            {busy === 'sab-save' ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+            Sauvegarder
           </button>
         </div>
       </div>
@@ -628,7 +625,7 @@ export default function SettingsPage() {
             value={deezerArl}
             onChange={(e) => setDeezerArl(e.target.value)}
           />
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+          <p className={styles.hint}>
             🔑 Nécessaire pour le téléchargement direct. Récupérez-le dans les cookies de votre navigateur sur deezer.com.
           </p>
         </div>
@@ -647,15 +644,14 @@ export default function SettingsPage() {
           </select>
         </div>
         
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-          <button 
-            className={styles.button} 
-            onClick={handleSaveMetadata} 
-            disabled={loading}
-            style={{ backgroundColor: 'var(--success)' }}
+        <div className={styles.actionsRow} style={{ justifyContent: 'flex-end' }}>
+          <button
+            className={`${styles.button} ${styles.saveButton}`}
+            onClick={handleSaveMetadata}
+            disabled={busy !== null}
           >
-            <Save size={18} />
-            <span style={{ marginLeft: '8px' }}>Sauvegarder</span>
+            {busy === 'meta-save' ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+            Sauvegarder
           </button>
         </div>
       </div>
@@ -671,20 +667,19 @@ export default function SettingsPage() {
             value={discogsToken}
             onChange={(e) => setDiscogsToken(e.target.value)}
           />
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '8px' }}>
-            📀 Pour de meilleurs résultats sur les releases spécifiques, créez un jeton dans vos <a href="https://www.discogs.com/settings/developers" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)' }}>paramètres Discogs</a>.
+          <p className={styles.hint}>
+            📀 Pour de meilleurs résultats sur les releases spécifiques, créez un jeton dans vos <a href="https://www.discogs.com/settings/developers" target="_blank" rel="noopener noreferrer">paramètres Discogs</a>.
           </p>
         </div>
         
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '16px' }}>
-          <button 
-            className={styles.button} 
-            onClick={handleSaveMetadata} 
-            disabled={loading}
-            style={{ backgroundColor: 'var(--success)' }}
+        <div className={styles.actionsRow} style={{ justifyContent: 'flex-end' }}>
+          <button
+            className={`${styles.button} ${styles.saveButton}`}
+            onClick={handleSaveMetadata}
+            disabled={busy !== null}
           >
-            <Save size={18} />
-            <span style={{ marginLeft: '8px' }}>Sauvegarder</span>
+            {busy === 'meta-save' ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />}
+            Sauvegarder
           </button>
         </div>
       </div>
