@@ -5,10 +5,15 @@ name: Docker Publish
 # jamais une image qui n'a pas passé la même CI (lint + types + build + image)
 # que les branches. Le tag `latest` permet à Unraid de détecter les mises à
 # jour du container et de les proposer dans la webgui.
+#
+# Le déclenchement manuel (workflow_dispatch, onglet Actions → Run workflow)
+# publie la version de package.json depuis la branche choisie — utile pour
+# re-publier une version ou publier sans pousser de tag.
 on:
   push:
     tags:
       - 'v*.*.*'
+  workflow_dispatch:
 
 jobs:
   test:
@@ -20,9 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Déterminer le SHA court
+      - name: Déterminer le SHA court et la version
         id: vars
-        run: echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          # Sur un tag : le nom du tag. En déclenchement manuel : la version de package.json.
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
 
       - uses: docker/setup-buildx-action@v4
 
@@ -41,5 +53,5 @@ jobs:
           cache-to: type=gha,mode=max
           tags: |
             guilhem31/musicarr:latest
-            guilhem31/musicarr:${{ github.ref_name }}
+            guilhem31/musicarr:${{ steps.vars.outputs.version }}
             guilhem31/musicarr:${{ steps.vars.outputs.sha_short }}
