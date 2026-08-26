@@ -226,9 +226,24 @@ export class LibraryService {
     }
   });
 
+  /**
+   * Scans ciblés refusés parce qu'un autre scan tournait.
+   *
+   * Ils étaient purement abandonnés : un album téléchargé pendant un scan
+   * complet n'était donc jamais indexé, et il fallait relancer un scan à la
+   * main pour le voir apparaître. Ils sont désormais rejoués à la fin du scan
+   * en cours.
+   */
+  private static readonly pendingPaths = new Set<string>();
+
   static async scan(targetPath?: string) {
     if (this.isScanning) {
-      console.log(`[Library] Scan already in progress (in-memory). Skipping scan for: ${targetPath || 'full library'}`);
+      if (targetPath) {
+        this.pendingPaths.add(targetPath);
+        console.log(`[Library] Scan en cours : ${targetPath} sera rejoué à la fin.`);
+      } else {
+        console.log('[Library] Scan complet déjà en cours, demande ignorée.');
+      }
       return 0;
     }
 
@@ -480,6 +495,21 @@ export class LibraryService {
       this.artistIndex = null;
       if (!targetPath) {
         db.prepare('DELETE FROM settings WHERE key = ?').run('scan_progress');
+      }
+      void this.drainPendingScans();
+    }
+  }
+
+  /** Rejoue les scans ciblés refusés pendant qu'un autre scan tournait. */
+  private static async drainPendingScans() {
+    const pending = Array.from(this.pendingPaths);
+    this.pendingPaths.clear();
+
+    for (const path of pending) {
+      try {
+        await this.scan(path);
+      } catch (error) {
+        console.error(`[Library] Rejeu du scan de ${path} :`, error);
       }
     }
   }

@@ -3,11 +3,10 @@ import { CompareUtils } from '@/lib/CompareUtils';
 import { MusicBrainzProvider } from './providers/MusicBrainzProvider';
 import { DiscogsProvider } from './providers/DiscogsProvider';
 import { DeezerProvider } from './providers/DeezerProvider';
-import { mergeDiscographies, type MergedRelease, type SourceDiscography } from './ReleaseMerger';
+import { mergeDiscographies, type SourceDiscography } from './ReleaseMerger';
+import { persistDiscography, type ProviderKey, type ProviderStatus } from './ReleaseStore';
 import { DEFAULT_SYNC_TYPES, type ReleaseType } from './releaseTypes';
 import type { FetchDiscographyOptions, RemoteAlbum, RemoteArtist } from './types';
-
-export type ProviderKey = 'musicbrainz' | 'deezer' | 'discogs';
 
 /**
  * Issue d'un fournisseur pour une synchronisation.
@@ -18,9 +17,9 @@ export type ProviderKey = 'musicbrainz' | 'deezer' | 'discogs';
  * - `skipped` : fournisseur non configuré (jeton Discogs absent).
  * - `failed` : erreur réseau ou API.
  */
-export type ProviderStatus = 'ok' | 'unmatched' | 'skipped' | 'failed';
+export type { ProviderKey, ProviderStatus } from './ReleaseStore';
 
-export interface ProviderOutcome {
+interface ProviderOutcome {
   provider: ProviderKey;
   status: ProviderStatus;
   message?: string;
@@ -149,7 +148,7 @@ export class SyncService {
       // écrivait sa ligne au fil de l'eau, si bien qu'un fournisseur en échec
       // laissait silencieusement en place des données périmées, produites avec
       // d'autres filtres et à une autre date.
-      const persisted = this.persist(artist, releases, outcomes, { types, deep });
+      const persisted = persistDiscography(artist.id, releases, outcomes, { types, deep });
 
       db.prepare("UPDATE activity SET status = 'completed', message = ?, details = ? WHERE id = ?").run(
         this.summarise(artist.name, persisted, outcomes),
@@ -296,170 +295,6 @@ export class SyncService {
         albums: [],
       };
     }
-  }
-
-  // -------------------------------------------------------------------------
-  // Écriture
-  // -------------------------------------------------------------------------
-
-  private persist(
-    artist: ArtistRow,
-    releases: MergedRelease[],
-    outcomes: ProviderOutcome[],
-    scope: { types: ReleaseType[]; deep: boolean },
-  ): { total: number; owned: number } {
-    const wanted = new Set(scope.types);
-
-    const write = db.transaction(() => {
-      for (const outcome of outcomes) {
-        db.prepare(
-          `INSERT INTO artist_cache (artist_id, provider, data, status, scope, message, item_count, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-           ON CONFLICT(artist_id, provider) DO UPDATE SET
-             data = excluded.data,
-             status = excluded.status,
-             scope = excluded.scope,
-             message = excluded.message,
-             item_count = excluded.item_count,
-             updated_at = CURRENT_TIMESTAMP`,
-        ).run(
-          artist.id,
-          outcome.provider,
-          JSON.stringify(outcome.albums),
-          outcome.status,
-          JSON.stringify(scope),
-          outcome.message ?? null,
-          outcome.albums.length,
-        );
-      }
-
-      const localAlbums = db
-        .prepare('SELECT id, name, status, mbid, discogs_id, deezer_id FROM albums WHERE artist_id = ?')
-        .all(artist.id) as {
-        id: number;
-        name: string;
-        status: string;
-        mbid: string | null;
-        discogs_id: string | null;
-        deezer_id: string | null;
-      }[];
-
-      // Index clé de sortie -> album local, les albums possédés d'abord :
-      // un même titre peut exister deux fois, on privilégie celui qu'on a.
-      const byReleaseKey = new Map<string, (typeof localAlbums)[number]>();
-      for (const album of [...localAlbums].sort((a, b) =>
-        a.status === b.status ? 0 : a.status === 'downloaded' ? -1 : 1,
-      )) {
-        const key = CompareUtils.releaseKey(album.name);
-        if (key && !byReleaseKey.has(key)) byReleaseKey.set(key, album);
-      }
-
-      const upsert = db.prepare(
-        `INSERT INTO artist_releases
-           (artist_id, release_key, title, type, first_release_date, image,
-            mbid, discogs_id, deezer_id, sources, album_id, monitored, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-         ON CONFLICT(artist_id, release_key) DO UPDATE SET
-           title = excluded.title,
-           type = excluded.type,
-           first_release_date = COALESCE(excluded.first_release_date, artist_releases.first_release_date),
-           image = COALESCE(excluded.image, artist_releases.image),
-           mbid = COALESCE(excluded.mbid, artist_releases.mbid),
-           discogs_id = COALESCE(excluded.discogs_id, artist_releases.discogs_id),
-           deezer_id = COALESCE(excluded.deezer_id, artist_releases.deezer_id),
-           sources = excluded.sources,
-           -- Un rapprochement corrigé à la main ne doit pas être écrasé.
-           album_id = CASE WHEN artist_releases.locked = 1 THEN artist_releases.album_id ELSE excluded.album_id END,
-           updated_at = CURRENT_TIMESTAMP`,
-      );
-
-      let owned = 0;
-      const seen: string[] = [];
-
-      for (const release of releases) {
-        const local = byReleaseKey.get(release.releaseKey);
-        if (local) owned += 1;
-        seen.push(release.releaseKey);
-
-        upsert.run(
-          artist.id,
-          release.releaseKey,
-          release.title,
-          release.type,
-          release.firstReleaseDate ?? null,
-          release.image ?? null,
-          release.mbid ?? null,
-          release.discogsId ?? null,
-          release.deezerId ?? null,
-          JSON.stringify(release.sources),
-          local?.id ?? null,
-          // Ce que l'utilisateur a demandé à synchroniser, il veut le suivre.
-          // La valeur n'est posée qu'à la création : son choix ultérieur prime.
-          wanted.has(release.type) ? 1 : 0,
-        );
-
-        if (local) this.linkLocalAlbum(local, release);
-      }
-
-      this.pruneStaleReleases(artist.id, scope.types, seen);
-      return { total: releases.length, owned };
-    });
-
-    return write();
-  }
-
-  /**
-   * Reporte les identifiants externes sur l'album local.
-   *
-   * `albums.mbid` et `albums.discogs_id` n'étaient écrits nulle part : les
-   * deux premières règles de rapprochement de l'API discographie ne servaient
-   * donc à rien, et tout reposait sur la comparaison de chaînes.
-   */
-  private linkLocalAlbum(
-    local: { id: number; mbid: string | null; discogs_id: string | null; deezer_id: string | null },
-    release: MergedRelease,
-  ) {
-    const columns: [keyof MergedRelease, 'mbid' | 'discogs_id' | 'deezer_id', string | null][] = [
-      ['mbid', 'mbid', local.mbid],
-      ['discogsId', 'discogs_id', local.discogs_id],
-      ['deezerId', 'deezer_id', local.deezer_id],
-    ];
-
-    for (const [source, column, current] of columns) {
-      const value = release[source] as string | undefined;
-      if (!value || current) continue;
-      try {
-        db.prepare(`UPDATE albums SET ${column} = ? WHERE id = ? AND ${column} IS NULL`).run(value, local.id);
-      } catch (error) {
-        // Contrainte d'unicité : l'identifiant appartient déjà à un autre
-        // album. On garde le rapprochement par clé de sortie.
-        console.warn(`[Sync] ${column} non reporté sur l'album ${local.id} :`, (error as Error).message);
-      }
-    }
-  }
-
-  /**
-   * Retire les sorties disparues des fournisseurs.
-   *
-   * Uniquement dans le périmètre de types qui vient d'être synchronisé : une
-   * synchronisation « albums + EP » ne doit pas effacer les singles collectés
-   * la fois précédente. Ni les sorties possédées, ni celles corrigées à la
-   * main.
-   */
-  private pruneStaleReleases(artistId: number, types: ReleaseType[], seen: string[]) {
-    if (types.length === 0) return;
-
-    const typePlaceholders = types.map(() => '?').join(',');
-    const seenPlaceholders = seen.length > 0 ? seen.map(() => '?').join(',') : "''";
-
-    db.prepare(
-      `DELETE FROM artist_releases
-        WHERE artist_id = ?
-          AND type IN (${typePlaceholders})
-          AND release_key NOT IN (${seenPlaceholders})
-          AND album_id IS NULL
-          AND locked = 0`,
-    ).run(artistId, ...types, ...seen);
   }
 
   private summarise(artistName: string, persisted: { total: number; owned: number }, outcomes: ProviderOutcome[]) {

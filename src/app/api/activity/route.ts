@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
 import { SabnzbdService } from '@/services/sabnzbd';
-import { ImportService } from '@/services/ImportService';
 
 export async function GET(request: Request) {
   try {
-    // Tenter d'importer les téléchargements terminés de SABnzbd en arrière-plan
-    ImportService.processSabnzbdDownloads().catch((e: any) => console.error('Import background error:', e));
+    // L'import des téléchargements SABnzbd terminés était déclenché ici, en
+    // effet de bord d'un GET : il ne tournait donc que si un navigateur était
+    // ouvert. Il est désormais planifié côté serveur (`src/instrumentation.ts`).
     const { searchParams } = new URL(request.url);
     const page = parseInt(searchParams.get('page') || '1');
     const pageSize = parseInt(searchParams.get('pageSize') || '20');

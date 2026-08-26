@@ -91,17 +91,6 @@ export class DeemixService {
     }
   }
 
-  /**
-   * Mock de déchiffrement Blowfish pour Deezer.
-   * Note: Dans une version réelle, on utiliserait une clé basée sur le trackId.
-   */
-  private static decryptBuffer(buffer: Buffer, trackId: string): Buffer {
-    // Le déchiffrement réel Deezer est complexe (Blowfish CBC avec clé spécifique).
-    // Pour cet exercice, nous supposons que nous recevons le flux via un proxy ou que nous avons les libs nécessaires.
-    // Dans Musicarr, on va implémenter la logique de téléchargement "normale".
-    return buffer;
-  }
-
   private static normalizeFolderName(s: string) {
     return s.replace(/\s+/g, '_');
   }
