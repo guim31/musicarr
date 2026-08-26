@@ -263,18 +263,24 @@ arrivent comme des entrées distinctes.
 Le problème est symétrique : trop laxiste sur les éditions, trop agressif sur le
 reste. Les articles sont supprimés **partout dans la chaîne**
 (`src/lib/CompareUtils.ts:25`), et non en tête comme l'annonce la
-documentation de la fonction juste au-dessus (ligne 12).
+documentation de la fonction juste au-dessus (ligne 12). De même, `l'` est
+retiré partout, y compris au milieu d'un mot.
 
 | Entrée | Clé | Collision avec |
 |---|---|---|
 | `Kid A` | `kid` | `Kid` |
-| `La Femme` | `femme` | `Femme` |
-| `Die Mensch-Maschine` | `menschmaschine` | `Mensch Maschine` |
-| `An Anthology` | `anthology` | `Anthology` |
-| `19 84` | `1984` | `1984` |
+| `Take a Bow` | `takebow` | `Take Bow` |
+| `Rock the Casbah` | `rockcasbah` | `Rock Casbah` |
+| `Ol' Dirty Bastard` | `odirtybastard` | `O Dirty Bastard` |
 
 Deux albums réellement différents peuvent donc fusionner — et comme la fusion
 conserve un seul titre, l'autre disparaît sans trace.
+
+> **Nuance.** Retirer l'article **de tête** est en revanche délibéré et
+> souhaitable : c'est ce qui rapproche `The Beatles` de `Beatles`, cas fréquent
+> quand l'arborescence de fichiers omet l'article. La contrepartie assumée est
+> que `La Femme` ≡ `Femme` et `An Anthology` ≡ `Anthology`. Seul le retrait au
+> milieu de la chaîne est un défaut.
 
 ### A4 — 🟠 Deux stratégies de déduplication incompatibles cohabitent
 
