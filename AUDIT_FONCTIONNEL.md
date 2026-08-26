@@ -3,6 +3,7 @@
 **Date :** 26 août 2026 · **Version auditée :** `dev` @ `0afa603` (v0.2.0)
 **Périmètre :** fonctionnalités livrées, parcours utilisateur, et diagnostic
 approfondi de la récupération des discographies.
+**État :** constats corrigés — voir le [suivi des corrections](#suivi-des-corrections).
 
 Complète l'audit technique ([`AUDIT.md`](./AUDIT.md), 4 août 2026) qui traitait
 sécurité, dépendances et qualité de code. Le présent document ne les rejoue pas :
@@ -40,6 +41,67 @@ données. Elle reste un blob JSON de cache, rapproché à la volée par comparai
 de chaînes, à chaque affichage. Tout ce qui devrait en découler — la liste des
 manquants, la surveillance, l'acquisition automatique, la fiabilité du
 rapprochement — s'écroule en cascade.
+
+---
+
+---
+
+## Suivi des corrections
+
+Les constats ci-dessous ont été corrigés dans les commits qui suivent cet
+audit. Les références de ligne du diagnostic renvoient donc à l'état audité
+(`0afa603`), pas à l'état courant du code.
+
+| Code | Constat | État |
+|---|---|---|
+| A1 | Trois colonnes non fusionnées | ✅ Liste unique, provenance en pastille |
+| A2 | Mentions d'édition jamais neutralisées | ✅ `CompareUtils.releaseKey` |
+| A3 | Articles retirés partout dans la chaîne | ✅ Article de tête uniquement |
+| A4 | Deux stratégies de déduplication incompatibles | ✅ Clé unique, type exclu de la clé |
+| B1 | Plafonds appliqués avant le filtre de type | ✅ Plafond sur les sorties retenues |
+| B2 | Discogs trié du plus récent au plus ancien | ✅ Tri croissant + regroupement par master |
+| B3 | Rôles Discogs non filtrés | ✅ `fromDiscogsRole`, crédits écartés |
+| B4 | MusicBrainz : 2 types secondaires sur 8 | ✅ Les huit sont traités |
+| B5 | Le mode approfondi amplifie le bruit | ✅ Sans objet une fois B1–B4 corrigés |
+| C1 | Repli sur le premier résultat de recherche | ✅ Correspondance exacte ou source vide |
+| C2 | Classifieur Discogs : support avant type | ✅ Ordre corrigé, format seul lu |
+| C3 | Cache ni atomique ni daté par périmètre | ✅ Transaction unique + `status`/`scope` |
+| C4 | Taxonomies non canonisées | ✅ `releaseTypes.ts` |
+| C5 | Délais d'expiration sans annulation | ✅ `AbortSignal` propagé à `fetch` |
+| C6 | Aucun verrou de synchronisation | ✅ Verrou par artiste + 409 |
+| C7 | Rapprochement purement textuel | ✅ Identifiants reportés et persistés |
+| C8 | Rapprochement O(N×M) à chaque affichage | ✅ Résolu à la synchronisation |
+| C9 | Filtre non normalisé | ✅ `CompareUtils.normalize` |
+| C10 | User-Agent MusicBrainz invalide | ✅ Corrigé + reprise sur 503 |
+| C11 | Fusion d'homonymes mélangeant les identifiants | ✅ Plus de fusion inter-fournisseurs |
+| §1.2 | Boucle « monitor » absente, manquants inopérants | ✅ `artist_releases` + surveillance |
+| §1.3 | Deux routes de téléchargement, succès toujours vrai | ✅ Service unique, torrents grisés |
+| §1.4 | Import SABnzbd en effet de bord d'un `GET` | ✅ Tâche planifiée serveur |
+| §1.5 | Scans ciblés perdus pendant un scan complet | ✅ Mis en file et rejoués |
+| §1.6 | Identifiants externes jamais écrits, `TypeError` | ✅ Corrigés |
+| §2.4 | Discographie complète pour une pochette | ✅ Cache puis recherche ciblée |
+| §2.5 | Une discographie n'est pas une donnée | ✅ Table `artist_releases` |
+
+**Également mis en place :** premiers tests automatisés du projet — 53 tests
+`node --test` sans dépendance ajoutée, dont 11 d'intégration sur une vraie base
+SQLite pour la couche de persistance — branchés sur la CI ; validation `zod`
+sur les routes modifiées ; rattachement manuel d'un artiste à une fiche de
+fournisseur, sortie de secours indispensable pour les homonymes.
+
+### Volontairement laissé de côté
+
+**L'acquisition automatique** (R9, second volet). Toute la plomberie est en
+place — les sorties sont matérialisées, surveillables, et la liste des
+manquants est réelle — mais rien ne déclenche de téléchargement sans vous.
+Lancer des téléchargements de sa propre initiative est une action sortante et
+irréversible : cela doit être un choix explicite, pas un effet de bord d'un
+correctif. Il reste à écrire une tâche planifiée qui cherche les sorties
+surveillées non possédées, et un réglage pour l'activer.
+
+Restent également ouverts, hors périmètre de cet audit fonctionnel et déjà
+consignés dans [`AUDIT.md`](./AUDIT.md) : l'authentification, le chiffrement
+des secrets au repos, le flux SSE en remplacement des interrogations
+périodiques, et la sauvegarde automatique de la base.
 
 ---
 
