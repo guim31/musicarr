@@ -1,144 +1,178 @@
-import { MetadataProvider, RemoteAlbum, RemoteArtist } from '../types';
 import db from '@/lib/db';
+import { fetchJson, HttpError } from '@/lib/http';
+import { USER_AGENT } from '@/lib/appInfo';
+import type { FetchDiscographyOptions, MetadataProvider, RemoteAlbum, RemoteArtist } from '../types';
+import { fromDiscogsFormat, fromDiscogsRole, type ReleaseType } from '../releaseTypes';
+
+const PAGE_SIZE = 100;
+
+/** Discogs autorise 60 requêtes/minute avec jeton. */
+const THROTTLE_MS = 1100;
+
+const LIMITS = {
+  normal: { kept: 300, scanned: 1200 },
+  deep: { kept: 2000, scanned: 8000 },
+};
+
+interface DiscogsRelease {
+  id: number;
+  master_id?: number;
+  title: string;
+  type?: 'release' | 'master';
+  role?: string;
+  year?: number;
+  format?: string | string[];
+  thumb?: string;
+}
 
 export class DiscogsProvider implements MetadataProvider {
   name = 'Discogs';
   private baseUrl = 'https://api.discogs.com';
 
-  private getToken() {
-    return (db.prepare('SELECT value FROM settings WHERE key = ?').get('discogs_token') as any)?.value;
+  private getToken(): string | undefined {
+    return (db.prepare('SELECT value FROM settings WHERE key = ?').get('discogs_token') as
+      | { value: string }
+      | undefined)?.value;
   }
 
-  private async fetchDiscogs(endpoint: string, params: Record<string, string> = {}) {
+  /** Vrai si un jeton est configuré : sans lui, Discogs n'est pas interrogeable. */
+  isConfigured(): boolean {
+    return Boolean(this.getToken());
+  }
+
+  private async fetchDiscogs<T>(
+    endpoint: string,
+    params: Record<string, string> = {},
+    signal?: AbortSignal,
+  ): Promise<T | null> {
     const token = this.getToken();
-    if (!token) return null; // Skip if no token
+    if (!token) return null;
 
     const url = new URL(`${this.baseUrl}/${endpoint}`);
-    params.token = token;
-    Object.entries(params).forEach(([key, val]) => url.searchParams.append(key, val));
+    url.searchParams.set('token', token);
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
 
-    const res = await fetch(url, {
-      headers: { 'User-Agent': 'Musicarr/0.1.0' }
-    });
-
-    if (res.status === 401) throw new Error('Token Discogs invalide');
-    if (!res.ok) return null;
-    return res.json();
+    try {
+      return await fetchJson<T>(url, {
+        headers: { 'User-Agent': USER_AGENT },
+        signal,
+        throttleKey: 'discogs',
+        throttleMs: THROTTLE_MS,
+      });
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 401) {
+        throw new Error('Jeton Discogs invalide ou expiré');
+      }
+      throw error;
+    }
   }
 
-  async searchArtist(query: string): Promise<RemoteArtist[]> {
-    const data = await this.fetchDiscogs('database/search', { q: query, type: 'artist' });
-    if (!data) return [];
+  async searchArtist(query: string, signal?: AbortSignal): Promise<RemoteArtist[]> {
+    const data = await this.fetchDiscogs<{ results?: Record<string, any>[] }>(
+      'database/search',
+      { q: query, type: 'artist', per_page: '25' },
+      signal,
+    );
+    if (!data?.results) return [];
 
-    return (data.results || []).map((a: any) => ({
+    return data.results.map(a => ({
       name: a.title,
-      discogsId: a.id.toString(),
+      discogsId: String(a.id),
       image: a.cover_image,
-      genres: a.genre || []
+      genres: a.genre || [],
+      source: this.name,
     }));
   }
 
   async getArtistAlbums(
-    discogsArtistId: string, 
-    onProgress?: (current: number, total: number) => void, 
-    filterTypes?: string[],
-    deep?: boolean
+    discogsArtistId: string,
+    options: FetchDiscographyOptions = {},
   ): Promise<RemoteAlbum[]> {
-    let allReleases: any[] = [];
+    const { onProgress, types, deep, signal } = options;
+    const limits = deep ? LIMITS.deep : LIMITS.normal;
+    const wanted = types && types.length > 0 ? new Set<ReleaseType>(types) : null;
+    const wantsAppearances = wanted ? wanted.has('appearance') : true;
+
+    /**
+     * Regroupement par master : Discogs renvoie un élément par **pressage**.
+     * Dédupliquer sur le master — et non sur le titre, qui dépendait d'un type
+     * mal classé — est ce qui fait tomber des milliers de lignes à quelques
+     * dizaines.
+     */
+    const byMaster = new Map<string, RemoteAlbum>();
     let page = 1;
     let totalPages = 1;
-    const maxPages = deep ? 50 : 5; // Limite à 5 pages (500 releases) par défaut pour éviter de figer et respecter les limites API
+    let scanned = 0;
 
     do {
-      const data = await this.fetchDiscogs(`artists/${discogsArtistId}/releases`, { 
-        per_page: '100', 
-        page: page.toString(),
-        sort: 'year', 
-        sort_order: 'desc' 
-      });
+      const data = await this.fetchDiscogs<{
+        pagination?: { pages?: number; items?: number };
+        releases?: DiscogsRelease[];
+      }>(
+        `artists/${discogsArtistId}/releases`,
+        {
+          per_page: String(PAGE_SIZE),
+          page: String(page),
+          sort: 'year',
+          // Ordre croissant : les pressages d'origine d'abord. En décroissant,
+          // les premières pages d'un artiste majeur ne contenaient que des
+          // rééditions récentes, et son catalogue historique restait hors
+          // plafond.
+          sort_order: 'asc',
+        },
+        signal,
+      );
 
-      if (!data) break;
+      const releases = data?.releases;
+      if (!releases || releases.length === 0) break;
 
-      totalPages = data.pagination?.pages || 1;
-      const releases = data.releases || [];
-      allReleases = [...allReleases, ...releases];
+      totalPages = data?.pagination?.pages ?? 1;
 
-      if (onProgress) onProgress(allReleases.length, data.pagination?.items || allReleases.length);
-      
-      page++;
-      // Petit délai pour l'API Discogs (60 req/min max avec auth)
-      if (page <= totalPages && page <= maxPages) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    } while (page <= totalPages && page <= maxPages);
+      for (const release of releases) {
+        const roleKind = fromDiscogsRole(release.role);
 
-    console.log(`[Discogs] Fetch terminé. Transformation de ${allReleases.length} releases...`);
-    
-    // On dé-duplique les résultats car Discogs renvoie TOUS les pressages (vinyle, CD, remaster...)
-    // Ce qui crée des milliers de doublons pour un même album.
-    const uniqueReleases = new Map<string, any>();
-    
-    allReleases
-      .filter((r: any) => r.type === 'release' || r.type === 'master')
-      .forEach((r: any) => {
-        const type = (() => {
-          if (r.role === 'Appearance' || r.role === 'TrackAppearance') return 'appearance';
-          
-          const formats = Array.isArray(r.format) ? r.format.join(',').toLowerCase() : (r.format?.toLowerCase() || '');
-          const label = r.label?.toLowerCase() || '';
-          
-          if (formats.includes('album') || formats.includes('lp') || formats.includes('vinyl')) return 'album';
-          if (formats.includes('ep')) return 'ep';
-          if (formats.includes('compilation') || label.includes('compilation')) return 'compilation';
-          if (formats.includes('single')) return 'single';
-          
-          return 'album';
-        })();
+        // Producteur, remixeur, arrangeur : ce ne sont pas ses disques.
+        if (roleKind === 'credit') continue;
+        if (roleKind === 'appearance' && !wantsAppearances) continue;
 
-        // Ignorer si ça ne correspond pas au filtre demandé par l'utilisateur
-        if (filterTypes && filterTypes.length > 0 && !filterTypes.includes(type)) {
-          return;
-        }
+        const type: ReleaseType | undefined =
+          roleKind === 'appearance' ? 'appearance' : (fromDiscogsFormat(release.format) ?? undefined);
 
-        // Clé de déduplication : titre normalisé + type (pour ne pas fusionner un single et un album du même nom)
-        const normalizedTitle = (r.title || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const dedupeKey = `${type}-${normalizedTitle}`;
+        // Un type inconnu (entrées `master`, sans format) n'est pas écarté :
+        // il sera résolu par les autres fournisseurs à la fusion.
+        if (wanted && type && !wanted.has(type)) continue;
 
-        // Si on n'a pas encore cette release, on la garde.
-        // Si elle existe déjà et que c'est un "master", on met à jour les données (image, ID)
-        // MAIS on préserve toujours l'année de sortie la plus ancienne.
-        if (!uniqueReleases.has(dedupeKey)) {
-          uniqueReleases.set(dedupeKey, {
-            name: r.title,
-            discogsId: r.id.toString(),
-            releaseDate: r.year?.toString(),
+        const key = release.master_id ? `m${release.master_id}` : `r${release.id}`;
+        const year = release.year && release.year > 0 ? String(release.year) : undefined;
+        const existing = byMaster.get(key);
+
+        if (!existing) {
+          byMaster.set(key, {
+            name: release.title,
+            discogsId: String(release.master_id || release.id),
+            releaseDate: year,
             type,
-            image: r.thumb
+            image: release.thumb || undefined,
           });
-        } else if (r.type === 'master') {
-          const existing = uniqueReleases.get(dedupeKey);
-          // Garder la plus petite année valide
-          let bestYear = existing.releaseDate;
-          if (r.year && r.year > 0) {
-            if (!bestYear || parseInt(r.year) < parseInt(bestYear)) {
-              bestYear = r.year.toString();
-            }
-          }
-          uniqueReleases.set(dedupeKey, {
-            ...existing,
-            discogsId: r.id.toString(),
-            releaseDate: bestYear,
-            image: r.thumb || existing.image
-          });
-        } else {
-          // Même si on ne met pas à jour avec un master, si la release courante a une année plus ancienne, on la garde
-          const existing = uniqueReleases.get(dedupeKey);
-          if (r.year && r.year > 0 && (!existing.releaseDate || parseInt(r.year) < parseInt(existing.releaseDate))) {
-            existing.releaseDate = r.year.toString();
-          }
+          continue;
         }
-      });
 
-    return Array.from(uniqueReleases.values());
+        // Fusion des pressages : on garde la plus ancienne année connue, le
+        // premier type connu, et une vignette si on n'en avait pas.
+        if (year && (!existing.releaseDate || year < existing.releaseDate)) {
+          existing.releaseDate = year;
+        }
+        existing.type ??= type;
+        existing.image ||= release.thumb || undefined;
+      }
+
+      scanned += releases.length;
+      page += 1;
+      onProgress?.(byMaster.size, data?.pagination?.items ?? scanned);
+    } while (page <= totalPages && byMaster.size < limits.kept && scanned < limits.scanned);
+
+    return Array.from(byMaster.values());
   }
 }

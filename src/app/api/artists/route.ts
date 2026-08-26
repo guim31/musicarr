@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
-import { MetadataEngine } from '@/services/metadata/MetadataEngine';
 
 export async function GET() {
   try {
@@ -57,27 +56,40 @@ export async function POST(request: Request) {
     // Insert artist
     const upperName = name.toUpperCase();
     const insertArtist = db.prepare(`
-      INSERT INTO artists (name, mbid, discogs_id, image, metadata)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO artists (name, mbid, discogs_id, deezer_id, image, metadata)
+      VALUES (?, ?, ?, ?, ?, ?)
     `);
-    
-    let artistId;
+
+    let artistId: number | bigint;
     try {
       const result = insertArtist.run(
-        upperName, 
-        mbid || null, 
+        upperName,
+        mbid || null,
         discogsId || null,
-        image || null, 
-        JSON.stringify({ country, genre, folderName, deezerId })
+        deezerId || null,
+        image || null,
+        JSON.stringify({ country, genre, folderName })
       );
       artistId = result.lastInsertRowid;
     } catch (e: any) {
-      if (e.message.includes('UNIQUE constraint failed')) {
-        const existing = db.prepare('SELECT id FROM artists WHERE name = ? COLLATE NOCASE').get(name) as { id: number };
-        artistId = existing.id;
-      } else {
-        throw e;
-      }
+      if (!e.message?.includes('UNIQUE constraint failed')) throw e;
+
+      // Le conflit peut porter sur le nom, mais aussi sur `mbid` ou
+      // `discogs_id` : chercher uniquement par nom renvoyait alors
+      // `undefined`, et déréférencer `.id` levait une TypeError.
+      const existing = db
+        .prepare(
+          `SELECT id FROM artists
+            WHERE name = ? COLLATE NOCASE
+               OR (mbid IS NOT NULL AND mbid = ?)
+               OR (discogs_id IS NOT NULL AND discogs_id = ?)
+               OR (deezer_id IS NOT NULL AND deezer_id = ?)
+            LIMIT 1`
+        )
+        .get(name, mbid || null, discogsId || null, deezerId || null) as { id: number } | undefined;
+
+      if (!existing) throw e;
+      artistId = existing.id;
     }
 
     // Add activity log
