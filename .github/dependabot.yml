@@ -12,6 +12,25 @@ updates:
       # Évite une PR par paquet pour les mises à jour mineures/patch.
       minor-et-patch:
         update-types: [minor, patch]
+    ignore:
+      # `eslint-config-next` (Next 16.3) embarque ses propres `eslint-plugin-react` et
+      # `typescript-eslint`. Tant qu'ils ne suivent pas, ces majeures cassent
+      # `npm run lint` quoi qu'on fasse côté projet — et elles occupent en permanence
+      # deux créneaux sur les cinq de `open-pull-requests-limit` (cf. #35 et #27) :
+      #   - eslint 10  → eslint-plugin-react 7.37 appelle `context.getFilename()`,
+      #                  supprimé dans ESLint 10.
+      #   - typescript 7.0 → typescript-eslint refuse de démarrer ; support annoncé
+      #                  pour TS >= 7.1 (typescript-eslint#10940).
+      # À retirer quand `eslint-config-next` aura rattrapé son retard.
+      - dependency-name: eslint
+        update-types: [version-update:semver-major]
+      - dependency-name: typescript
+        update-types: [version-update:semver-major]
+      # Doit rester aligné sur le Node du Dockerfile (24) : des types Node 26 sur un
+      # runtime Node 24 font valider à la compilation des API absentes à l'exécution
+      # (cf. #34). À retirer le jour où le Dockerfile passera à Node 26.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
