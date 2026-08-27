@@ -1,147 +1,167 @@
-import { MetadataProvider, RemoteAlbum, RemoteArtist } from '../types';
+import { fetchJson } from '@/lib/http';
+import { USER_AGENT } from '@/lib/appInfo';
+import type { FetchDiscographyOptions, MetadataProvider, RemoteAlbum, RemoteArtist, RemoteTrack } from '../types';
+import { fromMusicBrainz, toMusicBrainzPrimaryTypes, type ReleaseType } from '../releaseTypes';
+
+const PAGE_SIZE = 100;
+
+/** MusicBrainz recommande 1 requête/seconde. La marge évite les 503 en rafale. */
+const THROTTLE_MS = 1100;
+
+/**
+ * Nombre de sorties **retenues** au-delà duquel on arrête de paginer, et
+ * plafond de sécurité sur les sorties **parcourues**.
+ *
+ * La distinction est le correctif central : l'ancien plafond portait sur les
+ * éléments bruts, avant filtrage par type. Sur un artiste à 900 sorties dont
+ * 700 singles, on téléchargeait 500 entrées pour n'en garder que quelques
+ * dizaines — et les albums au-delà du plafond étaient purement absents.
+ */
+const LIMITS = {
+  normal: { kept: 300, scanned: 1000 },
+  deep: { kept: 3000, scanned: 10000 },
+};
+
+interface ReleaseGroup {
+  id: string;
+  title: string;
+  'first-release-date'?: string;
+  'primary-type'?: string | null;
+  'secondary-types'?: string[];
+}
 
 export class MusicBrainzProvider implements MetadataProvider {
   name = 'MusicBrainz';
   private baseUrl = 'https://musicbrainz.org/ws/2';
-  private userAgent = 'Musicarr/0.1.0 ( https://github.com/guilhem/musicarr )';
 
-  private async fetchMB(endpoint: string, params: Record<string, string> = {}) {
+  private async fetchMB<T>(
+    endpoint: string,
+    params: Record<string, string> = {},
+    signal?: AbortSignal,
+  ): Promise<T> {
     const url = new URL(`${this.baseUrl}/${endpoint}`);
-    params.fmt = 'json';
-    Object.entries(params).forEach(([key, val]) => url.searchParams.append(key, val));
+    url.searchParams.set('fmt', 'json');
+    for (const [key, value] of Object.entries(params)) {
+      url.searchParams.set(key, value);
+    }
 
-    const res = await fetch(url, {
-      headers: { 'User-Agent': this.userAgent }
+    const data = await fetchJson<T>(url, {
+      headers: { 'User-Agent': USER_AGENT },
+      signal,
+      throttleKey: 'musicbrainz',
+      throttleMs: THROTTLE_MS,
+      // Une pagination longue ne doit pas être perdue pour un seul 503.
+      retries: 3,
     });
 
-    if (!res.ok) throw new Error(`MusicBrainz error: ${res.statusText}`);
-    return res.json();
+    if (data === null) throw new Error(`Réponse MusicBrainz vide pour ${endpoint}`);
+    return data;
   }
 
-  async searchArtist(query: string): Promise<RemoteArtist[]> {
-    const data = await this.fetchMB('artist', { query });
-    return (data.artists || []).map((a: any) => ({
+  async searchArtist(query: string, signal?: AbortSignal): Promise<RemoteArtist[]> {
+    const data = await this.fetchMB<{ artists?: Record<string, any>[] }>(
+      'artist',
+      { query, limit: '25' },
+      signal,
+    );
+
+    return (data.artists || []).map(a => ({
       name: a.name,
       mbid: a.id,
-      genres: a.tags?.map((t: any) => t.name) || [],
-      description: a.area?.name ? `Origine: ${a.area.name}` : ''
+      genres: (a.tags || []).map((t: { name: string }) => t.name),
+      description: [a.disambiguation, a.area?.name && `Origine : ${a.area.name}`]
+        .filter(Boolean)
+        .join(' · '),
+      source: this.name,
+      score: typeof a.score === 'number' ? a.score : undefined,
     }));
   }
 
   async getArtistAlbums(
-    artistMbid: string, 
-    onProgress?: (current: number, total: number) => void, 
-    filterTypes?: string[],
-    deep?: boolean
+    artistMbid: string,
+    options: FetchDiscographyOptions = {},
   ): Promise<RemoteAlbum[]> {
-    let allReleaseGroups: any[] = [];
+    const { onProgress, types, deep, signal } = options;
+    const limits = deep ? LIMITS.deep : LIMITS.normal;
+    const wanted = types && types.length > 0 ? new Set<ReleaseType>(types) : null;
+
+    // Filtrage côté serveur : MusicBrainz est le seul des trois à le
+    // permettre, autant ne pas rapatrier ce qu'on jettera.
+    const primaryTypes = wanted ? toMusicBrainzPrimaryTypes(Array.from(wanted)) : [];
+
+    const albums: RemoteAlbum[] = [];
     let offset = 0;
     let total = 0;
-    const maxLimit = deep ? 5000 : 500;
-
-    // Map filterTypes to MusicBrainz primary types
-    const mbTypes: string[] = [];
-    if (filterTypes && filterTypes.length > 0) {
-      if (filterTypes.includes('album') || filterTypes.includes('compilation')) mbTypes.push('album');
-      if (filterTypes.includes('ep')) mbTypes.push('ep');
-      if (filterTypes.includes('single')) mbTypes.push('single');
-      if (filterTypes.includes('appearance')) {
-        mbTypes.push('album');
-        mbTypes.push('ep');
-        mbTypes.push('single');
-      }
-    }
+    let scanned = 0;
 
     do {
       const params: Record<string, string> = {
         artist: artistMbid,
-        limit: '100',
-        offset: offset.toString()
+        limit: String(PAGE_SIZE),
+        offset: String(offset),
       };
+      if (primaryTypes.length > 0) params.type = primaryTypes.join('|');
 
-      if (mbTypes.length > 0) {
-        params.type = mbTypes.join('|');
+      const data = await this.fetchMB<{
+        'release-group-count'?: number;
+        'release-groups'?: ReleaseGroup[];
+      }>('release-group', params, signal);
+
+      total = data['release-group-count'] ?? 0;
+      const groups = data['release-groups'] ?? [];
+
+      // Sans ce garde-fou, une page vide renvoyée avec un total non nul
+      // laissait la boucle tourner indéfiniment : `offset` n'avançait plus.
+      if (groups.length === 0) break;
+
+      for (const group of groups) {
+        const type = fromMusicBrainz(group['primary-type'], group['secondary-types'] ?? []);
+        if (!type) continue; // interview, livre audio…
+        if (wanted && !wanted.has(type)) continue;
+
+        albums.push({
+          name: group.title,
+          mbid: group.id,
+          releaseDate: group['first-release-date'] || undefined,
+          type,
+          image: `https://coverartarchive.org/release-group/${group.id}/front`,
+        });
       }
 
-      const data = await this.fetchMB('release-group', params);
-
-      total = data['release-group-count'] || 0;
-      const groups = data['release-groups'] || [];
-      allReleaseGroups = [...allReleaseGroups, ...groups];
-      
       offset += groups.length;
-      if (onProgress) onProgress(allReleaseGroups.length, total);
-      
-      // Petit délai pour respecter les limites de débit de MusicBrainz (1 req/sec recommandé)
-      if (offset < total && offset < maxLimit) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    } while (offset < total && offset < maxLimit); // On met une limite basée sur deep pour éviter les lenteurs
+      scanned += groups.length;
+      onProgress?.(albums.length, wanted ? Math.min(total, limits.kept) : total);
+    } while (offset < total && albums.length < limits.kept && scanned < limits.scanned);
 
-    const validReleaseGroups = allReleaseGroups.filter((rg: any) => {
-      const primaryType = rg['primary-type']?.toLowerCase();
-      if (!primaryType) return true;
-      
-      const secondaryTypes = rg['secondary-types'] || [];
-      const isInvalidSecondary = secondaryTypes.some((t: string) => 
-        ['Interview', 'Spokenword', 'Audiobook'].includes(t)
-      );
-      
-      if (isInvalidSecondary) return false;
-
-      // Filter by requested types
-      if (filterTypes && filterTypes.length > 0) {
-        let type = primaryType;
-        if (secondaryTypes.includes('Compilation')) type = 'compilation';
-        if (secondaryTypes.includes('Split')) type = 'appearance';
-        
-        // Map MB types to our types
-        if (!filterTypes.includes(type)) return false;
-      }
-
-      return true;
-    });
-
-    console.log(`[MusicBrainz] Filtered ${allReleaseGroups.length} items down to ${validReleaseGroups.length} valid items.`);
-
-    return validReleaseGroups.map((rg: any) => {
-      const primaryType = rg['primary-type']?.toLowerCase() || 'album';
-      const secondaryTypes = rg['secondary-types'] || [];
-      
-      let type: any = primaryType;
-      if (secondaryTypes.includes('Compilation')) type = 'compilation';
-      if (secondaryTypes.includes('Split')) type = 'appearance';
-
-      return {
-        name: rg.title,
-        mbid: rg.id,
-        releaseDate: rg['first-release-date'],
-        type,
-        image: `https://coverartarchive.org/release-group/${rg.id}/front`
-      };
-    });
+    return albums;
   }
 
-  async getAlbumTracks(releaseGroupId: string): Promise<any[]> {
-    const data = await this.fetchMB(`release-group/${releaseGroupId}`, { inc: 'releases' });
-    const release = data.releases?.[0]; // On prend la première release du groupe
+  async getAlbumTracks(releaseGroupId: string, signal?: AbortSignal): Promise<RemoteTrack[]> {
+    const group = await this.fetchMB<{ releases?: { id: string }[] }>(
+      `release-group/${releaseGroupId}`,
+      { inc: 'releases' },
+      signal,
+    );
+
+    const release = group.releases?.[0];
     if (!release) return [];
 
-    // On recharge pour avoir le détail de la release (médias/pistes)
-    const releaseData = await this.fetchMB(`release/${release.id}`, { inc: 'recordings' });
-    
-    const tracks: any[] = [];
-    (releaseData.media || []).forEach((m: any) => {
-      (m.tracks || []).forEach((t: any) => {
-        tracks.push({
-          name: t.title,
-          number: t.position,
-          duration: t.length ? t.length / 1000 : 0,
-          disc: m.position || 1
-        });
-      });
-    });
+    const detail = await this.fetchMB<{
+      media?: { position?: number; tracks?: Record<string, any>[] }[];
+    }>(`release/${release.id}`, { inc: 'recordings+artist-credits' }, signal);
 
+    const tracks: RemoteTrack[] = [];
+    for (const medium of detail.media ?? []) {
+      for (const track of medium.tracks ?? []) {
+        tracks.push({
+          name: track.title,
+          number: track.position,
+          disc: medium.position || 1,
+          duration: track.length ? track.length / 1000 : 0,
+          artistName: track['artist-credit']?.[0]?.name || '',
+        });
+      }
+    }
     return tracks;
   }
 }

@@ -1,36 +1,42 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import {
-  Search,
-  Disc,
-  RefreshCw,
-  CheckCircle2,
-  Filter
-} from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Search, Disc, RefreshCw, CheckCircle2, Filter } from 'lucide-react';
 import Link from 'next/link';
 import styles from './Missing.module.css';
 import SearchModal from '@/components/modals/SearchModal';
+import { CompareUtils } from '@/lib/CompareUtils';
+
+interface MissingRow {
+  kind: 'lost' | 'never_owned';
+  id: string;
+  albumId: number | null;
+  releaseId: number | null;
+  name: string;
+  artistId: number;
+  artistName: string;
+  type: string | null;
+  releaseDate: string | null;
+}
 
 export default function MissingAlbumsPage() {
-  const [albums, setAlbums] = useState<any[]>([]);
+  const [rows, setRows] = useState<MissingRow[]>([]);
+  const [counts, setCounts] = useState({ total: 0, lost: 0, neverOwned: 0 });
   const [loading, setLoading] = useState(true);
-  const [searching, setSearching] = useState<Record<string, boolean>>({});
   const [filter, setFilter] = useState('');
 
-  // Modal state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeAlbumId, setActiveAlbumId] = useState<number | undefined>();
 
   const fetchMissing = async () => {
     try {
-      setLoading(true);
       const res = await fetch('/api/albums/missing');
       const data = await res.json();
-      setAlbums(data);
-    } catch (err) {
-      console.error(err);
+      setRows(data.albums ?? []);
+      setCounts(data.counts ?? { total: 0, lost: 0, neverOwned: 0 });
+    } catch (error) {
+      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -40,16 +46,22 @@ export default function MissingAlbumsPage() {
     fetchMissing();
   }, []);
 
-  const handleSearch = (albumId: number, albumName: string, artistName: string) => {
-    setSearchQuery(`${artistName} ${albumName}`);
-    setActiveAlbumId(albumId);
+  const handleSearch = (row: MissingRow) => {
+    setSearchQuery(`${row.artistName} ${row.name}`);
+    // Seul un album local peut recevoir le téléchargement ; une sortie jamais
+    // possédée sera rattachée au scan qui suivra.
+    setActiveAlbumId(row.albumId ?? undefined);
     setIsModalOpen(true);
   };
 
-  const filteredAlbums = albums.filter(a => 
-    a.name.toLowerCase().includes(filter.toLowerCase()) || 
-    a.artist_name.toLowerCase().includes(filter.toLowerCase())
-  );
+  const needle = CompareUtils.normalize(filter);
+  const filtered = needle
+    ? rows.filter(
+        row =>
+          CompareUtils.normalize(row.name).includes(needle) ||
+          CompareUtils.normalize(row.artistName).includes(needle),
+      )
+    : rows;
 
   if (loading) {
     return (
@@ -63,8 +75,12 @@ export default function MissingAlbumsPage() {
     <div className={styles.container}>
       <header className={styles.header}>
         <div className={styles.titleArea}>
-          <h1>Albums Manquants</h1>
-          <p>{albums.length} album{albums.length > 1 ? 's' : ''} à récupérer</p>
+          <h1>Sorties manquantes</h1>
+          <p>
+            {counts.total} sortie{counts.total > 1 ? 's' : ''} à récupérer
+            {counts.lost > 0 && ` · ${counts.lost} disparue${counts.lost > 1 ? 's' : ''} du disque`}
+            {counts.neverOwned > 0 && ` · ${counts.neverOwned} jamais possédée${counts.neverOwned > 1 ? 's' : ''}`}
+          </p>
         </div>
         <div className={styles.actions}>
           <button className={styles.button} onClick={fetchMissing}>
@@ -77,20 +93,24 @@ export default function MissingAlbumsPage() {
       <div className={styles.toolbar}>
         <div className={styles.searchBar}>
           <Filter size={18} />
-          <input 
-            type="text" 
-            placeholder="Filtrer par artiste ou album..." 
+          <input
+            type="text"
+            placeholder="Filtrer par artiste ou sortie…"
             value={filter}
-            onChange={(e) => setFilter(e.target.value)}
+            onChange={event => setFilter(event.target.value)}
+            aria-label="Filtrer les sorties manquantes"
           />
         </div>
       </div>
 
-      {filteredAlbums.length === 0 ? (
+      {filtered.length === 0 ? (
         <div className={styles.emptyState}>
           <CheckCircle2 size={64} color="var(--success)" />
-          <h2>Votre collection est complète !</h2>
-          <p>Tous vos albums surveillés sont déjà sur votre disque.</p>
+          <h2>Rien ne manque</h2>
+          <p>
+            Toutes les sorties surveillées sont sur votre disque. Synchronisez la discographie d’un
+            artiste puis surveillez ses sorties pour suivre ce qu’il vous reste à récupérer.
+          </p>
         </div>
       ) : (
         <div className={styles.tableWrapper}>
@@ -98,44 +118,34 @@ export default function MissingAlbumsPage() {
             <thead>
               <tr>
                 <th>Artiste</th>
-                <th>Album</th>
                 <th>Sortie</th>
+                <th>Année</th>
                 <th>Statut</th>
                 <th style={{ textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredAlbums.map((album) => (
-                <tr key={album.id}>
+              {filtered.map(row => (
+                <tr key={row.id}>
                   <td className={styles.artistCell}>
-                    <Link href={`/library/artist/${album.artist_id}`}>
-                      {album.artist_name}
-                    </Link>
+                    <Link href={`/library/artist/${row.artistId}`}>{row.artistName}</Link>
                   </td>
                   <td className={styles.albumCell}>
                     <div className={styles.albumTitle}>
                       <Disc size={16} />
-                      {album.name}
+                      {row.name}
                     </div>
                   </td>
-                  <td className={styles.dateCell}>{album.release_date || '-'}</td>
+                  <td className={styles.dateCell}>{row.releaseDate?.slice(0, 4) || '—'}</td>
                   <td>
-                    <span className={styles.statusBadge}>Manquant</span>
+                    <span className={styles.statusBadge}>
+                      {row.kind === 'lost' ? 'Fichiers disparus' : 'Jamais possédée'}
+                    </span>
                   </td>
                   <td style={{ textAlign: 'right' }}>
-                    <button 
-                      className={styles.searchBtn}
-                      onClick={() => handleSearch(album.id, album.name, album.artist_name)}
-                      disabled={searching[album.id]}
-                    >
-                      {searching[album.id] ? (
-                        <RefreshCw size={16} className="animate-spin" />
-                      ) : (
-                        <>
-                          <Search size={16} />
-                          Rechercher
-                        </>
-                      )}
+                    <button className={styles.searchBtn} onClick={() => handleSearch(row)}>
+                      <Search size={16} />
+                      Rechercher
                     </button>
                   </td>
                 </tr>
@@ -145,9 +155,9 @@ export default function MissingAlbumsPage() {
         </div>
       )}
 
-      <SearchModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
+      <SearchModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
         query={searchQuery}
         albumId={activeAlbumId}
       />

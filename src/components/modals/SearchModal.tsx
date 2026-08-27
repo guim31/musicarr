@@ -105,6 +105,9 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
     }
   };
 
+  /** Un torrent n'est pas téléchargeable : Musicarr n'a pas de client torrent. */
+  const isTorrent = (result: SearchResult) => result.protocol?.toLowerCase() === 'torrent';
+
   const formatSize = (bytes: number) => {
     if (!bytes) return 'N/A';
     const mb = bytes / (1024 * 1024);
@@ -181,13 +184,23 @@ export default function SearchModal({ isOpen, onClose, query, albumId }: SearchM
                       )}
                     </div>
                   </div>
-                  <button 
-                    className={`${styles.downloadBtn} ${res.isUpgrade ? styles.upgradeBtn : ''}`} 
+                  {/* Prowlarr renvoie aussi des torrents, qu'aucun client
+                      configuré ne sait prendre en charge. Les proposer comme
+                      téléchargeables menait droit à une erreur. */}
+                  <button
+                    className={`${styles.downloadBtn} ${res.isUpgrade ? styles.upgradeBtn : ''}`}
                     onClick={() => handleDownload(res)}
-                    disabled={downloading === res.guid}
+                    disabled={downloading === res.guid || isTorrent(res)}
+                    title={
+                      isTorrent(res)
+                        ? 'Aucun client torrent configuré'
+                        : 'Envoyer au client de téléchargement'
+                    }
                   >
                     {downloading === res.guid ? (
                       <RefreshCw size={18} className="animate-spin" />
+                    ) : isTorrent(res) ? (
+                      <span>Indisponible</span>
                     ) : (
                       <>
                         <Download size={18} />

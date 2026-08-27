@@ -1,142 +1,145 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ArrowLeft,
   Disc,
   Music,
-  Database,
   AlertCircle,
-  Monitor,
   RefreshCw,
   Search,
   Trash2,
-  Shield
+  Shield,
+  CheckCircle2,
+  XCircle,
+  MinusCircle,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import styles from './ArtistDetail.module.css';
-import DiscographyColumn from '@/components/artist/DiscographyColumn';
+import DiscographyList, { type DiscographyRelease } from '@/components/artist/DiscographyList';
 import SearchModal from '@/components/modals/SearchModal';
 import SyncOptionsModal from '@/components/modals/SyncOptionsModal';
 import { useToast } from '@/context/ToastContext';
+import type { ReleaseType } from '@/services/metadata/releaseTypes';
+
+interface ProviderState {
+  provider: string;
+  status: 'ok' | 'failed' | 'unmatched' | 'skipped';
+  message?: string;
+  count: number;
+  updatedAt: string;
+  scope?: { types?: string[]; deep?: boolean };
+}
+
+const PROVIDER_LABELS: Record<string, string> = {
+  musicbrainz: 'MusicBrainz',
+  deezer: 'Deezer',
+  discogs: 'Discogs',
+};
+
+const STATUS_LABELS: Record<ProviderState['status'], string> = {
+  ok: 'à jour',
+  failed: 'échec',
+  unmatched: 'artiste non identifié',
+  skipped: 'non configuré',
+};
 
 export default function ArtistDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
-  const [artist, setArtist] = useState<any>(null);
-  const [localAlbums, setLocalAlbums] = useState<any[]>([]);
-  const [discography, setDiscography] = useState<Record<string, any[]>>({
-    deezer: [],
-    musicbrainz: [],
-    discogs: []
-  });
-  const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const router = useRouter();
   const { showToast } = useToast();
 
-  // Modal search state
+  const [artist, setArtist] = useState<{ name: string } | null>(null);
+  const [releases, setReleases] = useState<DiscographyRelease[]>([]);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [providers, setProviders] = useState<ProviderState[]>([]);
+  const [ownedCount, setOwnedCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  const [syncing, setSyncing] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [fixingPermissions, setFixingPermissions] = useState(false);
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeAlbumId, setActiveAlbumId] = useState<number | undefined>();
 
-  // Delete state
-  const router = useRouter();
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [deleteWithFiles, setDeleteWithFiles] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
-  // Filter state
   const [filterQuery, setFilterQuery] = useState('');
-  const [activeTab, setActiveTab] = useState<'deezer' | 'musicbrainz' | 'discogs'>('deezer');
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
-      setLoading(true);
       const [artistRes, discoRes] = await Promise.all([
         fetch(`/api/artists/${id}`),
-        fetch(`/api/artists/${id}/discography`)
+        fetch(`/api/artists/${id}/discography`),
       ]);
-      
-      const artistData = await artistRes.json();
-      const discoData = await discoRes.json();
 
+      const artistData = await artistRes.json();
       setArtist(artistRes.ok && !artistData.error ? artistData : null);
+
+      const discoData = await discoRes.json();
       if (discoData.success) {
-        setDiscography(discoData.discography);
-        // On simule localAlbums pour les compteurs à partir du cache marqué "isOwned"
-        // Ou on pourrait ajouter un endpoint spécifique pour les albums locaux filtrés par 'downloaded'
-        const albumsRes = await fetch(`/api/artists/${id}/albums`);
-        const albumsData = await albumsRes.json();
-        setLocalAlbums(albumsData.filter((a: any) => a.status === 'downloaded'));
+        setReleases(discoData.discography);
+        setCounts(discoData.counts ?? {});
+        setProviders(discoData.providers ?? []);
+        setOwnedCount(discoData.owned ?? 0);
       }
-    } catch (err) {
-      console.error(err);
+    } catch (error) {
+      console.error(error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
     fetchData();
-
-    const handleRefresh = (event: any) => {
-      fetchData();
-    };
-
+    const handleRefresh = () => fetchData();
     window.addEventListener('musicarr:activity-finished', handleRefresh);
     return () => window.removeEventListener('musicarr:activity-finished', handleRefresh);
-  }, [id]);
+  }, [fetchData]);
 
-  // Fermer la modale de suppression avec Échap
   useEffect(() => {
     if (!isDeleteModalOpen) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !deleting) setIsDeleteModalOpen(false);
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !deleting) setIsDeleteModalOpen(false);
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [isDeleteModalOpen, deleting]);
 
-  const handleSync = async (types?: string[], deep?: boolean) => {
+  const handleSync = async (types: ReleaseType[], deep: boolean) => {
     try {
       setSyncing(true);
-      showToast(`Démarrage de la mise à jour pour ${artist?.name}...`, 'info');
-      const res = await fetch(`/api/sync/artist/${id}`, { 
+      const res = await fetch(`/api/sync/artist/${id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ types, deep })
+        body: JSON.stringify({ types, deep }),
       });
       const data = await res.json();
-      if (data.success) {
-        // Le rafraîchissement se fera via l'événement d'activité
-      }
-    } catch (err) {
-      showToast('Erreur lors de la mise à jour.', 'error');
-      console.error('Sync failed:', err);
+      if (!res.ok) throw new Error(data.error || 'Impossible de démarrer la synchronisation');
+      showToast(`Mise à jour de ${artist?.name} lancée`, 'info');
+    } catch (error) {
+      showToast((error as Error).message, 'error');
     } finally {
       setSyncing(false);
     }
   };
 
-  const [fixingPermissions, setFixingPermissions] = useState(false);
-
-  const [scanning, setScanning] = useState(false);
-
   const handleScan = async () => {
     try {
       setScanning(true);
-      showToast(`Scan des dossiers locaux pour ${artist?.name}...`, 'info');
+      showToast(`Scan des dossiers locaux pour ${artist?.name}…`, 'info');
       const res = await fetch(`/api/artists/${id}/scan`, { method: 'POST' });
       const data = await res.json();
-      if (data.success) {
-        showToast(`Scan terminé : ${data.processed} fichiers traités.`, 'success');
-        fetchData();
-      } else {
-        throw new Error(data.error);
-      }
-    } catch (err: any) {
-      showToast(err.message || 'Erreur lors du scan local.', 'error');
+      if (!data.success) throw new Error(data.error || 'Le scan a échoué');
+      showToast(`Scan terminé : ${data.processed} fichier(s) traité(s).`, 'success');
+      fetchData();
+    } catch (error) {
+      showToast((error as Error).message, 'error');
     } finally {
       setScanning(false);
     }
@@ -145,46 +148,58 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
   const handleFixPermissions = async () => {
     try {
       setFixingPermissions(true);
-      showToast(`Correction des permissions en cours...`, 'info');
-      const res = await fetch(`/api/artists/${id}/permissions`, { 
-        method: 'POST'
-      });
+      showToast('Correction des permissions en cours…', 'info');
+      const res = await fetch(`/api/artists/${id}/permissions`, { method: 'POST' });
       const data = await res.json();
-      if (data.success) {
-        showToast(data.message, 'success');
-        showToast(`Lancement d'un scan pour intégrer les fichiers...`, 'info');
-        await fetch(`/api/artists/${id}/scan`, { method: 'POST' });
-        fetchData();
-      } else {
-        throw new Error(data.error);
-      }
-    } catch (err: any) {
-      showToast(err.message || 'Erreur lors de la correction des permissions.', 'error');
+      if (!data.success) throw new Error(data.error || 'La correction a échoué');
+      showToast(data.message, 'success');
+      await fetch(`/api/artists/${id}/scan`, { method: 'POST' });
+      fetchData();
+    } catch (error) {
+      showToast((error as Error).message, 'error');
     } finally {
       setFixingPermissions(false);
     }
   };
 
-  const handleManualSearch = (albumName?: string) => {
-    setSearchQuery(albumName ? `${artist?.name} ${albumName}` : artist?.name || '');
-    setActiveAlbumId(undefined); // On ne lie pas à un album ID local car il n'existe peut-être pas encore
+  const handleSearchRelease = (release: DiscographyRelease) => {
+    setSearchQuery(`${artist?.name ?? ''} ${release.name}`.trim());
     setIsModalOpen(true);
+  };
+
+  const handleToggleMonitor = async (release: DiscographyRelease) => {
+    const next = !release.monitored;
+    // Bascule optimiste : l'écriture est instantanée côté serveur, attendre
+    // la réponse ne ferait que rendre le bouton mou.
+    setReleases(current =>
+      current.map(item => (item.id === release.id ? { ...item, monitored: next } : item)),
+    );
+
+    try {
+      const res = await fetch(`/api/releases/${release.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ monitored: next }),
+      });
+      if (!res.ok) throw new Error((await res.json()).error || 'Mise à jour impossible');
+    } catch (error) {
+      setReleases(current =>
+        current.map(item => (item.id === release.id ? { ...item, monitored: !next } : item)),
+      );
+      showToast((error as Error).message, 'error');
+    }
   };
 
   const handleDelete = async () => {
     try {
       setDeleting(true);
-      const res = await fetch(`/api/artists/${id}?deleteFiles=${deleteWithFiles}`, {
-        method: 'DELETE'
-      });
+      const res = await fetch(`/api/artists/${id}?deleteFiles=${deleteWithFiles}`, { method: 'DELETE' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erreur lors de la suppression');
-      
-      showToast('Artiste supprimé avec succès', 'success');
+      showToast('Artiste supprimé', 'success');
       router.push('/library');
-    } catch (err: any) {
-      showToast(err.message, 'error');
-      console.error('Delete failed:', err);
+    } catch (error) {
+      showToast((error as Error).message, 'error');
       setDeleting(false);
     }
   };
@@ -226,8 +241,9 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
           <div className={styles.artistInfo}>
             <h1>{artist.name}</h1>
             <div className={styles.artistMeta}>
-              <span>{localAlbums.length} Album{localAlbums.length > 1 ? 's' : ''} collectés</span>
-              <span className={styles.badge}><Monitor size={14} /> Surveillé</span>
+              <span>
+                {ownedCount} / {releases.length} sortie{releases.length > 1 ? 's' : ''} en collection
+              </span>
             </div>
           </div>
           <div className={styles.artistActions}>
@@ -249,8 +265,8 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
             >
               <Shield size={18} className={fixingPermissions ? 'animate-pulse' : ''} />
             </button>
-            <button 
-              className={`${styles.button} ${styles.outlineButton}`} 
+            <button
+              className={`${styles.button} ${styles.outlineButton}`}
               onClick={() => setIsSyncModalOpen(true)}
               disabled={syncing}
             >
@@ -269,15 +285,45 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
         </div>
       </header>
 
+      {/* État de chaque source. Une colonne vide parce que le fournisseur a
+          échoué n'est plus indiscernable d'une colonne vide parce qu'il n'a
+          rien trouvé. */}
+      {providers.length > 0 && (
+        <div className={styles.sourceStrip}>
+          {providers.map(provider => (
+            <span
+              key={provider.provider}
+              className={`${styles.sourceState} ${styles[`state_${provider.status}`] ?? ''}`}
+              title={provider.message}
+            >
+              {provider.status === 'ok' ? (
+                <CheckCircle2 size={14} />
+              ) : provider.status === 'failed' ? (
+                <XCircle size={14} />
+              ) : (
+                <MinusCircle size={14} />
+              )}
+              <strong>{PROVIDER_LABELS[provider.provider] ?? provider.provider}</strong>
+              <span>{STATUS_LABELS[provider.status]}</span>
+              {provider.status === 'ok' && <span>· {provider.count} sorties</span>}
+              {provider.scope?.types && (
+                <span className={styles.sourceScope}>· {provider.scope.types.join(', ')}</span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className={styles.filterSection}>
         <div className={styles.searchBar}>
           <Search size={18} className={styles.searchIcon} />
-          <input 
-            type="text" 
-            placeholder="Filtrer les albums, singles, EPs..." 
+          <input
+            type="text"
+            placeholder="Filtrer les sorties…"
             value={filterQuery}
-            onChange={(e) => setFilterQuery(e.target.value)}
+            onChange={event => setFilterQuery(event.target.value)}
             className={styles.searchInput}
+            aria-label="Filtrer les sorties"
           />
           {filterQuery && (
             <button className={styles.clearButton} onClick={() => setFilterQuery('')}>
@@ -287,68 +333,17 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
         </div>
       </div>
 
-      <div className={styles.mobileTabs}>
-        <button 
-          className={`${styles.mobileTab} ${activeTab === 'deezer' ? styles.mobileTabActive : ''}`}
-          onClick={() => setActiveTab('deezer')}
-        >
-          Deezer ({discography.deezer.length})
-        </button>
-        <button 
-          className={`${styles.mobileTab} ${activeTab === 'musicbrainz' ? styles.mobileTabActive : ''}`}
-          onClick={() => setActiveTab('musicbrainz')}
-        >
-          MusicBrainz ({discography.musicbrainz.length})
-        </button>
-        <button 
-          className={`${styles.mobileTab} ${activeTab === 'discogs' ? styles.mobileTabActive : ''}`}
-          onClick={() => setActiveTab('discogs')}
-        >
-          Discogs ({discography.discogs.length})
-        </button>
-      </div>
-
-      <div className={styles.columnsGrid}>
-        <div className={activeTab !== 'deezer' ? styles.hideMobile : ''}>
-          <DiscographyColumn 
-            title="Deezer" 
-            icon={<Music size={20} />} 
-            albums={discography.deezer.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
-            onSearch={(a) => handleManualSearch(a.name)}
-            color="#00C7F2"
-            isFiltering={!!filterQuery}
-          />
-        </div>
-        <div className={activeTab !== 'musicbrainz' ? styles.hideMobile : ''}>
-          <DiscographyColumn 
-            title="MusicBrainz" 
-            icon={<Database size={20} />} 
-            albums={discography.musicbrainz.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
-            onSearch={(a) => handleManualSearch(a.name)}
-            color="#EB4C39"
-            isFiltering={!!filterQuery}
-          />
-        </div>
-        <div className={activeTab !== 'discogs' ? styles.hideMobile : ''}>
-          <DiscographyColumn 
-            title="Discogs" 
-            icon={<Disc size={20} />} 
-            albums={discography.discogs.filter(a => a.name.toLowerCase().includes(filterQuery.toLowerCase()))} 
-            onSearch={(a) => handleManualSearch(a.name)}
-            color="#333333"
-            isFiltering={!!filterQuery}
-          />
-        </div>
-      </div>
-
-      <SearchModal 
-        isOpen={isModalOpen} 
-        onClose={() => setIsModalOpen(false)} 
-        query={searchQuery}
-        albumId={activeAlbumId}
+      <DiscographyList
+        releases={releases}
+        counts={counts}
+        filterQuery={filterQuery}
+        onSearch={handleSearchRelease}
+        onToggleMonitor={handleToggleMonitor}
       />
 
-      <SyncOptionsModal 
+      <SearchModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} query={searchQuery} />
+
+      <SyncOptionsModal
         isOpen={isSyncModalOpen}
         onClose={() => setIsSyncModalOpen(false)}
         onSync={handleSync}
@@ -358,8 +353,8 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
       {isDeleteModalOpen && (
         <div
           className={styles.modalOverlay}
-          onClick={(e) => {
-            if (e.target === e.currentTarget && !deleting) setIsDeleteModalOpen(false);
+          onClick={event => {
+            if (event.target === event.currentTarget && !deleting) setIsDeleteModalOpen(false);
           }}
         >
           <div className={styles.modalContent} role="dialog" aria-modal="true" aria-labelledby="delete-artist-title">
@@ -375,13 +370,17 @@ export default function ArtistDetailPage({ params }: { params: Promise<{ id: str
               <input
                 type="checkbox"
                 checked={deleteWithFiles}
-                onChange={(e) => setDeleteWithFiles(e.target.checked)}
+                onChange={event => setDeleteWithFiles(event.target.checked)}
               />
               <span>Supprimer les fichiers du disque</span>
             </label>
 
             <div className={styles.modalActions}>
-              <button className={`${styles.button} ${styles.outlineButton}`} onClick={() => setIsDeleteModalOpen(false)} disabled={deleting}>
+              <button
+                className={`${styles.button} ${styles.outlineButton}`}
+                onClick={() => setIsDeleteModalOpen(false)}
+                disabled={deleting}
+              >
                 Annuler
               </button>
               <button className={`${styles.button} ${styles.dangerButton}`} onClick={handleDelete} disabled={deleting}>

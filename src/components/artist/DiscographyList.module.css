@@ -1,0 +1,308 @@
+.wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ---------- onglets de type ---------- */
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 4px;
+}
+
+.tab {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  transition: all 0.2s ease;
+}
+
+.tab:hover {
+  color: var(--foreground);
+  border-color: var(--accent);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.tabActive {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+.tabCount {
+  font-size: 0.6875rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background-color: rgba(0, 0, 0, 0.25);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.tabActive .tabCount {
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+/* ---------- grille ---------- */
+
+.grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 10px;
+}
+
+.empty {
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-style: italic;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  margin: 0;
+}
+
+/* ---------- carte ---------- */
+
+.cardLink {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.card {
+  background-color: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  transition: border-color 0.2s ease, background-color 0.2s ease, transform 0.2s ease;
+  height: 100%;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent);
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.owned {
+  border-color: rgba(16, 185, 129, 0.3);
+  background-color: rgba(16, 185, 129, 0.03);
+}
+
+.owned:hover {
+  border-color: var(--success);
+}
+
+.missing {
+  opacity: 0.72;
+}
+
+.card.missing:hover {
+  opacity: 1;
+}
+
+.cover {
+  width: 50px;
+  height: 50px;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  background-color: var(--background);
+  flex-shrink: 0;
+}
+
+.cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.ownedBadge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background-color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.info {
+  flex: 1;
+  min-width: 0;
+}
+
+.info h4 {
+  margin: 0 0 5px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.date {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.typeBadge {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  font-weight: 800;
+  padding: 1px 6px;
+  background-color: var(--background);
+  border-radius: 4px;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+/* ---------- pastilles de provenance ---------- */
+
+.sources {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.sourcePill {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 4px;
+  border: 1px solid currentColor;
+  opacity: 0.75;
+}
+
+.source_musicbrainz {
+  color: #eb4c39;
+}
+
+.source_deezer {
+  color: #00c7f2;
+}
+
+.source_discogs {
+  color: #9aa4ab;
+}
+
+/* ---------- actions ---------- */
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.iconBtn {
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.iconBtn:hover {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  color: #000;
+}
+
+.iconBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.monitored {
+  color: var(--success);
+  border-color: rgba(16, 185, 129, 0.4);
+}
+
+.loadMore {
+  background-color: rgba(255, 255, 255, 0.05);
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+  border-radius: 12px;
+  padding: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  transition: all 0.2s ease;
+}
+
+.loadMore:hover {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: var(--accent);
+  color: var(--foreground);
+}
+
+@media (max-width: 640px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .tab,
+  .iconBtn,
+  .loadMore {
+    transition: none;
+  }
+
+  .card:hover {
+    transform: none;
+  }
+}
