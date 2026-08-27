@@ -1,57 +1,73 @@
-name: Docker Publish
+name: Publier l'image Docker
 
-# Se déclenche sur les tags de version (vX.Y.Z), à la suite du flux de release
-# décrit dans CONTRIBUTING.md : PR dev → main, puis tag sur main. Ne publie
-# jamais une image qui n'a pas passé la même CI (lint + types + build + image)
-# que les branches. Le tag `latest` permet à Unraid de détecter les mises à
-# jour du container et de les proposer dans la webgui.
-#
-# Le déclenchement manuel (workflow_dispatch, onglet Actions → Run workflow)
-# publie la version de package.json depuis la branche choisie — utile pour
-# re-publier une version ou publier sans pousser de tag.
+# Budget Actions volontairement contenu (compte Free, quota saturé en août 2026) :
+# l'image n'est construite QUE sur pose d'un tag « v* » ou sur déclenchement manuel.
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - 'v*'
   workflow_dispatch:
 
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
 jobs:
-  test:
-    uses: ./.github/workflows/ci.yml
-
-  publish:
-    needs: test
+  build-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-      - uses: actions/checkout@v7
+      - name: Récupérer le code
+        uses: actions/checkout@v4
 
-      - name: Déterminer le SHA court et la version
-        id: vars
-        run: |
-          echo "sha_short=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
-          # Sur un tag : le nom du tag. En déclenchement manuel : la version de package.json.
-          if [ "${{ github.ref_type }}" = "tag" ]; then
-            echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "version=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Préparer Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - uses: docker/setup-buildx-action@v4
-
-      - name: Connexion à Docker Hub
-        uses: docker/login-action@v4
+      - name: Se connecter à ghcr.io
+        uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build et push
-        uses: docker/build-push-action@v7
+      - name: Calculer les tags de l'image
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Construire et publier
+        uses: docker/build-push-action@v6
         with:
           context: .
+          target: runner
+          # Le NAS est un x86 : inutile de payer un build ARM.
+          platforms: linux/amd64
           push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Cache GitHub Actions : les builds suivants ne refont que ce qui a changé.
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          tags: |
-            guilhem31/musicarr:latest
-            guilhem31/musicarr:${{ steps.vars.outputs.version }}
-            guilhem31/musicarr:${{ steps.vars.outputs.sha_short }}
+          # Manifeste mono-plateforme propre, sans entrée « unknown/unknown » :
+          # c'est ce que la vérification de mise à jour d'Unraid interroge.
+          provenance: false
+
+      - name: Récapitulatif
+        run: |
+          echo "### Image publiée" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
