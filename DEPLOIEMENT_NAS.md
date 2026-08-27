@@ -1,9 +1,9 @@
 # Instructions de déploiement et de test sur le NAS (Unraid / IP configurée via NAS_HOST)
 
-## Installation recommandée : image Docker Hub (Unraid)
+## Installation recommandée : image ghcr.io (Unraid)
 
 À chaque release taguée (`vX.Y.Z`), la CI publie l'image officielle
-[`guilhem31/musicarr`](https://hub.docker.com/r/guilhem31/musicarr) sur Docker Hub
+[`ghcr.io/guim31/musicarr`](https://github.com/guim31/musicarr/pkgs/container/musicarr)
 (voir CONTRIBUTING.md, règle 8). C'est la méthode à privilégier en production :
 Unraid détecte automatiquement les nouvelles versions du tag `latest` et propose
 la mise à jour directement dans la webgui (onglet Docker → « update ready »).
@@ -12,10 +12,11 @@ Dans Unraid : **Docker → Add Container**, puis :
 
 | Champ | Valeur |
 |---|---|
-| Repository | `guilhem31/musicarr:latest` |
+| Repository | `ghcr.io/guim31/musicarr:latest` |
 | Port | `3005` → `3000` (ou le port hôte de votre choix) |
 | Volume données | `/mnt/user/appdata/musicarr/data` → `/app/data` |
-| Volume musique | `/mnt/user/data/media/music` → `/app/music` (adaptez à votre partage) |
+| Volume musique | `/mnt/user/musique` → `/app/music` (adaptez à votre partage) |
+| Mémoire | `--memory=512m` dans les paramètres supplémentaires |
 
 Les variables `PUID`/`PGID` valent déjà `99`/`100` (`nobody:users`, le
 propriétaire des partages Unraid) — ne les surchargez que si votre partage
@@ -86,6 +87,11 @@ Toujours dans ce même dossier sur le NAS, dites à Docker de re-construire l'im
 docker compose up -d --build
 ```
 *Le premier lancement prendra quelques minutes pour télécharger les dépendances Node.js d'une image vierge.*
+
+> **Attention** : depuis le 27/08/2026, la production ne passe plus par `docker compose`
+> mais par le template Unraid décrit plus haut. Sur le NAS, le `docker-compose.yml` a été
+> renommé en `docker-compose.yml.remplace-par-template-unraid` pour éviter qu'un `up`
+> égaré ne recrée un conteneur concurrent de celui géré par Unraid.
 
 ## 5. Tester l'application
 Sur votre ordinateur de développement, ouvrez simplement votre navigateur à l'adresse suivante :

@@ -30,18 +30,22 @@ feat/ma-fonctionnalite ──PR──▶ dev ──PR (release)──▶ main
 5. La CI (lint + types + build + image Docker) doit être verte pour fusionner.
 6. Fusion en **squash merge** vers `dev` (historique linéaire et lisible).
 7. Release : PR `dev` → `main`, en **merge commit** pour garder la traçabilité.
-8. Publication Docker Hub : une fois la release fusionnée sur `main`, montez la
+8. Publication de l'image : une fois la release fusionnée sur `main`, montez la
    version dans `package.json` si ce n'est pas déjà fait, puis posez un tag —
-   le workflow `docker-publish` rejoue la CI et pousse l'image
-   `guilhem31/musicarr` (tags `latest`, `vX.Y.Z` et SHA court) :
+   le workflow `docker-publish` construit et pousse l'image
+   `ghcr.io/guim31/musicarr` (tags `latest`, `X.Y.Z` et `X.Y`) :
    ```bash
    git switch main && git pull
    git tag vX.Y.Z
    git push origin vX.Y.Z
    ```
    C'est le tag `latest` qui permet à Unraid de détecter les mises à jour
-   du container. Prérequis (une seule fois) : les secrets `DOCKERHUB_USERNAME`
-   et `DOCKERHUB_TOKEN` dans les réglages GitHub du dépôt.
+   du container. Aucun secret à configurer : le workflow s'authentifie avec le
+   `GITHUB_TOKEN` fourni automatiquement par Actions.
+
+   Prérequis, fait une seule fois le 27/08/2026 : le package
+   `ghcr.io/guim31/musicarr` a été basculé en **visibilité publique**, ce qui
+   évite d'avoir à stocker des identifiants de registre sur le NAS.
 
 ## Convention de commits
 
