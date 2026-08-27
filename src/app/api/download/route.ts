@@ -1,39 +1,40 @@
 import { NextResponse } from 'next/server';
-import { SabnzbdService } from '@/services/sabnzbd';
-import { DeemixService } from '@/services/DeemixService';
+import { z } from 'zod';
+import { DownloadService, UnsupportedProtocolError } from '@/services/DownloadService';
 
+const DownloadBody = z.object({
+  url: z.string().min(1),
+  title: z.string().optional(),
+  protocol: z.string().optional(),
+  albumId: z.coerce.number().int().positive().optional(),
+});
+
+/**
+ * Conservée pour la page de recherche globale ; elle délègue désormais au
+ * même service que `/api/search/download`, au lieu d'en réimplémenter une
+ * version dégradée.
+ */
 export async function POST(request: Request) {
   try {
-    const { url, title, protocol } = await request.json();
-
-    if (!url || !title) {
-      return NextResponse.json({ error: 'URL et Titre requis' }, { status: 400 });
+    const parsed = DownloadBody.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Requête de téléchargement invalide', details: parsed.error.issues },
+        { status: 400 },
+      );
     }
 
-    if (protocol === 'deemix') {
-      // Pour Deezer, 'url' contient le deezerAlbumId
-      const success = await DeemixService.downloadAlbum(url);
-      if (success) {
-        return NextResponse.json({ success: true, message: 'Téléchargement Deezer démarré' });
-      } else {
-        return NextResponse.json({ error: 'Échec du démarrage du téléchargement Deezer' }, { status: 500 });
-      }
+    const result = await DownloadService.start(parsed.data);
+    if (!result.success) {
+      return NextResponse.json({ error: 'Le client de téléchargement a refusé la demande' }, { status: 502 });
     }
 
-    if (protocol === 'torrent') {
-      return NextResponse.json({ error: 'Le téléchargement de torrents n\'est pas encore supporté (SABnzbd uniquement configuré)' }, { status: 400 });
+    return NextResponse.json({ success: true, activityId: result.activityId });
+  } catch (error) {
+    if (error instanceof UnsupportedProtocolError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
-
-    // Le paramètre URL devrait être le downloadUrl fourni par Prowlarr
-    const success = await SabnzbdService.addNzbFromUrl(url, title);
-    
-    if (success) {
-      return NextResponse.json({ success: true, message: 'Ajouté à SABnzbd avec succès' });
-    } else {
-      return NextResponse.json({ error: 'Échec de l\'ajout à SABnzbd' }, { status: 500 });
-    }
-  } catch (error: any) {
-    console.error('API Download Error:', error);
-    return NextResponse.json({ error: error.message || 'Erreur interne lors du téléchargement' }, { status: 500 });
+    console.error('[Téléchargement] Erreur :', error);
+    return NextResponse.json({ error: (error as Error).message || 'Erreur interne' }, { status: 500 });
   }
 }

@@ -21,17 +21,24 @@ export async function GET(
       metadata: track.metadata ? JSON.parse(track.metadata) : {}
     }));
 
-    // If no local tracks, try to fetch remote ones
+    // Aucune piste locale : on tente les identifiants externes.
+    //
+    // Ce repli ne pouvait pas se déclencher tant que `albums.mbid` et
+    // l'identifiant Deezer n'étaient écrits nulle part ; la synchronisation
+    // les reporte désormais sur l'album.
     if (tracksProcessed.length === 0) {
-      const album = db.prepare('SELECT mbid, metadata FROM albums WHERE id = ?').get(albumId) as any;
+      const album = db
+        .prepare('SELECT mbid, deezer_id, metadata FROM albums WHERE id = ?')
+        .get(albumId) as { mbid: string | null; deezer_id: string | null; metadata: string | null } | undefined;
       if (album) {
         let meta: any = {};
         try { meta = album.metadata ? JSON.parse(album.metadata) : {}; } catch {}
-        
+        meta.deezerId = album.deezer_id || meta.deezerId;
+
         if (album.mbid || meta.deezerId) {
           try {
             const engine = new MetadataEngine();
-            const remoteTracks = await engine.getAlbumTracks(album.mbid, meta.deezerId);
+            const remoteTracks = await engine.getAlbumTracks(album.mbid ?? undefined, meta.deezerId);
             tracksProcessed = (remoteTracks || []).map((t: any) => ({
               id: `remote-${t.deezerId || t.name}-${t.number}`,
               title: t.name,

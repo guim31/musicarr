@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import db from '@/lib/db';
 import { isInsideLibrary, resolveCoverPath } from '@/lib/paths';
+import { parseProviderRef, type ProviderRefKind } from '@/lib/providerRefs';
 
 export async function GET(
   request: NextRequest,
@@ -17,6 +19,84 @@ export async function GET(
     return NextResponse.json(artist);
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+}
+
+const LinkBody = z.object({
+  /** URL d'artiste, MBID nu, ou identifiant numérique accompagné de `provider`. */
+  reference: z.string().min(1),
+  provider: z.enum(['mbid', 'discogsId', 'deezerId']).optional(),
+});
+
+const COLUMNS: Record<ProviderRefKind, 'mbid' | 'discogs_id' | 'deezer_id'> = {
+  mbid: 'mbid',
+  discogsId: 'discogs_id',
+  deezerId: 'deezer_id',
+};
+
+/**
+ * Rattache manuellement un artiste à une fiche de fournisseur.
+ *
+ * La recherche automatique ne retient plus qu'une correspondance exacte, ce
+ * qui laisse sans source les homonymes et les noms mal orthographiés. Coller
+ * l'URL de la bonne fiche est la sortie de secours — et la seule façon
+ * honnête de trancher entre deux artistes qui portent le même nom.
+ */
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params;
+    const artistId = Number.parseInt(id, 10);
+    if (!Number.isInteger(artistId)) {
+      return NextResponse.json({ error: 'Identifiant d\u2019artiste invalide' }, { status: 400 });
+    }
+
+    const parsed = LinkBody.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Corps de requête invalide', details: parsed.error.issues },
+        { status: 400 },
+      );
+    }
+
+    const artist = db.prepare('SELECT id FROM artists WHERE id = ?').get(artistId);
+    if (!artist) {
+      return NextResponse.json({ error: 'Artiste non trouvé' }, { status: 404 });
+    }
+
+    const ref = parseProviderRef(parsed.data.reference, parsed.data.provider);
+    if (!ref) {
+      return NextResponse.json(
+        {
+          error:
+            'Référence non reconnue. Collez une URL MusicBrainz, Discogs ou Deezer, ou un MBID.',
+        },
+        { status: 400 },
+      );
+    }
+
+    const column = COLUMNS[ref.kind];
+
+    const holder = db
+      .prepare(`SELECT id FROM artists WHERE ${column} = ? AND id != ?`)
+      .get(ref.id, artistId) as { id: number } | undefined;
+    if (holder) {
+      return NextResponse.json(
+        { error: `Cet identifiant est déjà rattaché à un autre artiste (#${holder.id})` },
+        { status: 409 },
+      );
+    }
+
+    db.prepare(`UPDATE artists SET ${column} = ? WHERE id = ?`).run(ref.id, artistId);
+
+    // Le cache de ce fournisseur devient caduc : il décrivait peut-être
+    // quelqu'un d'autre.
+    const providerKey = ref.kind === 'mbid' ? 'musicbrainz' : ref.kind === 'discogsId' ? 'discogs' : 'deezer';
+    db.prepare('DELETE FROM artist_cache WHERE artist_id = ? AND provider = ?').run(artistId, providerKey);
+
+    return NextResponse.json({ success: true, provider: providerKey, id: ref.id });
+  } catch (error) {
+    console.error('[Artiste] Rattachement impossible :', error);
+    return NextResponse.json({ error: 'Impossible de rattacher cet artiste' }, { status: 500 });
   }
 }
 

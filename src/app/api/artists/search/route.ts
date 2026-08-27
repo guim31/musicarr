@@ -3,32 +3,36 @@ import { MetadataEngine } from '@/services/metadata/MetadataEngine';
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const query = searchParams.get('q');
+  const query = searchParams.get('q')?.trim();
   const provider = searchParams.get('provider') || undefined;
 
   if (!query) {
-    return NextResponse.json({ error: 'Query missing' }, { status: 400 });
+    return NextResponse.json({ error: 'Requête manquante' }, { status: 400 });
   }
 
   try {
     const engine = new MetadataEngine();
-    const results = await engine.searchArtist(query, provider);
+    const results = (await engine.searchArtist(query, provider)).slice(0, 15);
+    await engine.enrichArtistImages(results);
 
-    // Normalize format for frontend
-    const formattedResults = results.slice(0, 10).map((artist: any) => ({
-      name: artist.name,
-      mbid: artist.mbid || null,
-      discogsId: artist.discogsId || null,
-      deezerId: artist.deezerId || null,
-      itunesId: artist.itunesId || null,
-      image: artist.image || null,
-      genre: artist.genres?.join(', ') || artist.type || 'Unknown',
-      country: artist.description || artist.country || ''
-    }));
-
-    return NextResponse.json(formattedResults);
-  } catch (error: any) {
-    console.error('API Artist Search Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json(
+      results.map(artist => ({
+        name: artist.name,
+        mbid: artist.mbid ?? null,
+        discogsId: artist.discogsId ?? null,
+        deezerId: artist.deezerId ?? null,
+        itunesId: artist.itunesId ?? null,
+        image: artist.image ?? null,
+        // La source est désormais affichée : les résultats ne sont plus
+        // fusionnés entre fournisseurs, l'utilisateur doit savoir d'où vient
+        // la fiche qu'il ajoute.
+        source: artist.source ?? null,
+        genre: artist.genres?.join(', ') || '',
+        country: artist.description || '',
+      })),
+    );
+  } catch (error) {
+    console.error('[Recherche artiste] Erreur :', error);
+    return NextResponse.json({ error: 'La recherche a échoué' }, { status: 500 });
   }
 }

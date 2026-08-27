@@ -54,6 +54,7 @@ bibliothèque et vos clés API, puis lancez un premier scan.
 ```bash
 npm install
 npm run dev               # http://localhost:3000
+npm test                  # tests unitaires et d'intégration
 ```
 
 Ou en conteneur, avec rechargement à chaud :
@@ -109,10 +110,12 @@ ou placez-le derrière un reverse proxy assurant l'authentification.
 | `src/lib` | Utilitaires partagés — base de données, journalisation, chemins, ffmpeg |
 | `src/components` | Composants d'interface réutilisables |
 | `.agents/rules` | Conventions du projet (source de vérité pour les agents IA) |
+| `tests` | Tests unitaires et d'intégration (`npm test`, sans dépendance externe) |
 
 Détails techniques dans [`AI_CONTEXT.md`](./AI_CONTEXT.md), conventions de
 contribution dans [`CONTRIBUTING.md`](./CONTRIBUTING.md), état technique du
-projet dans [`AUDIT.md`](./AUDIT.md).
+projet dans [`AUDIT.md`](./AUDIT.md) et état fonctionnel dans
+[`AUDIT_FONCTIONNEL.md`](./AUDIT_FONCTIONNEL.md).
 
 ## Stack
 
@@ -121,12 +124,16 @@ ffmpeg pour l'écriture des tags.
 
 ## Feuille de route
 
-Les bases sont en place (scan, métadonnées, téléchargement, tags). Les
-prochains chantiers, par priorité — voir [`AUDIT.md`](./AUDIT.md) :
+Les bases sont en place (scan, métadonnées, téléchargement, tags) et la
+récupération des discographies a été refondue — voir
+[`AUDIT_FONCTIONNEL.md`](./AUDIT_FONCTIONNEL.md). Prochains chantiers, par
+priorité :
 
+- [ ] Acquisition automatique des sorties surveillées (la plomberie est prête)
 - [ ] Authentification (mot de passe unique) avant toute exposition hors LAN
 - [ ] Chiffrement des clés API au repos
-- [ ] Tests automatisés sur la logique de rapprochement
-- [ ] Validation des entrées d'API avec zod
+- [x] Tests automatisés sur la logique de rapprochement
+- [x] Validation des entrées d'API avec zod *(routes de synchronisation, de
+      téléchargement et de sorties)*
 - [ ] Flux SSE en remplacement des interrogations périodiques
 - [ ] Sauvegarde automatique de la base

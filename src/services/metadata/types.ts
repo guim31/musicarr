@@ -1,3 +1,5 @@
+import type { ReleaseType } from './releaseTypes';
+
 export interface RemoteArtist {
   name: string;
   mbid?: string;
@@ -7,6 +9,15 @@ export interface RemoteArtist {
   image?: string;
   genres?: string[];
   description?: string;
+  /**
+   * Fournisseur d'origine. Indispensable depuis que les résultats de
+   * recherche ne sont plus fusionnés entre fournisseurs : deux artistes
+   * homonymes produisaient une fiche unique portant le MBID de l'un et
+   * l'identifiant Deezer de l'autre.
+   */
+  source?: string;
+  /** Score de pertinence du fournisseur, quand il en renvoie un (0–100). */
+  score?: number;
 }
 
 export interface RemoteAlbum {
@@ -16,7 +27,11 @@ export interface RemoteAlbum {
   deezerId?: string;
   itunesId?: string;
   releaseDate?: string;
-  type?: 'album' | 'single' | 'ep' | 'compilation' | 'appearance';
+  /**
+   * `undefined` signifie « le fournisseur ne sait pas », et non « album ».
+   * Le type est alors résolu à la fusion, par les fournisseurs qui savent.
+   */
+  type?: ReleaseType;
   image?: string;
   trackCount?: number;
   qualities?: string[];
@@ -31,9 +46,19 @@ export interface RemoteTrack {
   artistName: string;
 }
 
+export interface FetchDiscographyOptions {
+  onProgress?: (current: number, total: number) => void;
+  /** Types voulus. `null` ou absent : aucun filtre. */
+  types?: ReleaseType[] | null;
+  /** Parcours complet du catalogue, plus lent. */
+  deep?: boolean;
+  /** Annulation réelle de la pagination en cours. */
+  signal?: AbortSignal;
+}
+
 export interface MetadataProvider {
   name: string;
-  searchArtist(query: string): Promise<RemoteArtist[]>;
-  getArtistAlbums(artistId: string, onProgress?: (current: number, total: number) => void, filterTypes?: string[], deep?: boolean): Promise<RemoteAlbum[]>;
+  searchArtist(query: string, signal?: AbortSignal): Promise<RemoteArtist[]>;
+  getArtistAlbums(artistId: string, options?: FetchDiscographyOptions): Promise<RemoteAlbum[]>;
   getAlbumTracks?(albumId: string): Promise<RemoteTrack[]>;
 }

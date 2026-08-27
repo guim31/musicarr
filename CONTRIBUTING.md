@@ -79,8 +79,15 @@ docker compose -f docker-compose.dev.yml up --build   # http://localhost:3005
 ```bash
 npm run lint
 npm run typecheck
+npm test
 npm run build
 ```
+
+Les tests tournent sous le « type stripping » natif de Node, sans dépendance ni
+étape de compilation. Ils vivent dans `tests/` et importent les sources avec
+leur extension `.ts`. Toute logique pure de rapprochement — normalisation,
+regroupement des éditions, traduction des types de sortie — doit être couverte :
+ses régressions sont silencieuses.
 
 ## Sécurité — à ne jamais faire
 

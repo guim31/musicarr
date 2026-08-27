@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { ProwlarrService } from '@/services/prowlarr';
-import { SabnzbdService } from '@/services/sabnzbd';
 import { DeezerProvider } from '@/services/metadata/providers/DeezerProvider';
+import { DownloadService, UnsupportedProtocolError } from '@/services/DownloadService';
 import { DeemixService } from '@/services/DeemixService';
 import db from '@/lib/db';
+
+const DownloadBody = z.object({
+  url: z.string().min(1),
+  title: z.string().optional(),
+  protocol: z.string().optional(),
+  albumId: z.coerce.number().int().positive().optional(),
+});
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -122,41 +130,25 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const { url, title, protocol, albumId } = await request.json();
-
-    if (!url) {
-      return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+    const parsed = DownloadBody.safeParse(await request.json().catch(() => ({})));
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Requête de téléchargement invalide', details: parsed.error.issues },
+        { status: 400 },
+      );
     }
 
-    if (protocol?.toLowerCase() === 'deemix') {
-      const response = await DeemixService.downloadAlbum(url, albumId ? parseInt(albumId) : undefined);
-      return NextResponse.json({ 
-        success: response.success, 
-        activityId: `local-${response.activityId}` 
-      });
+    const result = await DownloadService.start(parsed.data);
+    if (!result.success) {
+      return NextResponse.json({ error: 'Le client de téléchargement a refusé la demande' }, { status: 502 });
     }
 
-    if (protocol?.toLowerCase() === 'usenet') {
-      const { success, ids } = await SabnzbdService.addNzbFromUrl(url, title || 'Musicarr Download');
-      
-      let activityId = null;
-      if (success) {
-        const details = JSON.stringify({ nzo_id: ids[0] });
-        activityId = db.prepare(`
-          INSERT INTO activity (type, status, title, message, album_id, details)
-          VALUES ('download', 'pending', ?, ?, ?, ?)
-        `).run(title, `Téléchargement NZB lancé : ${title}`, albumId || null, details).lastInsertRowid;
-      }
-
-      return NextResponse.json({ 
-        success, 
-        activityId: activityId ? `local-${activityId}` : null 
-      });
-    } else {
-      return NextResponse.json({ error: 'Protocol non supporté pour le moment (Usenet ou Deezer seulement)' }, { status: 400 });
+    return NextResponse.json({ success: true, activityId: result.activityId });
+  } catch (error) {
+    if (error instanceof UnsupportedProtocolError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
-  } catch (error: any) {
-    console.error('Download API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error('[Téléchargement] Erreur :', error);
+    return NextResponse.json({ error: (error as Error).message || 'Erreur interne' }, { status: 500 });
   }
 }
