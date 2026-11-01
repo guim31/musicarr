@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { errorResponse } from '@/lib/apiError';
 export const dynamic = "force-dynamic";
 import db from '@/lib/db';
 import { maskSecret, resolveSecret } from '@/lib/secrets';
@@ -17,7 +18,7 @@ export async function GET() {
       deezerQuality: deezerQuality?.value || 'MP3_320',
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error, '[API] metadata (GET) :');
   }
 }
 
@@ -44,6 +45,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error, '[API] metadata (POST) :');
   }
 }

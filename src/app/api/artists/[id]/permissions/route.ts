@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import db from '@/lib/db';
 import { isInsideLibrary } from '@/lib/paths';
 import { safePathSegment } from '@/lib/pathSegment';
@@ -101,6 +102,6 @@ export async function POST(
     return NextResponse.json({ success: true, message: 'Permissions corrigées avec succès (777 pour les dossiers, 666 pour les fichiers).' });
   } catch (error: any) {
     console.error('Permissions API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }

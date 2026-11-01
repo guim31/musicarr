@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import { ProwlarrService } from '@/services/prowlarr';
 import { DeezerProvider } from '@/services/metadata/providers/DeezerProvider';
 
@@ -83,6 +84,6 @@ export async function GET(request: Request) {
     return NextResponse.json([...mappedDeezer, ...mappedProwlarr]);
   } catch (error: any) {
     console.error('API Search Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }

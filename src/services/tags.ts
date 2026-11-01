@@ -4,6 +4,7 @@ import db from '@/lib/db';
 import { runFfmpeg, metadataArgs } from '@/lib/ffmpeg';
 import { fetchPublicImage } from '@/lib/publicFetch';
 import { DeemixService } from './DeemixService';
+import { UserFacingError } from '@/lib/userFacingError';
 
 export interface TrackTagUpdate {
   trackId: number;
@@ -226,7 +227,7 @@ export class TagService {
   static async updateAlbumCover(albumId: number, coverSource: Buffer | string) {
     const album = db.prepare('SELECT path, id FROM albums WHERE id = ?').get(albumId) as { path: string, id: number } | undefined;
     if (!album || !album.path || !fs.existsSync(album.path)) {
-      throw new Error("Dossier de l'album non trouvé");
+      throw new UserFacingError("Dossier de l'album non trouvé");
     }
 
     // URL fournie par le client : adresses publiques uniquement (voir

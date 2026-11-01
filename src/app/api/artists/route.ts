@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import db from '@/lib/db';
 import { isInsideLibrary } from '@/lib/paths';
 import { safePathSegment } from '@/lib/pathSegment';
@@ -105,6 +106,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true, id: artistId });
   } catch (error: any) {
     console.error('API Add Artist Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }

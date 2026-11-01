@@ -11,6 +11,7 @@ import { BACKUP_SUFFIX, discardUpgradeBackups, rollbackUpgrade } from '@/lib/upg
 import { runFfmpeg, metadataArgs } from '@/lib/ffmpeg';
 import { DeezerProvider } from './metadata/providers/DeezerProvider';
 import { LibraryService } from './library';
+import { UserFacingError } from '@/lib/userFacingError';
 
 /** Avancement d'un téléchargement, enregistré dans `activity.details`. */
 interface DownloadProgress {
@@ -53,7 +54,7 @@ export class DeemixService {
 
   private static async getSession() {
     const arl = this.getArl();
-    if (!arl) throw new Error('ARL non configuré');
+    if (!arl) throw new UserFacingError('ARL non configuré');
 
     const res = await axios.get('https://www.deezer.com/ajax/gw-light.php', {
       params: {
@@ -142,11 +143,11 @@ export class DeemixService {
   static async downloadAlbum(deezerAlbumId: string, albumId?: number) {
     const arl = this.getArl();
     const musicPath = this.getMusicPath();
-    if (!arl) throw new Error('ARL Deezer non configuré');
-    if (!musicPath) throw new Error('Chemin de la bibliothèque non configuré');
+    if (!arl) throw new UserFacingError('ARL Deezer non configuré');
+    if (!musicPath) throw new UserFacingError('Chemin de la bibliothèque non configuré');
 
     const tracks = await this.deezer.getAlbumTracks(deezerAlbumId);
-    if (tracks.length === 0) throw new Error('Aucune piste trouvée pour cet album');
+    if (tracks.length === 0) throw new UserFacingError('Aucune piste trouvée pour cet album');
 
     const artistName = tracks[0].artistName.toUpperCase();
     const albumName = (await (this.deezer as any).fetchDeezer(`album/${deezerAlbumId}`)).title;
@@ -173,7 +174,7 @@ export class DeemixService {
 
     const dirKey = path.resolve(albumDir);
     if (this.activeDirs.has(dirKey)) {
-      throw new Error('Un téléchargement est déjà en cours pour cet album');
+      throw new UserFacingError('Un téléchargement est déjà en cours pour cet album');
     }
     this.activeDirs.add(dirKey);
 
@@ -706,11 +707,11 @@ export class DeemixService {
     `).get(albumId) as { id: number, path: string, albumName: string, artistName: string, album_artist?: string } | undefined;
 
     if (!album || !album.path || !fs.existsSync(album.path)) {
-      throw new Error("Album non trouvé");
+      throw new UserFacingError("Album non trouvé");
     }
 
     const musicPath = this.getMusicPath();
-    if (!musicPath) throw new Error("Chemin de la bibliothèque non configuré");
+    if (!musicPath) throw new UserFacingError("Chemin de la bibliothèque non configuré");
     
     const normalize = (s: string) => s.split(/[\s_]+/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('_');
     const changes: { type: 'file' | 'folder' | 'artist', from: string, to: string }[] = [];
@@ -760,16 +761,16 @@ export class DeemixService {
     `).get(albumId) as { id: number, path: string, albumName: string, artistName: string, album_artist?: string } | undefined;
 
     if (!album || !album.path || !fs.existsSync(album.path)) {
-      throw new Error("Album non trouvé ou chemin invalide");
+      throw new UserFacingError("Album non trouvé ou chemin invalide");
     }
 
     const musicPath = this.getMusicPath();
-    if (!musicPath) throw new Error("Chemin de la bibliothèque non configuré");
+    if (!musicPath) throw new UserFacingError("Chemin de la bibliothèque non configuré");
 
     // Un chemin en base hors de la bibliothèque (ou la racine elle-même) ne
     // doit jamais être renommé ni déplacé.
     if (!isInsideLibrary(album.path)) {
-      throw new Error("Le dossier de l'album est hors de la bibliothèque configurée");
+      throw new UserFacingError("Le dossier de l'album est hors de la bibliothèque configurée");
     }
 
     const normalize = (s: string) => s.split(/[\s_]+/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('_');
@@ -823,7 +824,7 @@ export class DeemixService {
     const cleanArtistFolder = safePathSegment(normalize(targetArtistName));
     const targetArtistDir = path.join(musicPath, cleanArtistFolder);
     if (!isInsideLibrary(targetArtistDir)) {
-      throw new Error(`Destination hors de la bibliothèque : ${targetArtistDir}`);
+      throw new UserFacingError(`Destination hors de la bibliothèque : ${targetArtistDir}`);
     }
 
     if (currentArtistDir !== targetArtistDir) {

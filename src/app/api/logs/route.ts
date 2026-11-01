@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import { logger } from '@/lib/LogService';
 
 export async function GET() {
@@ -6,7 +7,7 @@ export async function GET() {
     const logs = logger.getLogs();
     return NextResponse.json({ logs });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error, '[API] logs (GET) :');
   }
 }
 
@@ -15,6 +16,6 @@ export async function DELETE() {
     logger.clearLogs();
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error, '[API] logs (DELETE) :');
   }
 }

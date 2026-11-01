@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import { z } from 'zod';
 import db from '@/lib/db';
 import { isInsideLibrary, resolveCoverPath } from '@/lib/paths';
@@ -18,7 +19,7 @@ export async function GET(
 
     return NextResponse.json(artist);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error, '[API] artists/[id] (GET) :');
   }
 }
 
@@ -170,7 +171,7 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Delete Artist Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }
 

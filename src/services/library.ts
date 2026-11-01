@@ -5,6 +5,7 @@ import fs from 'fs';
 import db from '@/lib/db';
 
 import { CompareUtils } from '@/lib/CompareUtils';
+import { UserFacingError } from '@/lib/userFacingError';
 
 export interface ScanUpdate {
   path: string;
@@ -271,7 +272,7 @@ export class LibraryService {
 
     try {
       const musicPathRes = this.getMusicPath();
-      if (!musicPathRes?.value) throw new Error('Le chemin de la bibliothèque n\'est pas configuré');
+      if (!musicPathRes?.value) throw new UserFacingError('Le chemin de la bibliothèque n\'est pas configuré');
       const musicPath = musicPathRes.value;
 
       console.log(`Scanning library at: ${targetPath || musicPath}`);
@@ -286,7 +287,7 @@ export class LibraryService {
       
       if (!fs.existsSync(scanDir)) {
         console.error(`[Library] Error: Scan directory does not exist: ${scanDir}`);
-        throw new Error(`Le dossier à scanner n'existe pas : ${scanDir}`);
+        throw new UserFacingError(`Le dossier à scanner n'existe pas : ${scanDir}`);
       }
 
       const files = await glob('**/*.{flac,mp3,m4a,wav}', { cwd: scanDir, absolute: true });

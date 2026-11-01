@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import { z } from 'zod';
 import { ProwlarrService } from '@/services/prowlarr';
 import { DeezerProvider } from '@/services/metadata/providers/DeezerProvider';
@@ -124,7 +125,7 @@ export async function GET(request: Request) {
     return NextResponse.json(results);
   } catch (error: any) {
     console.error('Search API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
@@ -149,6 +150,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     console.error('[Téléchargement] Erreur :', error);
-    return NextResponse.json({ error: (error as Error).message || 'Erreur interne' }, { status: 500 });
+    return errorResponse(error);
   }
 }

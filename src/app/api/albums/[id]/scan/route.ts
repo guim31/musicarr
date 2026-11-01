@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import db from '@/lib/db';
 import { LibraryService } from '@/services/library';
 
@@ -20,6 +21,6 @@ export async function POST(
     return NextResponse.json({ success: true, processed });
   } catch (error: any) {
     console.error('Album Scan API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }

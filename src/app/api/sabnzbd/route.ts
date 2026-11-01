@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { errorResponse } from '@/lib/apiError';
 export const dynamic = "force-dynamic";
 import db from '@/lib/db';
 import { maskSecret, resolveServiceSecret } from '@/lib/secrets';
@@ -36,7 +37,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error: any) {
     console.error('API Sabnzbd POST Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
@@ -54,6 +55,6 @@ export async function GET() {
     });
   } catch (error: any) {
     console.error('API Sabnzbd GET Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }

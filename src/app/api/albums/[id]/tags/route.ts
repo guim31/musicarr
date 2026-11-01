@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import { TagService } from '@/services/tags';
 import { PublicFetchError } from '@/lib/publicFetch';
 
@@ -50,6 +51,6 @@ export async function POST(
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     console.error("Erreur API tags:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }

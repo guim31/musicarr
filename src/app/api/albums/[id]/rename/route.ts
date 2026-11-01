@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import { DeemixService } from '@/services/DeemixService';
 
 export async function GET(
@@ -12,7 +13,7 @@ export async function GET(
     return NextResponse.json({ success: true, plan });
   } catch (error: any) {
     console.error('Rename Plan API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
@@ -27,6 +28,6 @@ export async function POST(
     return NextResponse.json({ success });
   } catch (error: any) {
     console.error('Rename API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }

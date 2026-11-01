@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import { z } from 'zod';
 import { DownloadService, InvalidDownloadRequestError } from '@/services/DownloadService';
 
@@ -35,6 +36,6 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     console.error('[Téléchargement] Erreur :', error);
-    return NextResponse.json({ error: (error as Error).message || 'Erreur interne' }, { status: 500 });
+    return errorResponse(error);
   }
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import db from '@/lib/db';
 import { LibraryService } from '@/services/library';
 import fs from 'fs';
@@ -106,6 +107,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Action invalide' }, { status: 400 });
   } catch (error: any) {
     console.error('API Library Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }

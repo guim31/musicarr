@@ -1,5 +1,6 @@
 import axios from 'axios';
 import db from '@/lib/db';
+import { UserFacingError } from '@/lib/userFacingError';
 
 export interface ProwlarrIndexer {
   id: number;
@@ -35,7 +36,7 @@ export class ProwlarrService {
 
   static async fetchIndexers() {
     const { url, apiKey } = await this.getSettings();
-    if (!url || !apiKey) throw new Error('Prowlarr not configured');
+    if (!url || !apiKey) throw new UserFacingError('Prowlarr not configured');
 
     try {
       const response = await axios.get(`${url}/api/v1/indexer`, {
@@ -79,7 +80,7 @@ export class ProwlarrService {
 
   static async search(query: string) {
     const { url, apiKey } = await this.getSettings();
-    if (!url || !apiKey) throw new Error('Prowlarr non configuré');
+    if (!url || !apiKey) throw new UserFacingError('Prowlarr non configuré');
 
     console.log(`Searching Prowlarr for: "${query}" at ${url}`);
 
