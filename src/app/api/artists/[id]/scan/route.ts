@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { isLibraryOrInside } from '@/lib/paths';
+import { safePathSegment } from '@/lib/pathSegment';
 import { LibraryService } from '@/services/library';
 import path from 'path';
 import fs from 'fs';
@@ -29,7 +31,7 @@ export async function POST(
       if (settings?.value) {
         // On cherche un dossier qui match le nom (insensible à la casse/espaces si possible)
         const musicPath = settings.value;
-        const potentialPath = path.join(musicPath, artist.name.replace(/\s+/g, '_').toUpperCase());
+        const potentialPath = path.join(musicPath, safePathSegment(artist.name.replace(/\s+/g, '_').toUpperCase()));
         if (fs.existsSync(potentialPath)) {
           artistPath = potentialPath;
         } else {
@@ -46,6 +48,12 @@ export async function POST(
 
     if (!artistPath || !fs.existsSync(artistPath)) {
       return NextResponse.json({ error: 'Dossier de l\'artiste non trouvé sur le disque' }, { status: 404 });
+    }
+
+    // Le chemin vient d'un nom d'artiste ou d'un album en base : on ne
+    // scanne jamais hors de la bibliothèque.
+    if (!isLibraryOrInside(artistPath)) {
+      return NextResponse.json({ error: 'Dossier de l\'artiste hors de la bibliothèque' }, { status: 400 });
     }
 
     const processed = await LibraryService.scan(artistPath);

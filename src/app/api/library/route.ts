@@ -48,8 +48,22 @@ export async function POST(request: Request) {
     const { action, path: newPath, value } = body;
 
     if (action === 'save_path') {
+      // Le chemin de la bibliothèque borne toutes les suppressions et tous les
+      // déplacements (`isInsideLibrary`) : la racine du système, un chemin
+      // relatif ou un dossier inexistant en feraient une borne sans effet.
+      const candidate = typeof newPath === 'string' ? newPath.trim() : '';
+      if (!candidate || !pathLib.isAbsolute(candidate)) {
+        return NextResponse.json({ error: 'Le chemin doit être absolu.' }, { status: 400 });
+      }
+      const resolved = pathLib.resolve(candidate);
+      if (resolved === pathLib.parse(resolved).root) {
+        return NextResponse.json({ error: 'La racine du système ne peut pas servir de bibliothèque.' }, { status: 400 });
+      }
+      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+        return NextResponse.json({ error: "Le chemin n'existe pas ou n'est pas un dossier." }, { status: 400 });
+      }
       db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
-        .run('library_path', newPath);
+        .run('library_path', resolved);
       return NextResponse.json({ success: true });
     }
 

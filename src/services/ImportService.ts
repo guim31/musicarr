@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import db from '@/lib/db';
+import { isInsideLibrary } from '@/lib/paths';
+import { safePathSegment } from '@/lib/pathSegment';
 import { SabnzbdService } from './sabnzbd';
 import { LibraryService } from './library';
 import * as mm from 'music-metadata';
@@ -148,11 +150,18 @@ export class ImportService {
 
     // 3. Prepare destination
     const effectiveArtist = (albumArtist || artist).toUpperCase();
-    const cleanArtist = effectiveArtist.replace(/[\?*:"<>|\\\/]+/g, '_').trim();
-    const cleanAlbum = album.replace(/[\?*:"<>|\\\/]+/g, '_').trim();
+    // Les tags viennent d'un fichier téléchargé : « .. » ou un nom vide ne
+    // doivent ni sortir de la bibliothèque ni déposer l'album à la racine de
+    // l'artiste.
+    const cleanArtist = safePathSegment(effectiveArtist.replace(/[\?*:"<>|\\\/]+/g, '_').trim());
+    const cleanAlbum = safePathSegment(album.replace(/[\?*:"<>|\\\/]+/g, '_').trim());
     
     const artistDir = path.join(libraryPath, cleanArtist);
     const destDir = path.join(artistDir, cleanAlbum);
+    if (!isInsideLibrary(destDir)) {
+      console.error(`[Import] Destination refusée, hors de la bibliothèque : ${destDir}`);
+      return;
+    }
 
     console.log(`[Import] Destination: ${destDir}`);
 
@@ -248,7 +257,10 @@ export class ImportService {
 
   private static applyOwnership(targetPath: string, uid: number, gid: number) {
     try {
-      const stat = fs.statSync(targetPath);
+      // lstat : un lien symbolique contenu dans un téléchargement ne doit pas
+      // faire modifier les droits de sa cible (par exemple hors du partage).
+      const stat = fs.lstatSync(targetPath);
+      if (stat.isSymbolicLink()) return;
       if (uid !== 0) fs.chownSync(targetPath, uid, gid);
       fs.chmodSync(targetPath, stat.isDirectory() ? 0o777 : 0o666);
 

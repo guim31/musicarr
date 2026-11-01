@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import db from '@/lib/db';
+import { isInsideLibrary } from '@/lib/paths';
+import { safePathSegment } from '@/lib/pathSegment';
 
 export async function GET() {
   try {
@@ -27,7 +29,7 @@ export async function POST(request: Request) {
   try {
     const { name, mbid, discogsId, deezerId, image, country, genre } = await request.json();
 
-    if (!name) {
+    if (!name || typeof name !== 'string') {
       return NextResponse.json({ error: 'Le nom de l\'artiste est requis' }, { status: 400 });
     }
 
@@ -35,7 +37,9 @@ export async function POST(request: Request) {
     const path = await import('path');
 
     // Create the formatted folderName
-    const folderName = name.toUpperCase().replace(/\s+/g, '_');
+    // Un seul segment de chemin : « AC/DC » ou « ../.. » ne doivent ni créer
+    // de sous-dossier ni sortir de la bibliothèque.
+    const folderName = safePathSegment(name.toUpperCase().replace(/\s+/g, '_'));
     const libraryPathRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('library_path') as { value: string } | undefined;
     const libraryPath = libraryPathRow?.value;
     const readOnlyRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('read_only_mode') as { value: string } | undefined;
@@ -44,7 +48,9 @@ export async function POST(request: Request) {
     if (libraryPath && !isReadOnly) {
       try {
         const artistPath = path.join(libraryPath, folderName);
-        if (!fs.existsSync(artistPath)) {
+        if (!isInsideLibrary(artistPath)) {
+          console.error(`Création du dossier refusée : ${artistPath} est hors de la bibliothèque`);
+        } else if (!fs.existsSync(artistPath)) {
           fs.mkdirSync(artistPath, { recursive: true });
         }
       } catch (fsError: any) {

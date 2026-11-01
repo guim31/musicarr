@@ -5,6 +5,8 @@ import path from 'path';
 import * as mm from 'music-metadata';
 import Blowfish from 'blowfish-node';
 import db from '@/lib/db';
+import { isInsideLibrary } from '@/lib/paths';
+import { safePathSegment } from '@/lib/pathSegment';
 import { runFfmpeg, metadataArgs } from '@/lib/ffmpeg';
 import { DeezerProvider } from './metadata/providers/DeezerProvider';
 import { LibraryService } from './library';
@@ -92,7 +94,8 @@ export class DeemixService {
   }
 
   private static normalizeFolderName(s: string) {
-    return s.replace(/\s+/g, '_');
+    // Le nom vient de l'API Deezer : « AC/DC » ne doit pas devenir deux niveaux.
+    return safePathSegment(s.replace(/\s+/g, '_'));
   }
 
   private static findExistingPath(parent: string, name: string): string {
@@ -103,6 +106,9 @@ export class DeemixService {
     // Normalisation pour la recherche : minuscule et suppression des caractères non-alphanumériques
     const searchNormalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
     const searchTarget = searchNormalize(name);
+    // Un nom sans lettre ni chiffre correspondrait à n'importe quel dossier
+    // dans le même cas : on n'en réutilise aucun.
+    if (!searchTarget) return path.join(parent, normalizedName);
     
     for (const item of items) {
       if (searchNormalize(item) === searchTarget) {
@@ -636,7 +642,7 @@ export class DeemixService {
     // 3. Artist Folder
     const currentArtistDir = path.basename(path.dirname(album.path));
     const targetArtistName = (album.artistName || album.album_artist || "UNKNOWN").toUpperCase();
-    const targetArtistFolder = normalize(targetArtistName);
+    const targetArtistFolder = safePathSegment(normalize(targetArtistName));
     
     if (currentArtistDir !== targetArtistFolder) {
         changes.push({ type: 'artist', from: currentArtistDir, to: targetArtistFolder });
@@ -659,6 +665,12 @@ export class DeemixService {
 
     const musicPath = this.getMusicPath();
     if (!musicPath) throw new Error("Chemin de la bibliothèque non configuré");
+
+    // Un chemin en base hors de la bibliothèque (ou la racine elle-même) ne
+    // doit jamais être renommé ni déplacé.
+    if (!isInsideLibrary(album.path)) {
+      throw new Error("Le dossier de l'album est hors de la bibliothèque configurée");
+    }
 
     const normalize = (s: string) => s.split(/[\s_]+/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join('_');
 
@@ -705,8 +717,13 @@ export class DeemixService {
     // 3. Re-ancrer l'album sous le bon dossier artiste si celui-ci a changé
     const currentArtistDir = path.dirname(finalAlbumPath);
     const targetArtistName = (album.artistName || album.album_artist || "UNKNOWN").toUpperCase();
-    const cleanArtistFolder = normalize(targetArtistName);
+    // Le nom d'artiste peut venir de l'éditeur de tags : un seul segment, et
+    // jamais de destination hors de la bibliothèque.
+    const cleanArtistFolder = safePathSegment(normalize(targetArtistName));
     const targetArtistDir = path.join(musicPath, cleanArtistFolder);
+    if (!isInsideLibrary(targetArtistDir)) {
+      throw new Error(`Destination hors de la bibliothèque : ${targetArtistDir}`);
+    }
 
     if (currentArtistDir !== targetArtistDir) {
       console.log(`[Reorganize] Moving album from ${currentArtistDir} to ${targetArtistDir}`);
