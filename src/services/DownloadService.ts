@@ -17,8 +17,16 @@ export interface StartDownloadResult {
   activityId: string | null;
 }
 
+/** Demande de téléchargement irrecevable : message destiné à l'utilisateur (HTTP 400). */
+export class InvalidDownloadRequestError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'InvalidDownloadRequestError';
+  }
+}
+
 /** Levée quand le protocole demandé n'a pas de client configuré. */
-export class UnsupportedProtocolError extends Error {
+export class UnsupportedProtocolError extends InvalidDownloadRequestError {
   constructor(protocol: string) {
     super(
       protocol === 'torrent'
@@ -26,6 +34,15 @@ export class UnsupportedProtocolError extends Error {
         : `Protocole non pris en charge : ${protocol}`,
     );
     this.name = 'UnsupportedProtocolError';
+  }
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value);
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
   }
 }
 
@@ -44,6 +61,11 @@ export class DownloadService {
     const title = input.title || 'Téléchargement Musicarr';
 
     if (protocol === 'deemix') {
+      // L'identifiant est interpolé dans des URL de l'API Deezer : « ../ »
+      // y désignerait un autre point d'accès.
+      if (!/^\d+$/.test(input.url)) {
+        throw new InvalidDownloadRequestError('Identifiant d’album Deezer invalide');
+      }
       const result = await DeemixService.downloadAlbum(input.url, input.albumId);
       return {
         success: result.success,
@@ -52,6 +74,9 @@ export class DownloadService {
     }
 
     if (protocol === 'usenet') {
+      if (!isHttpUrl(input.url)) {
+        throw new InvalidDownloadRequestError('L’adresse du NZB doit être une URL http(s)');
+      }
       const { success, ids } = await SabnzbdService.addNzbFromUrl(input.url, title);
       if (!success) {
         return { success: false, activityId: null };

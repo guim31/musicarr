@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { DownloadService, UnsupportedProtocolError } from '@/services/DownloadService';
+import { DownloadService, InvalidDownloadRequestError } from '@/services/DownloadService';
 
 const DownloadBody = z.object({
   url: z.string().min(1),
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, activityId: result.activityId });
   } catch (error) {
-    if (error instanceof UnsupportedProtocolError) {
+    if (error instanceof InvalidDownloadRequestError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     console.error('[Téléchargement] Erreur :', error);

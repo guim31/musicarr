@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { ProwlarrService } from '@/services/prowlarr';
 import { DeezerProvider } from '@/services/metadata/providers/DeezerProvider';
-import { DownloadService, UnsupportedProtocolError } from '@/services/DownloadService';
+import { DownloadService, InvalidDownloadRequestError } from '@/services/DownloadService';
 import { DeemixService } from '@/services/DeemixService';
 import db from '@/lib/db';
 
@@ -145,7 +145,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, activityId: result.activityId });
   } catch (error) {
-    if (error instanceof UnsupportedProtocolError) {
+    if (error instanceof InvalidDownloadRequestError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     console.error('[Téléchargement] Erreur :', error);
