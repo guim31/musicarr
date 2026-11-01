@@ -27,8 +27,15 @@ export class TagService {
   /**
    * Updates metadata for a single track using ffmpeg
    */
-  static async updateTrackTags(update: TrackTagUpdate) {
-    const track = db.prepare('SELECT path FROM tracks WHERE id = ?').get(update.trackId) as { path: string } | undefined;
+  static async updateTrackTags(update: TrackTagUpdate, albumId?: number) {
+    // La piste doit appartenir à l'album édité : sinon une requête sur
+    // l'album A réécrivait les fichiers de l'album B, puis appliquait la
+    // logique « même artiste / même album » à A.
+    const track = (albumId === undefined
+      ? db.prepare('SELECT path FROM tracks WHERE id = ?').get(update.trackId)
+      : db.prepare('SELECT path FROM tracks WHERE id = ? AND album_id = ?').get(update.trackId, albumId)) as
+      | { path: string }
+      | undefined;
     if (!track || !track.path || !fs.existsSync(track.path)) {
       throw new Error(`Fichier non trouvé pour la piste ${update.trackId}`);
     }
@@ -127,7 +134,7 @@ export class TagService {
     // 1. Perform file updates
     for (const update of updates) {
       try {
-        await this.updateTrackTags(update);
+        await this.updateTrackTags(update, albumId);
         results.push({ trackId: update.trackId, success: true });
       } catch (err: any) {
         results.push({ trackId: update.trackId, success: false, error: err.message });
