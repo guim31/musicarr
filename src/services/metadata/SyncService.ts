@@ -80,24 +80,34 @@ export class SyncService {
 
     SyncService.running.add(artistId);
 
-    // Les tâches restées « en cours » d'une exécution précédente ne
-    // correspondent plus à rien : les clore avant d'en ouvrir une nouvelle.
-    db.prepare(
-      `UPDATE activity SET status = 'failed', message = 'Annulé par une nouvelle synchronisation'
-        WHERE type = 'sync' AND artist_id = ? AND status = 'processing'`,
-    ).run(artistId);
+    // Ces écritures peuvent échouer (base occupée par un scan au-delà du
+    // délai d'attente) : le verrou ne doit pas rester pris, sans quoi toute
+    // nouvelle synchronisation de l'artiste répondait 409 jusqu'au
+    // redémarrage.
+    let activityId: number | bigint;
+    try {
+      // Les tâches restées « en cours » d'une exécution précédente ne
+      // correspondent plus à rien : les clore avant d'en ouvrir une nouvelle.
+      db.prepare(
+        `UPDATE activity SET status = 'failed', message = 'Annulé par une nouvelle synchronisation'
+          WHERE type = 'sync' AND artist_id = ? AND status = 'processing'`,
+      ).run(artistId);
 
-    const activityId = db
-      .prepare(
-        `INSERT INTO activity (type, status, title, artist_id, message, details)
-         VALUES ('sync', 'processing', ?, ?, ?, ?)`,
-      )
-      .run(
-        artist.name,
-        artistId,
-        `Synchronisation de la discographie de ${artist.name}…`,
-        JSON.stringify({ progress: 0, provider: 'Initialisation' }),
-      ).lastInsertRowid;
+      activityId = db
+        .prepare(
+          `INSERT INTO activity (type, status, title, artist_id, message, details)
+           VALUES ('sync', 'processing', ?, ?, ?, ?)`,
+        )
+        .run(
+          artist.name,
+          artistId,
+          `Synchronisation de la discographie de ${artist.name}…`,
+          JSON.stringify({ progress: 0, provider: 'Initialisation' }),
+        ).lastInsertRowid;
+    } catch (error) {
+      SyncService.running.delete(artistId);
+      throw error;
+    }
 
     const controller = new AbortController();
     const timeout = setTimeout(
