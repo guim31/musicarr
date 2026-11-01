@@ -138,7 +138,13 @@ export function persistDiscography(
       if (local) linkLocalAlbum(local, release);
     }
 
-    const pruned = pruneStaleReleases(artistId, scope.types, seen);
+    // Une sortie absente de la collecte n'a disparu que si toutes les sources
+    // ont répondu. Avec un fournisseur en échec (réseau coupé, 503), ses
+    // sorties manquaient à l'appel et étaient supprimées — et avec elles le
+    // choix « surveillé » de l'utilisateur, remis à sa valeur par défaut à la
+    // synchronisation suivante.
+    const complete = outcomes.every(outcome => outcome.status !== 'failed');
+    const pruned = complete ? pruneStaleReleases(artistId, scope.types, seen) : 0;
     return { total: releases.length, owned, pruned };
   });
 

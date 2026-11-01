@@ -237,3 +237,32 @@ test('une synchronisation sans résultat ne laisse rien d’incohérent', () => 
   const cache = db.prepare('SELECT status FROM artist_cache WHERE provider = ?').get('deezer');
   assert.deepEqual(cache, { status: 'unmatched' });
 });
+
+test('ne nettoie rien quand une source a échoué', () => {
+  persistDiscography(
+    1,
+    [release(), release({ releaseKey: 'powerslave', title: 'Powerslave' })],
+    [okOutcome('musicbrainz', 2)],
+    { types: ['album'], deep: false },
+  );
+  db.prepare("UPDATE artist_releases SET monitored = 0 WHERE release_key = 'powerslave'").run();
+
+  // MusicBrainz est injoignable : « Powerslave », qu'il était seul à fournir,
+  // manque à la collecte sans avoir disparu.
+  const summary = persistDiscography(
+    1,
+    [release()],
+    [
+      { provider: 'musicbrainz', status: 'failed', message: 'HTTP 503', albums: [] },
+      okOutcome('deezer', 1),
+    ],
+    { types: ['album'], deep: false },
+  );
+
+  assert.equal(summary.pruned, 0);
+  const rows = db.prepare('SELECT release_key, monitored FROM artist_releases ORDER BY release_key').all();
+  assert.deepEqual(rows, [
+    { release_key: 'killers', monitored: 1 },
+    { release_key: 'powerslave', monitored: 0 },
+  ]);
+});
