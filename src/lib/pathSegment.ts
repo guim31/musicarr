@@ -14,7 +14,6 @@
  */
 export function safePathSegment(name: string | null | undefined, fallback = 'UNKNOWN'): string {
   const cleaned = String(name ?? '')
-    // eslint-disable-next-line no-control-regex
     .replace(/[/\\\u0000-\u001f\u007f]+/g, '_')
     .trim();
 

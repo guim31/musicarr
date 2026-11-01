@@ -246,8 +246,8 @@ const scrubPersistedSecrets = () => {
 
 try {
   scrubPersistedSecrets();
-} catch (e: any) {
-  console.error('[DB] Purge des secrets enregistrés impossible :', e.message);
+} catch (e) {
+  console.error('[DB] Purge des secrets enregistrés impossible :', (e as Error).message);
 }
 
 // Index sur les colonnes filtrées en permanence par l'interface et le scan.
@@ -303,8 +303,8 @@ const recoverInterruptedUpgrades = () => {
       if (restored > 0) {
         console.log(`[DB] Mise à niveau interrompue : ${restored} fichier(s) original(aux) restauré(s) dans ${dir}`);
       }
-    } catch (e: any) {
-      console.error(`[DB] Restauration impossible pour l'activité ${row.id} :`, e.message);
+    } catch (e) {
+      console.error(`[DB] Restauration impossible pour l'activité ${row.id} :`, (e as Error).message);
     }
   }
 };
@@ -312,8 +312,8 @@ const recoverInterruptedUpgrades = () => {
 // Nettoyage au démarrage : supprime les verrous de scan bloqués et marque les activités orphelines comme échouées
 try {
   recoverInterruptedUpgrades();
-} catch (e: any) {
-  console.error('[DB] Reprise des mises à niveau interrompues impossible :', e.message);
+} catch (e) {
+  console.error('[DB] Reprise des mises à niveau interrompues impossible :', (e as Error).message);
 }
 
 try {
