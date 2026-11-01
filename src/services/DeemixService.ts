@@ -666,6 +666,37 @@ export class DeemixService {
     }
   }
 
+  /**
+   * Renomme sans jamais écraser.
+   *
+   * `rename` remplace silencieusement une cible existante : deux pistes dont
+   * les noms se normalisent pareil (« 01 - Intro.flac » et « 01-intro.flac »)
+   * faisaient disparaître la première. Une cible déjà prise est laissée en
+   * l'état, l'élément source garde son nom. Un simple changement de casse
+   * sur un système insensible à la casse (même inode) reste permis.
+   *
+   * @returns vrai si le renommage a eu lieu
+   */
+  private static renameWithoutOverwrite(from: string, to: string): boolean {
+    if (fs.existsSync(to)) {
+      const sameEntry = (() => {
+        try {
+          const a = fs.statSync(from);
+          const b = fs.statSync(to);
+          return a.ino === b.ino && a.dev === b.dev;
+        } catch {
+          return false;
+        }
+      })();
+      if (!sameEntry) {
+        console.warn(`[Reorganize] ${to} existe déjà : ${from} n'est pas renommé`);
+        return false;
+      }
+    }
+    fs.renameSync(from, to);
+    return true;
+  }
+
   static async getAlbumOrganizationPlan(albumId: string) {
     const album = db.prepare(`
       SELECT a.id, a.path, a.name as albumName, a.album_artist, ar.name as artistName 
@@ -763,7 +794,7 @@ export class DeemixService {
         
         const newPath = path.join(album.path, `${newFolderName}${extension}`);
         if (oldPath !== newPath) {
-          fs.renameSync(oldPath, newPath);
+          this.renameWithoutOverwrite(oldPath, newPath);
         }
       }
     }
@@ -776,11 +807,12 @@ export class DeemixService {
     if (currentAlbumDirName !== newAlbumDirName) {
       const parentDir = path.dirname(album.path);
       const newAlbumPath = path.join(parentDir, newAlbumDirName);
-      fs.renameSync(album.path, newAlbumPath);
-      finalAlbumPath = newAlbumPath;
-      
-      // Mettre à jour le chemin en base de données
-      db.prepare("UPDATE albums SET path = ? WHERE id = ?").run(newAlbumPath, albumId);
+      if (this.renameWithoutOverwrite(album.path, newAlbumPath)) {
+        finalAlbumPath = newAlbumPath;
+        
+        // Mettre à jour le chemin en base de données
+        db.prepare("UPDATE albums SET path = ? WHERE id = ?").run(newAlbumPath, albumId);
+      }
     }
 
     // 3. Re-ancrer l'album sous le bon dossier artiste si celui-ci a changé
@@ -806,8 +838,7 @@ export class DeemixService {
       }
       
       const newAlbumPath = path.join(targetArtistDir, path.basename(finalAlbumPath));
-      if (finalAlbumPath !== newAlbumPath) {
-        fs.renameSync(finalAlbumPath, newAlbumPath);
+      if (finalAlbumPath !== newAlbumPath && this.renameWithoutOverwrite(finalAlbumPath, newAlbumPath)) {
         finalAlbumPath = newAlbumPath;
         db.prepare("UPDATE albums SET path = ? WHERE id = ?").run(newAlbumPath, albumId);
         
@@ -842,8 +873,13 @@ export class DeemixService {
         }
         targetFileName += extension;
 
+        // Un fichier non renommé (la cible existait déjà) garde son nom : il
+        // ne faut pas alors le confondre avec celui qui porte le nom cible.
+        const keptTrackPath = path.join(finalAlbumPath, currentFileName);
         const newTrackPath = path.join(finalAlbumPath, targetFileName);
-        if (fs.existsSync(newTrackPath)) {
+        if (fs.existsSync(keptTrackPath) && keptTrackPath !== newTrackPath) {
+          db.prepare('UPDATE tracks SET path = ? WHERE id = ?').run(keptTrackPath, track.id);
+        } else if (fs.existsSync(newTrackPath)) {
           db.prepare('UPDATE tracks SET path = ? WHERE id = ?').run(newTrackPath, track.id);
         }
       }
