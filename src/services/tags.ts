@@ -78,7 +78,8 @@ export class TagService {
       // Verification
       if (fs.existsSync(tempPath)) {
         // Swap files
-        fs.unlinkSync(filePath);
+        // rename remplace atomiquement l'original : supprimer d'abord laissait,
+        // si le renommage échouait (ou au redémarrage), une piste disparue.
         fs.renameSync(tempPath, filePath);
         
         // Fix permissions and ownership
@@ -279,7 +280,8 @@ export class TagService {
       try {
         await runFfmpeg(args);
         if (fs.existsSync(tempPath)) {
-          fs.unlinkSync(track.path);
+          // rename remplace atomiquement l'original : supprimer d'abord laissait,
+          // si le renommage échouait (ou au redémarrage), une piste disparue.
           fs.renameSync(tempPath, track.path);
           
           // Fix permissions and ownership
