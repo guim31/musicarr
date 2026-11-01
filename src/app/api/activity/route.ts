@@ -8,22 +8,36 @@ export async function GET(request: Request) {
     // effet de bord d'un GET : il ne tournait donc que si un navigateur était
     // ouvert. Il est désormais planifié côté serveur (`src/instrumentation.ts`).
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '20');
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1') || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '20') || 20));
     const offset = (page - 1) * pageSize;
 
+    // Ce qui tourne encore est dans `active` : le lister aussi ici le faisait
+    // apparaître deux fois, avec un état périmé.
+    const filters = ["a.status != 'processing'"];
+    const filterParams: string[] = [];
+    const type = searchParams.get('type');
+    if (type === 'failed') {
+      filters.push("a.status = 'failed'");
+    } else if (type) {
+      filters.push('a.type = ?');
+      filterParams.push(type);
+    }
+    const whereClause = `WHERE ${filters.join(' AND ')}`;
+
     // 1. Get History count
-    const totalRow = db.prepare('SELECT COUNT(*) as total FROM activity').get() as { total: number };
+    const totalRow = db.prepare(`SELECT COUNT(*) as total FROM activity a ${whereClause}`).get(...filterParams) as { total: number };
     const total = totalRow.total;
 
     // 2. Get History from local DB with pagination
     const history = db.prepare(`
-      SELECT a.*, ar.name as artist_name 
+      SELECT a.*, ar.name as artist_name
       FROM activity a
       LEFT JOIN artists ar ON a.artist_id = ar.id
-      ORDER BY a.timestamp DESC
+      ${whereClause}
+      ORDER BY a.timestamp DESC, a.id DESC
       LIMIT ? OFFSET ?
-    `).all(pageSize, offset);
+    `).all(...filterParams, pageSize, offset);
 
     // 3. Get Active Queue from SABnzbd
     let active: any[] = [];
@@ -61,8 +75,20 @@ export async function GET(request: Request) {
       id: `local-${item.id}`
     }));
 
+    // Le scan de la bibliothèque n'a pas de ligne d'activité tant qu'il tourne.
+    const progressRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('scan_progress') as { value: string } | undefined;
+    let scan: { processed: number; total: number } | null = null;
+    if (progressRow?.value) {
+      try {
+        scan = JSON.parse(progressRow.value);
+      } catch {
+        scan = null;
+      }
+    }
+
     return NextResponse.json({
       active: [...localActive, ...active],
+      scan,
       history,
       total,
       page,

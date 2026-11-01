@@ -10,7 +10,9 @@ export async function GET() {
       SELECT a.*, 
         (SELECT COUNT(*) FROM albums WHERE artist_id = a.id) as album_test_count,
         (SELECT COUNT(*) FROM albums WHERE artist_id = a.id AND status = 'downloaded') as downloaded_count,
-        (SELECT COUNT(*) FROM albums WHERE artist_id = a.id AND status IN ('missing', 'wanted')) as missing_count
+        (SELECT COUNT(*) FROM albums WHERE artist_id = a.id AND status IN ('missing', 'wanted')) as missing_count,
+        (SELECT id FROM albums WHERE artist_id = a.id
+          ORDER BY status = 'downloaded' DESC, release_date DESC, id DESC LIMIT 1) as cover_album_id
       FROM artists a
       ORDER BY a.name ASC
     `).all();

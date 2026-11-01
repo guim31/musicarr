@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs';
+import { parseThumbWidth, resolveThumb } from '@/lib/coverThumbs';
 import { resolveCoverPath } from '@/lib/paths';
 
 /** Hôtes autorisés pour la redirection de pochette (CDN des providers). */
@@ -58,12 +59,23 @@ export async function GET(
     return new NextResponse('Not Found', { status: 404 });
   }
 
-  const imageBuffer = fs.readFileSync(coverPath);
-  
-  return new NextResponse(imageBuffer, {
-    headers: {
-      'Content-Type': 'image/jpeg',
-      'Cache-Control': 'public, max-age=3600, must-revalidate',
-    },
-  });
+  // Sans vignette exploitable, on retombe sur l'original : mieux vaut lourd que rien.
+  const width = parseThumbWidth(request.nextUrl.searchParams.get('w'));
+  const servedPath = (width && (await resolveThumb(albumId, coverPath, width))) || coverPath;
+
+  const stats = await fs.promises.stat(servedPath);
+  const etag = `"${stats.size.toString(16)}-${Math.floor(stats.mtimeMs).toString(16)}"`;
+  const headers = {
+    'Content-Type': 'image/jpeg',
+    'Cache-Control': 'public, max-age=3600, must-revalidate',
+    ETag: etag,
+  };
+
+  // Une pochette déjà reçue n'a pas à retraverser Internet jusqu'au téléphone.
+  if (request.headers.get('if-none-match') === etag) {
+    return new NextResponse(null, { status: 304, headers });
+  }
+
+  const imageBuffer = await fs.promises.readFile(servedPath);
+  return new NextResponse(imageBuffer, { headers });
 }

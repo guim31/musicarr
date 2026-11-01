@@ -15,15 +15,20 @@ export async function GET() {
     const albumsCount = db.prepare("SELECT count(*) as count FROM albums WHERE status = 'downloaded'").get() as { count: number };
     const readOnlyRow = db.prepare('SELECT value FROM settings WHERE key = ?').get('read_only_mode') as { value: string } | undefined;
 
-    // Check if filesystem is actually writable
+    const tracksCount = db.prepare("SELECT count(*) as count FROM tracks").get() as { count: number };
+    const formats = db
+      .prepare("SELECT quality, count(*) as count FROM albums WHERE status = 'downloaded' GROUP BY quality")
+      .all() as { quality: string | null; count: number }[];
+
+    // Vérification sans écriture. Créer un fichier témoin à chaque lecture
+    // réveillait les disques de la bibliothèque, alors que cette route était
+    // interrogée toutes les deux secondes par chaque onglet ouvert.
     let isWritable = false;
     if (path?.value) {
       try {
-        const testFile = pathLib.join(path.value, '.write_test');
-        fs.writeFileSync(testFile, 'test');
-        fs.unlinkSync(testFile);
+        fs.accessSync(path.value, fs.constants.W_OK);
         isWritable = true;
-      } catch (e) {
+      } catch {
         isWritable = false;
       }
     }
@@ -34,7 +39,9 @@ export async function GET() {
       isWritable,
       stats: {
         artists: artistsCount.count,
-        albums: albumsCount.count
+        albums: albumsCount.count,
+        tracks: tracksCount.count,
+        formats: Object.fromEntries(formats.map(row => [row.quality ?? 'Inconnu', row.count])),
       },
       progress: progressRow ? JSON.parse(progressRow.value) : null
     });
