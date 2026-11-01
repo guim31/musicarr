@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { logger } from './LogService';
+import { redactSecrets } from './redact';
 
 logger.init();
 
@@ -208,6 +209,45 @@ const migrate = () => {
 };
 
 migrate();
+
+// Purge des secrets déjà persistés. Les erreurs Discogs reprenaient l'URL
+// complète, jeton compris, et ce message était enregistré dans
+// `artist_cache.message` (renvoyé par GET /api/artists/:id/discography) et
+// dans `activity` (renvoyé par GET /api/activity). Idempotent : une ligne déjà
+// masquée n'est pas réécrite.
+const scrubPersistedSecrets = () => {
+  const targets: [table: string, key: string, column: string][] = [
+    ['artist_cache', 'rowid', 'message'],
+    ['activity', 'id', 'message'],
+    ['activity', 'id', 'details'],
+  ];
+  let scrubbed = 0;
+  for (const [table, key, column] of targets) {
+    const rows = db
+      .prepare(
+        `SELECT ${key} AS k, ${column} AS v FROM ${table}
+          WHERE ${column} LIKE '%token=%' OR ${column} LIKE '%apikey=%' OR ${column} LIKE '%arl=%'`,
+      )
+      .all() as { k: number; v: string }[];
+    const update = db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${key} = ?`);
+    for (const row of rows) {
+      const clean = redactSecrets(row.v);
+      if (clean !== row.v) {
+        update.run(clean, row.k);
+        scrubbed += 1;
+      }
+    }
+  }
+  if (scrubbed > 0) {
+    console.log(`[DB] Migration : secrets masqués dans ${scrubbed} message(s) enregistré(s)`);
+  }
+};
+
+try {
+  scrubPersistedSecrets();
+} catch (e: any) {
+  console.error('[DB] Purge des secrets enregistrés impossible :', e.message);
+}
 
 // Index sur les colonnes filtrées en permanence par l'interface et le scan.
 //

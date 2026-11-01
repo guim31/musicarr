@@ -1,3 +1,5 @@
+import { redactSecrets } from './redact';
+
 /**
  * Client HTTP JSON commun aux fournisseurs de métadonnées.
  *
@@ -158,7 +160,10 @@ export async function fetchJson<T = unknown>(
       return null;
     }
 
-    throw new HttpError(response.status, target, `HTTP ${response.status} ${response.statusText} sur ${target}`);
+    // L'URL figure dans le message, qui est journalisé et persisté : on en
+    // masque les éventuels paramètres secrets.
+    const shown = redactSecrets(target);
+    throw new HttpError(response.status, shown, `HTTP ${response.status} ${response.statusText} sur ${shown}`);
   }
 }
 
