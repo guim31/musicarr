@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import db from '@/lib/db';
+import { isInsideLibrary } from '@/lib/paths';
+import { safePathSegment } from '@/lib/pathSegment';
 import { SabnzbdService } from './sabnzbd';
 import { LibraryService } from './library';
 import * as mm from 'music-metadata';
@@ -119,7 +121,7 @@ export class ImportService {
       return;
     }
 
-    const fullAudioPath = path.join(localPath, audioFile);
+    const fullAudioPath = audioFile;
     let artist = '';
     let album = '';
     let albumArtist = '';
@@ -148,11 +150,18 @@ export class ImportService {
 
     // 3. Prepare destination
     const effectiveArtist = (albumArtist || artist).toUpperCase();
-    const cleanArtist = effectiveArtist.replace(/[\?*:"<>|\\\/]+/g, '_').trim();
-    const cleanAlbum = album.replace(/[\?*:"<>|\\\/]+/g, '_').trim();
+    // Les tags viennent d'un fichier téléchargé : « .. » ou un nom vide ne
+    // doivent ni sortir de la bibliothèque ni déposer l'album à la racine de
+    // l'artiste.
+    const cleanArtist = safePathSegment(effectiveArtist.replace(/[\?*:"<>|\\\/]+/g, '_').trim());
+    const cleanAlbum = safePathSegment(album.replace(/[\?*:"<>|\\\/]+/g, '_').trim());
     
     const artistDir = path.join(libraryPath, cleanArtist);
     const destDir = path.join(artistDir, cleanAlbum);
+    if (!isInsideLibrary(destDir)) {
+      console.error(`[Import] Destination refusée, hors de la bibliothèque : ${destDir}`);
+      return;
+    }
 
     console.log(`[Import] Destination: ${destDir}`);
 
@@ -161,24 +170,14 @@ export class ImportService {
     }
 
     // 4. Move files
+    //
+    // Chaque échec est compté : la source était supprimée sans condition à
+    // l'étape suivante, si bien qu'un seul déplacement raté (droits, dossier
+    // imbriqué sur deux niveaux, disque plein) faisait perdre le fichier.
     const topLevelFiles = fs.readdirSync(localPath);
+    let failedMoves = 0;
     for (const file of topLevelFiles) {
-      const src = path.join(localPath, file);
-      const dest = path.join(destDir, file);
-      
-      try {
-        if (fs.statSync(src).isDirectory()) {
-          if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
-          const subFiles = fs.readdirSync(src);
-          for (const subFile of subFiles) {
-            fs.renameSync(path.join(src, subFile), path.join(dest, subFile));
-          }
-        } else {
-          fs.renameSync(src, dest);
-        }
-      } catch (e) {
-        console.error(`[Import] Failed to move ${src} to ${dest}:`, e);
-      }
+      failedMoves += this.moveInto(path.join(localPath, file), path.join(destDir, file));
     }
 
     // 5. Detect and Copy Cover
@@ -210,27 +209,62 @@ export class ImportService {
       this.applyOwnership(destDir, stats.uid, stats.gid);
     } catch(e) {}
 
-    // 6. Cleanup
-    try {
-      fs.rmSync(localPath, { recursive: true, force: true });
-    } catch(e) {}
+    // 6. Cleanup — seulement si tout a été déplacé. Sinon le reste demeure
+    // dans _A_TRIER, et l'activité passe en échec pour ne pas être rejouée
+    // en boucle.
+    if (failedMoves === 0) {
+      try {
+        fs.rmSync(localPath, { recursive: true, force: true });
+      } catch(e) {}
+    } else {
+      console.error(`[Import] ${failedMoves} élément(s) non déplacé(s) : ${localPath} est conservé`);
+    }
 
     // 7. Update Database
     const artistRecord = db.prepare('SELECT id FROM artists WHERE name = ?').get(cleanArtist) as { id: number } | undefined;
     const artistId = artistRecord?.id;
 
     const activity = db.prepare("SELECT id FROM activity WHERE type = 'download' AND details LIKE ?").get(`%"nzo_id":"${slot.nzo_id}"%`) as any;
+    const status = failedMoves === 0 ? 'completed' : 'failed';
+    const message = failedMoves === 0
+      ? `Importé avec succès dans ${cleanArtist}/${cleanAlbum}`
+      : `Import partiel dans ${cleanArtist}/${cleanAlbum} : ${failedMoves} élément(s) laissé(s) dans _A_TRIER`;
     
     if (activity) {
-      db.prepare("UPDATE activity SET status = 'completed', message = ?, artist_id = ?, details = ? WHERE id = ?")
-        .run(`Importé avec succès dans ${cleanArtist}/${cleanAlbum}`, artistId || null, JSON.stringify({ ...JSON.parse(activity.details || '{}'), nzo_id: slot.nzo_id }), activity.id);
+      db.prepare("UPDATE activity SET status = ?, message = ?, artist_id = ?, details = ? WHERE id = ?")
+        .run(status, message, artistId || null, JSON.stringify({ ...JSON.parse(activity.details || '{}'), nzo_id: slot.nzo_id }), activity.id);
     } else {
-      db.prepare("INSERT INTO activity (type, status, title, message, artist_id, details) VALUES ('move', 'completed', ?, ?, ?, ?)")
-        .run(album, `Importé depuis SABnzbd vers ${cleanArtist}/${cleanAlbum}`, artistId || null, JSON.stringify({ nzo_id: slot.nzo_id }));
+      db.prepare("INSERT INTO activity (type, status, title, message, artist_id, details) VALUES ('move', ?, ?, ?, ?, ?)")
+        .run(status, album, failedMoves === 0 ? `Importé depuis SABnzbd vers ${cleanArtist}/${cleanAlbum}` : message, artistId || null, JSON.stringify({ nzo_id: slot.nzo_id }));
     }
 
     // 8. Trigger scan
     await LibraryService.scan(destDir);
+  }
+
+  /**
+   * Déplace un fichier ou une arborescence, en fusionnant les dossiers déjà
+   * présents à destination. Renvoie le nombre d'éléments qui n'ont pas pu
+   * l'être.
+   */
+  private static moveInto(src: string, dest: string): number {
+    try {
+      const stat = fs.lstatSync(src);
+      if (!stat.isDirectory()) {
+        fs.renameSync(src, dest);
+        return 0;
+      }
+
+      if (!fs.existsSync(dest)) fs.mkdirSync(dest, { recursive: true });
+      let failures = 0;
+      for (const entry of fs.readdirSync(src)) {
+        failures += this.moveInto(path.join(src, entry), path.join(dest, entry));
+      }
+      return failures;
+    } catch (e) {
+      console.error(`[Import] Failed to move ${src} to ${dest}:`, e);
+      return 1;
+    }
   }
 
   private static getAllFiles(dirPath: string, arrayOfFiles: string[] = []) {
@@ -240,7 +274,9 @@ export class ImportService {
       if (fs.statSync(fullPath).isDirectory()) {
         arrayOfFiles = this.getAllFiles(fullPath, arrayOfFiles);
       } else {
-        arrayOfFiles.push(file);
+        // Chemin complet : avec le seul nom, un album rangé en sous-dossiers
+        // (CD1/, CD2/) n'était jamais lu, faute de trouver le fichier.
+        arrayOfFiles.push(fullPath);
       }
     });
     return arrayOfFiles;
@@ -248,7 +284,10 @@ export class ImportService {
 
   private static applyOwnership(targetPath: string, uid: number, gid: number) {
     try {
-      const stat = fs.statSync(targetPath);
+      // lstat : un lien symbolique contenu dans un téléchargement ne doit pas
+      // faire modifier les droits de sa cible (par exemple hors du partage).
+      const stat = fs.lstatSync(targetPath);
+      if (stat.isSymbolicLink()) return;
       if (uid !== 0) fs.chownSync(targetPath, uid, gid);
       fs.chmodSync(targetPath, stat.isDirectory() ? 0o777 : 0o666);
 

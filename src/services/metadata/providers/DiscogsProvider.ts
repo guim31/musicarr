@@ -48,15 +48,17 @@ export class DiscogsProvider implements MetadataProvider {
     const token = this.getToken();
     if (!token) return null;
 
+    // Le jeton passe par l'en-tête documenté par Discogs, et non plus dans
+    // l'URL : celle-ci finit dans les messages d'erreur, donc dans le journal,
+    // la table `activity` et `artist_cache.message` renvoyé au client.
     const url = new URL(`${this.baseUrl}/${endpoint}`);
-    url.searchParams.set('token', token);
     for (const [key, value] of Object.entries(params)) {
       url.searchParams.set(key, value);
     }
 
     try {
       return await fetchJson<T>(url, {
-        headers: { 'User-Agent': USER_AGENT },
+        headers: { 'User-Agent': USER_AGENT, Authorization: `Discogs token=${token}` },
         signal,
         throttleKey: 'discogs',
         throttleMs: THROTTLE_MS,

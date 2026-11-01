@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import db from '@/lib/db';
+import { isInsideLibrary } from '@/lib/paths';
+import { safePathSegment } from '@/lib/pathSegment';
 import path from 'path';
 import fs from 'fs';
 
 function applyOwnership(targetPath: string, uid: number, gid: number) {
   try {
-    const stat = fs.statSync(targetPath);
+    // lstat : un lien symbolique ne doit pas faire modifier les droits de sa
+    // cible, qui peut se trouver n'importe où.
+    const stat = fs.lstatSync(targetPath);
+    if (stat.isSymbolicLink()) return;
     if (uid !== 0 && gid !== 0) {
       try {
         fs.chownSync(targetPath, uid, gid);
@@ -54,7 +60,7 @@ export async function POST(
       artistPath = path.dirname(album.path);
     } else if (musicPath) {
       // 2. Tenter via le nom de l'artiste dans le dossier musique
-      const potentialPath = path.join(musicPath, artist.name.replace(/\s+/g, '_').toUpperCase());
+      const potentialPath = path.join(musicPath, safePathSegment(artist.name.replace(/\s+/g, '_').toUpperCase()));
       if (fs.existsSync(potentialPath)) {
         artistPath = potentialPath;
       } else {
@@ -70,6 +76,13 @@ export async function POST(
 
     if (!artistPath || !fs.existsSync(artistPath)) {
       return NextResponse.json({ error: 'Dossier de l\'artiste non trouvé sur le disque' }, { status: 404 });
+    }
+
+    // Le chemin vient d'un nom d'artiste ou d'un album en base : on ne
+    // modifie jamais les droits hors de la bibliothèque, ni de sa racine
+    // entière (« ../.. » visait la racine du conteneur).
+    if (!isInsideLibrary(artistPath)) {
+      return NextResponse.json({ error: 'Dossier de l\'artiste hors de la bibliothèque' }, { status: 400 });
     }
 
     // Récupérer le proprio/groupe du dossier racine de musique pour les répliquer
@@ -89,6 +102,6 @@ export async function POST(
     return NextResponse.json({ success: true, message: 'Permissions corrigées avec succès (777 pour les dossiers, 666 pour les fichiers).' });
   } catch (error: any) {
     console.error('Permissions API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }

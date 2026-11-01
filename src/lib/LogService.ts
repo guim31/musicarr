@@ -1,3 +1,4 @@
+import { formatLogArg } from './redact';
 
 type LogLevel = 'info' | 'error' | 'warn' | 'debug';
 
@@ -29,20 +30,19 @@ class LogService {
     const originalError = console.error;
     const originalWarn = console.warn;
 
-    console.log = (...args: any[]) => {
-      this.addLog('info', args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '));
-      originalLog.apply(console, args);
-    };
+    // Les arguments sont mis en forme une seule fois, secrets masqués, et
+    // c'est cette forme qui part à la fois dans le journal en mémoire (lu par
+    // `GET /api/logs`) et sur la sortie standard (journaux Docker).
+    const intercept = (level: LogLevel, original: (...args: unknown[]) => void) =>
+      (...args: unknown[]) => {
+        const message = args.map(formatLogArg).join(' ');
+        this.addLog(level, message);
+        original.call(console, message);
+      };
 
-    console.error = (...args: any[]) => {
-      this.addLog('error', args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '));
-      originalError.apply(console, args);
-    };
-
-    console.warn = (...args: any[]) => {
-      this.addLog('warn', args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' '));
-      originalWarn.apply(console, args);
-    };
+    console.log = intercept('info', originalLog);
+    console.error = intercept('error', originalError);
+    console.warn = intercept('warn', originalWarn);
 
     this.isInitialized = true;
     console.log('[LogService] Global logging interceptor initialized');

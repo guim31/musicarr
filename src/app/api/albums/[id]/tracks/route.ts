@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import db from '@/lib/db';
 import { MetadataEngine } from '@/services/metadata/MetadataEngine';
 
@@ -56,6 +57,6 @@ export async function GET(
 
     return NextResponse.json(tracksProcessed);
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error, '[API] albums/[id]/tracks (GET) :');
   }
 }

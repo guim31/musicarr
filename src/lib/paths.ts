@@ -51,3 +51,16 @@ export function isInsideLibrary(target: string | null | undefined): boolean {
 
   return resolvedTarget.startsWith(resolvedLibrary + path.sep);
 }
+
+/**
+ * Comme `isInsideLibrary`, mais accepte aussi la racine de la bibliothèque.
+ *
+ * Pour les opérations non destructives qui peuvent légitimement viser toute
+ * la bibliothèque (un scan), jamais pour une suppression ou un `chmod`.
+ */
+export function isLibraryOrInside(target: string | null | undefined): boolean {
+  if (!target) return false;
+  const libraryPath = getLibraryPath();
+  if (!libraryPath) return false;
+  return path.resolve(target) === path.resolve(libraryPath) || isInsideLibrary(target);
+}

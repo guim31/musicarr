@@ -2,6 +2,8 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import fs from 'fs';
 import { logger } from './LogService';
+import { redactSecrets } from './redact';
+import { rollbackUpgrade } from './upgradeBackup';
 
 logger.init();
 
@@ -209,6 +211,45 @@ const migrate = () => {
 
 migrate();
 
+// Purge des secrets déjà persistés. Les erreurs Discogs reprenaient l'URL
+// complète, jeton compris, et ce message était enregistré dans
+// `artist_cache.message` (renvoyé par GET /api/artists/:id/discography) et
+// dans `activity` (renvoyé par GET /api/activity). Idempotent : une ligne déjà
+// masquée n'est pas réécrite.
+const scrubPersistedSecrets = () => {
+  const targets: [table: string, key: string, column: string][] = [
+    ['artist_cache', 'rowid', 'message'],
+    ['activity', 'id', 'message'],
+    ['activity', 'id', 'details'],
+  ];
+  let scrubbed = 0;
+  for (const [table, key, column] of targets) {
+    const rows = db
+      .prepare(
+        `SELECT ${key} AS k, ${column} AS v FROM ${table}
+          WHERE ${column} LIKE '%token=%' OR ${column} LIKE '%apikey=%' OR ${column} LIKE '%arl=%'`,
+      )
+      .all() as { k: number; v: string }[];
+    const update = db.prepare(`UPDATE ${table} SET ${column} = ? WHERE ${key} = ?`);
+    for (const row of rows) {
+      const clean = redactSecrets(row.v);
+      if (clean !== row.v) {
+        update.run(clean, row.k);
+        scrubbed += 1;
+      }
+    }
+  }
+  if (scrubbed > 0) {
+    console.log(`[DB] Migration : secrets masqués dans ${scrubbed} message(s) enregistré(s)`);
+  }
+};
+
+try {
+  scrubPersistedSecrets();
+} catch (e) {
+  console.error('[DB] Purge des secrets enregistrés impossible :', (e as Error).message);
+}
+
 // Index sur les colonnes filtrées en permanence par l'interface et le scan.
 //
 // Volontairement absents : albums(artist_id) et tracks(album_id). Les
@@ -228,7 +269,53 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_releases_album   ON artist_releases(album_id);
 `);
 
+/**
+ * Mises à niveau Deemix interrompues par un redémarrage : les originaux sont
+ * restés renommés en `.upgrade_backup`, extension que le scan ne lit pas, et
+ * l'album paraissait vide jusqu'à une intervention manuelle. On les remet en
+ * place avant de clore l'activité.
+ */
+const recoverInterruptedUpgrades = () => {
+  const libraryRow = db.prepare("SELECT value FROM settings WHERE key = 'library_path'").get() as
+    | { value: string }
+    | undefined;
+  if (!libraryRow?.value) return;
+  const library = path.resolve(libraryRow.value);
+
+  const rows = db
+    .prepare(
+      `SELECT id, details FROM activity
+        WHERE type = 'download' AND status = 'processing' AND details LIKE '%"backupDir"%'`,
+    )
+    .all() as { id: number; details: string }[];
+
+  for (const row of rows) {
+    try {
+      const details = JSON.parse(row.details) as { backupDir?: unknown; written?: unknown };
+      if (typeof details.backupDir !== 'string') continue;
+      const dir = path.resolve(details.backupDir);
+      // Le chemin vient de la base : jamais hors de la bibliothèque.
+      if (!dir.startsWith(library + path.sep)) continue;
+      const written = Array.isArray(details.written)
+        ? details.written.filter((f): f is string => typeof f === 'string')
+        : [];
+      const restored = rollbackUpgrade(dir, written);
+      if (restored > 0) {
+        console.log(`[DB] Mise à niveau interrompue : ${restored} fichier(s) original(aux) restauré(s) dans ${dir}`);
+      }
+    } catch (e) {
+      console.error(`[DB] Restauration impossible pour l'activité ${row.id} :`, (e as Error).message);
+    }
+  }
+};
+
 // Nettoyage au démarrage : supprime les verrous de scan bloqués et marque les activités orphelines comme échouées
+try {
+  recoverInterruptedUpgrades();
+} catch (e) {
+  console.error('[DB] Reprise des mises à niveau interrompues impossible :', (e as Error).message);
+}
+
 try {
   db.prepare("DELETE FROM settings WHERE key = 'scan_progress'").run();
   db.prepare("UPDATE activity SET status = 'failed', message = 'Interrompu par le redémarrage du serveur' WHERE status = 'processing'").run();

@@ -5,6 +5,7 @@ import fs from 'fs';
 import db from '@/lib/db';
 
 import { CompareUtils } from '@/lib/CompareUtils';
+import { UserFacingError } from '@/lib/userFacingError';
 
 export interface ScanUpdate {
   path: string;
@@ -204,8 +205,18 @@ export class LibraryService {
         }
       }
     } else {
-      // En cas de scan partiel, on ne nettoie que les fichiers disparus DANS ce dossier
-      const tracksInDir = db.prepare("SELECT id, path FROM tracks WHERE path LIKE ?").all(targetPath + '%') as { id: number, path: string }[];
+      // En cas de scan partiel, on ne nettoie que les fichiers disparus DANS ce dossier.
+      //
+      // `LIKE '/music/ABBA/Gold%'` visait aussi `/music/ABBA/Gold_Greatest_Hits` :
+      // le scan de « Gold » marquait l'album voisin manquant et effaçait ses
+      // pistes. Et `_`, omniprésent dans les noms de dossiers, est un joker de
+      // LIKE. On compare donc le dossier exact ou son préfixe suivi d'un
+      // séparateur.
+      const dir = targetPath.replace(/[\\/]+$/, '');
+      const prefix = dir + path.sep;
+      const tracksInDir = db
+        .prepare('SELECT id, path FROM tracks WHERE instr(path, ?) = 1')
+        .all(prefix) as { id: number, path: string }[];
       const seenPaths = new Set<string>();
       for (const track of tracksInDir) {
         if (!track.path || !foundTrackPaths.has(track.path) || seenPaths.has(track.path)) {
@@ -216,7 +227,9 @@ export class LibraryService {
       }
       
       // Et les albums qui étaient dans ce dossier mais n'y sont plus (ou ont été renommés/regroupés)
-      const albumsInDir = db.prepare("SELECT id FROM albums WHERE path LIKE ? AND status = 'downloaded'").all(targetPath + '%') as { id: number }[];
+      const albumsInDir = db
+        .prepare("SELECT id FROM albums WHERE (path = ? OR instr(path, ?) = 1) AND status = 'downloaded'")
+        .all(dir, prefix) as { id: number }[];
       for (const album of albumsInDir) {
         if (!foundAlbumIds.has(album.id)) {
           db.prepare("UPDATE albums SET status = 'missing', path = NULL WHERE id = ?").run(album.id);
@@ -259,7 +272,7 @@ export class LibraryService {
 
     try {
       const musicPathRes = this.getMusicPath();
-      if (!musicPathRes?.value) throw new Error('Le chemin de la bibliothèque n\'est pas configuré');
+      if (!musicPathRes?.value) throw new UserFacingError('Le chemin de la bibliothèque n\'est pas configuré');
       const musicPath = musicPathRes.value;
 
       console.log(`Scanning library at: ${targetPath || musicPath}`);
@@ -274,7 +287,7 @@ export class LibraryService {
       
       if (!fs.existsSync(scanDir)) {
         console.error(`[Library] Error: Scan directory does not exist: ${scanDir}`);
-        throw new Error(`Le dossier à scanner n'existe pas : ${scanDir}`);
+        throw new UserFacingError(`Le dossier à scanner n'existe pas : ${scanDir}`);
       }
 
       const files = await glob('**/*.{flac,mp3,m4a,wav}', { cwd: scanDir, absolute: true });

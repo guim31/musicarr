@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import db from '@/lib/db';
 
 export async function GET(
@@ -23,6 +24,6 @@ export async function GET(
       metadata: album.metadata ? JSON.parse(album.metadata) : {}
     });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error, '[API] albums/[id] (GET) :');
   }
 }

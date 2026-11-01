@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server';
+import { errorResponse } from '@/lib/apiError';
 import { z } from 'zod';
 import { ProwlarrService } from '@/services/prowlarr';
 import { DeezerProvider } from '@/services/metadata/providers/DeezerProvider';
-import { DownloadService, UnsupportedProtocolError } from '@/services/DownloadService';
+import { DownloadService, InvalidDownloadRequestError } from '@/services/DownloadService';
 import { DeemixService } from '@/services/DeemixService';
 import db from '@/lib/db';
 
@@ -124,7 +125,7 @@ export async function GET(request: Request) {
     return NextResponse.json(results);
   } catch (error: any) {
     console.error('Search API Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
@@ -145,10 +146,10 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true, activityId: result.activityId });
   } catch (error) {
-    if (error instanceof UnsupportedProtocolError) {
+    if (error instanceof InvalidDownloadRequestError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }
     console.error('[Téléchargement] Erreur :', error);
-    return NextResponse.json({ error: (error as Error).message || 'Erreur interne' }, { status: 500 });
+    return errorResponse(error);
   }
 }

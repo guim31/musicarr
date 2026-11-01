@@ -1,4 +1,5 @@
 import db from './db';
+import { isSameServiceUrl } from './serviceUrl';
 
 /**
  * Valeur renvoyée au client à la place d'un secret configuré.
@@ -41,4 +42,38 @@ export function getStoredSecret(settingKey: string): string {
     .prepare('SELECT value FROM settings WHERE key = ?')
     .get(settingKey) as { value: string } | undefined;
   return row?.value || '';
+}
+
+export type ServiceSecretResolution = { key: string; error?: undefined } | { key?: undefined; error: string };
+
+/**
+ * Comme `resolveSecret`, pour une clé qui accompagne une requête vers une URL
+ * fournie par le client (« tester la connexion », enregistrement).
+ *
+ * La clé enregistrée n'est réutilisée que si le client vise toujours l'adresse
+ * enregistrée. Sans cette condition, renvoyer le marqueur avec l'URL d'un
+ * serveur quelconque suffisait à y faire envoyer la vraie clé Prowlarr ou
+ * SABnzbd — que l'interface prend pourtant soin de ne jamais exposer.
+ */
+export function resolveServiceSecret(
+  incomingKey: unknown,
+  keySetting: string,
+  incomingUrl: unknown,
+  urlSetting: string,
+): ServiceSecretResolution {
+  if (incomingKey !== undefined && incomingKey !== null && incomingKey !== MASKED_SECRET) {
+    return { key: String(incomingKey) };
+  }
+
+  const stored = getStoredSecret(keySetting);
+  if (!stored) return { key: '' };
+
+  if (isSameServiceUrl(incomingUrl, getStoredSecret(urlSetting))) {
+    return { key: stored };
+  }
+
+  return {
+    error:
+      "La clé API enregistrée n'est envoyée qu'à l'adresse enregistrée : saisissez-la de nouveau pour utiliser cette adresse.",
+  };
 }

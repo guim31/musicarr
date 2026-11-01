@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
-import { TagService, TrackTagUpdate } from '@/services/tags';
+import { errorResponse } from '@/lib/apiError';
+import { TagService } from '@/services/tags';
+import { PublicFetchError } from '@/lib/publicFetch';
 
 export async function POST(
   request: Request,
@@ -45,7 +47,10 @@ export async function POST(
 
     return NextResponse.json({ success: true, results });
   } catch (error: any) {
+    if (error instanceof PublicFetchError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
     console.error("Erreur API tags:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }

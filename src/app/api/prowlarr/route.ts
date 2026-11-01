@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { errorResponse } from '@/lib/apiError';
 export const dynamic = "force-dynamic";
 import db from '@/lib/db';
-import { maskSecret, resolveSecret } from '@/lib/secrets';
+import { maskSecret, resolveServiceSecret } from '@/lib/secrets';
 import { ProwlarrService } from '@/services/prowlarr';
 
 export async function POST(request: Request) {
@@ -9,8 +10,16 @@ export async function POST(request: Request) {
     const { url, apiKey, action } = await request.json();
 
     // Le client renvoie le marqueur quand l'utilisateur n'a pas touché au champ :
-    // on retombe alors sur la clé déjà en base.
-    const resolvedKey = resolveSecret(apiKey, 'prowlarr_api_key');
+    // on retombe alors sur la clé déjà en base — à condition que l'adresse
+    // n'ait pas changé, sinon la clé partirait vers un serveur quelconque.
+    const needsKey = action === 'test' || action === 'save';
+    const secret = needsKey
+      ? resolveServiceSecret(apiKey, 'prowlarr_api_key', url, 'prowlarr_url')
+      : { key: '' };
+    if (secret.error !== undefined) {
+      return NextResponse.json({ success: false, error: secret.error }, { status: 400 });
+    }
+    const resolvedKey = secret.key;
 
     if (action === 'test') {
       const success = await ProwlarrService.testConnection(url, resolvedKey);
@@ -39,7 +48,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error: any) {
     console.error('API Prowlarr POST Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }
 
@@ -59,6 +68,6 @@ export async function GET() {
     });
   } catch (error: any) {
     console.error('API Prowlarr GET Error:', error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return errorResponse(error);
   }
 }

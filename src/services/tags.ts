@@ -1,9 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import axios from 'axios';
 import db from '@/lib/db';
 import { runFfmpeg, metadataArgs } from '@/lib/ffmpeg';
+import { fetchPublicImage } from '@/lib/publicFetch';
 import { DeemixService } from './DeemixService';
+import { UserFacingError } from '@/lib/userFacingError';
 
 export interface TrackTagUpdate {
   trackId: number;
@@ -27,8 +28,15 @@ export class TagService {
   /**
    * Updates metadata for a single track using ffmpeg
    */
-  static async updateTrackTags(update: TrackTagUpdate) {
-    const track = db.prepare('SELECT path FROM tracks WHERE id = ?').get(update.trackId) as { path: string } | undefined;
+  static async updateTrackTags(update: TrackTagUpdate, albumId?: number) {
+    // La piste doit appartenir à l'album édité : sinon une requête sur
+    // l'album A réécrivait les fichiers de l'album B, puis appliquait la
+    // logique « même artiste / même album » à A.
+    const track = (albumId === undefined
+      ? db.prepare('SELECT path FROM tracks WHERE id = ?').get(update.trackId)
+      : db.prepare('SELECT path FROM tracks WHERE id = ? AND album_id = ?').get(update.trackId, albumId)) as
+      | { path: string }
+      | undefined;
     if (!track || !track.path || !fs.existsSync(track.path)) {
       throw new Error(`Fichier non trouvé pour la piste ${update.trackId}`);
     }
@@ -71,7 +79,8 @@ export class TagService {
       // Verification
       if (fs.existsSync(tempPath)) {
         // Swap files
-        fs.unlinkSync(filePath);
+        // rename remplace atomiquement l'original : supprimer d'abord laissait,
+        // si le renommage échouait (ou au redémarrage), une piste disparue.
         fs.renameSync(tempPath, filePath);
         
         // Fix permissions and ownership
@@ -127,7 +136,7 @@ export class TagService {
     // 1. Perform file updates
     for (const update of updates) {
       try {
-        await this.updateTrackTags(update);
+        await this.updateTrackTags(update, albumId);
         results.push({ trackId: update.trackId, success: true });
       } catch (err: any) {
         results.push({ trackId: update.trackId, success: false, error: err.message });
@@ -218,21 +227,12 @@ export class TagService {
   static async updateAlbumCover(albumId: number, coverSource: Buffer | string) {
     const album = db.prepare('SELECT path, id FROM albums WHERE id = ?').get(albumId) as { path: string, id: number } | undefined;
     if (!album || !album.path || !fs.existsSync(album.path)) {
-      throw new Error("Dossier de l'album non trouvé");
+      throw new UserFacingError("Dossier de l'album non trouvé");
     }
 
-    let buffer: Buffer;
-    if (typeof coverSource === 'string') {
-      const res = await axios.get(coverSource, { 
-        responseType: 'arraybuffer',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-      });
-      buffer = Buffer.from(res.data);
-    } else {
-      buffer = coverSource;
-    }
+    // URL fournie par le client : adresses publiques uniquement (voir
+    // `fetchPublicImage`).
+    const buffer = typeof coverSource === 'string' ? await fetchPublicImage(coverSource) : coverSource;
 
     const coverPath = path.join(album.path, 'folder.jpg');
     fs.writeFileSync(coverPath, buffer);
@@ -281,7 +281,8 @@ export class TagService {
       try {
         await runFfmpeg(args);
         if (fs.existsSync(tempPath)) {
-          fs.unlinkSync(track.path);
+          // rename remplace atomiquement l'original : supprimer d'abord laissait,
+          // si le renommage échouait (ou au redémarrage), une piste disparue.
           fs.renameSync(tempPath, track.path);
           
           // Fix permissions and ownership

@@ -1,5 +1,6 @@
 import axios from 'axios';
 import db from '@/lib/db';
+import { UserFacingError } from '@/lib/userFacingError';
 
 export class SabnzbdService {
   private static async getSettings() {
@@ -28,7 +29,7 @@ export class SabnzbdService {
 
   static async addNzbFromUrl(nzbUrl: string, name: string) {
     const { url, apiKey, category } = await this.getSettings();
-    if (!url || !apiKey) throw new Error('SABnzbd not configured');
+    if (!url || !apiKey) throw new UserFacingError('SABnzbd not configured');
 
     try {
       const response = await axios.get(`${url}/api?mode=addurl&name=${encodeURIComponent(nzbUrl)}&nzbname=${encodeURIComponent(name)}&cat=${category}&output=json&apikey=${apiKey}`);
