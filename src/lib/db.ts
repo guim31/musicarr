@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { logger } from './LogService';
 import { redactSecrets } from './redact';
+import { rollbackUpgrade } from './upgradeBackup';
 
 logger.init();
 
@@ -268,7 +269,53 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_releases_album   ON artist_releases(album_id);
 `);
 
+/**
+ * Mises à niveau Deemix interrompues par un redémarrage : les originaux sont
+ * restés renommés en `.upgrade_backup`, extension que le scan ne lit pas, et
+ * l'album paraissait vide jusqu'à une intervention manuelle. On les remet en
+ * place avant de clore l'activité.
+ */
+const recoverInterruptedUpgrades = () => {
+  const libraryRow = db.prepare("SELECT value FROM settings WHERE key = 'library_path'").get() as
+    | { value: string }
+    | undefined;
+  if (!libraryRow?.value) return;
+  const library = path.resolve(libraryRow.value);
+
+  const rows = db
+    .prepare(
+      `SELECT id, details FROM activity
+        WHERE type = 'download' AND status = 'processing' AND details LIKE '%"backupDir"%'`,
+    )
+    .all() as { id: number; details: string }[];
+
+  for (const row of rows) {
+    try {
+      const details = JSON.parse(row.details) as { backupDir?: unknown; written?: unknown };
+      if (typeof details.backupDir !== 'string') continue;
+      const dir = path.resolve(details.backupDir);
+      // Le chemin vient de la base : jamais hors de la bibliothèque.
+      if (!dir.startsWith(library + path.sep)) continue;
+      const written = Array.isArray(details.written)
+        ? details.written.filter((f): f is string => typeof f === 'string')
+        : [];
+      const restored = rollbackUpgrade(dir, written);
+      if (restored > 0) {
+        console.log(`[DB] Mise à niveau interrompue : ${restored} fichier(s) original(aux) restauré(s) dans ${dir}`);
+      }
+    } catch (e: any) {
+      console.error(`[DB] Restauration impossible pour l'activité ${row.id} :`, e.message);
+    }
+  }
+};
+
 // Nettoyage au démarrage : supprime les verrous de scan bloqués et marque les activités orphelines comme échouées
+try {
+  recoverInterruptedUpgrades();
+} catch (e: any) {
+  console.error('[DB] Reprise des mises à niveau interrompues impossible :', e.message);
+}
+
 try {
   db.prepare("DELETE FROM settings WHERE key = 'scan_progress'").run();
   db.prepare("UPDATE activity SET status = 'failed', message = 'Interrompu par le redémarrage du serveur' WHERE status = 'processing'").run();

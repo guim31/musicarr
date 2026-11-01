@@ -7,13 +7,33 @@ import Blowfish from 'blowfish-node';
 import db from '@/lib/db';
 import { isInsideLibrary } from '@/lib/paths';
 import { safePathSegment } from '@/lib/pathSegment';
+import { BACKUP_SUFFIX, discardUpgradeBackups, rollbackUpgrade } from '@/lib/upgradeBackup';
 import { runFfmpeg, metadataArgs } from '@/lib/ffmpeg';
 import { DeezerProvider } from './metadata/providers/DeezerProvider';
 import { LibraryService } from './library';
 
+/** Avancement d'un téléchargement, enregistré dans `activity.details`. */
+interface DownloadProgress {
+  deezerId: string;
+  current: number;
+  total: number;
+  /** Mise à niveau : dossier où des originaux ont été mis de côté. */
+  backupDir?: string;
+  /** Mise à niveau : pistes écrites jusqu'ici, à retirer en cas d'échec. */
+  written?: string[];
+}
+
 export class DeemixService {
   private static deezer = new DeezerProvider();
   private static sessionCache: any = null;
+
+  /**
+   * Dossiers d'album en cours de téléchargement. Deux demandes sur le même
+   * album (double clic, deux onglets) se marchaient dessus : la seconde
+   * renommait en `.upgrade_backup` les fichiers que la première venait
+   * d'écrire, puis l'une effaçait les sauvegardes de l'autre.
+   */
+  private static readonly activeDirs = new Set<string>();
 
 
   private static getArl() {
@@ -151,27 +171,51 @@ export class DeemixService {
       }
     }
 
-    const activityId = db.prepare(`
-      INSERT INTO activity (type, status, title, message, details, album_id)
-      VALUES ('download', 'processing', ?, ?, ?, ?)
-    `).run(
-      albumName, 
-      `Téléchargement de l'album ${albumName} depuis Deezer`, 
-      JSON.stringify({ deezerId: deezerAlbumId, current: 0, total: tracks.length }),
-      albumId || null
-    ).lastInsertRowid;
+    const dirKey = path.resolve(albumDir);
+    if (this.activeDirs.has(dirKey)) {
+      throw new Error('Un téléchargement est déjà en cours pour cet album');
+    }
+    this.activeDirs.add(dirKey);
+
+    // Une mise à niveau met les fichiers existants de côté. Le dossier est
+    // noté dans l'activité dès maintenant : si le serveur redémarre en cours
+    // de route, le démarrage sait où restaurer les originaux (voir db.ts) —
+    // sans quoi l'album restait masqué derrière des `.upgrade_backup`.
+    const isUpgrade = Boolean(albumId) && fs.existsSync(albumDir);
+    const progress: DownloadProgress = {
+      deezerId: deezerAlbumId,
+      current: 0,
+      total: tracks.length,
+      ...(isUpgrade ? { backupDir: albumDir, written: [] } : {}),
+    };
+
+    let activityId: number | bigint;
+    try {
+      activityId = db.prepare(`
+        INSERT INTO activity (type, status, title, message, details, album_id)
+        VALUES ('download', 'processing', ?, ?, ?, ?)
+      `).run(
+        albumName, 
+        `Téléchargement de l'album ${albumName} depuis Deezer`, 
+        JSON.stringify(progress),
+        albumId || null
+      ).lastInsertRowid;
+    } catch (e) {
+      this.activeDirs.delete(dirKey);
+      throw e;
+    }
 
     // Sauvegarder temporairement (backup) si c'est une mise à niveau
-    if (albumId && fs.existsSync(albumDir)) {
+    if (isUpgrade) {
       try {
         const files = fs.readdirSync(albumDir);
         for (const file of files) {
           if (file.match(/\.(mp3|flac|m4a|wav)$/i)) {
             const oldPath = path.join(albumDir, file);
-            fs.renameSync(oldPath, oldPath + '.upgrade_backup');
+            fs.renameSync(oldPath, oldPath + BACKUP_SUFFIX);
           }
         }
-        console.log(`Fichiers originaux mis en backup (.upgrade_backup) pour mise à niveau dans : ${albumDir}`);
+        console.log(`Fichiers originaux mis en backup (${BACKUP_SUFFIX}) pour mise à niveau dans : ${albumDir}`);
       } catch (e) {
         console.error('Erreur lors du backup pour mise à niveau:', e);
       }
@@ -196,12 +240,13 @@ export class DeemixService {
     }
 
     // Lancer le téléchargement en arrière-plan
-    this.runDownloadInBackground(deezerAlbumId, tracks, albumName, albumDir, activityId, dbAlbumId, fallbackDate);
+    this.runDownloadInBackground(deezerAlbumId, tracks, albumName, albumDir, activityId, progress, dbAlbumId, fallbackDate)
+      .finally(() => this.activeDirs.delete(dirKey));
 
     return { success: true, activityId };
   }
 
-  private static async runDownloadInBackground(deezerAlbumId: string, tracks: any[], albumName: string, albumDir: string, activityId: number | bigint, albumId?: number, fallbackDate?: string) {
+  private static async runDownloadInBackground(deezerAlbumId: string, tracks: any[], albumName: string, albumDir: string, activityId: number | bigint, progress: DownloadProgress, albumId?: number, fallbackDate?: string) {
     try {
       // 1. Download Album Cover
       const albumData = await (this.deezer as any).fetchDeezer(`album/${deezerAlbumId}`);
@@ -254,13 +299,15 @@ export class DeemixService {
 
         // Finaliser le fichier : injection de tags et remuxing avec FFmpeg pour compatibilité Navidrome
         if (success && downloadedPath) {
+          progress.written?.push(downloadedPath);
           await this.finalizeTrack(downloadedPath, track, albumData, ownership, fallbackDate);
         }
 
         completed++;
+        progress.current = completed;
         
         db.prepare("UPDATE activity SET details = ? WHERE id = ?")
-          .run(JSON.stringify({ deezerId: deezerAlbumId, current: completed, total: tracks.length }), activityId);
+          .run(JSON.stringify(progress), activityId);
       }
 
       // Récupérer les IDs pour notification
@@ -283,35 +330,19 @@ export class DeemixService {
         .run(`Album ${albumName} téléchargé avec succès (${tracks.length} pistes)`, artistId, dbAlbumId || null, activityId);
       
       // Succès : Nettoyer les backups
-      if (fs.existsSync(albumDir)) {
-        try {
-          const files = fs.readdirSync(albumDir);
-          for (const file of files) {
-            if (file.endsWith('.upgrade_backup')) {
-              fs.unlinkSync(path.join(albumDir, file));
-            }
-          }
-        } catch (e) { console.error('Erreur lors du nettoyage des backups:', e); }
-      }
+      try {
+        discardUpgradeBackups(albumDir);
+      } catch (e) { console.error('Erreur lors du nettoyage des backups:', e); }
       
       await LibraryService.scan(albumDir).catch(e => console.error('Erreur scan post-download:', e));
     } catch (error: any) {
-      // Échec : Restaurer les backups
-      if (fs.existsSync(albumDir)) {
-        try {
-          const files = fs.readdirSync(albumDir);
-          for (const file of files) {
-            if (file.endsWith('.upgrade_backup')) {
-              const backupPath = path.join(albumDir, file);
-              const originalPath = backupPath.replace('.upgrade_backup', '');
-              // Si un nouveau fichier a été créé mais que le download a échoué, on le supprime pour remettre l'original
-              if (fs.existsSync(originalPath)) fs.unlinkSync(originalPath);
-              fs.renameSync(backupPath, originalPath);
-            }
-          }
+      // Échec : restaurer les originaux, et retirer les pistes déjà écrites
+      // sous un autre nom (sinon l'album se retrouvait en double).
+      try {
+        if (rollbackUpgrade(albumDir, progress.written) > 0) {
           console.log(`Restauration des fichiers originaux terminée suite à l'échec pour l'album : ${albumName}`);
-        } catch (re) { console.error('Erreur lors de la restauration des backups:', re); }
-      }
+        }
+      } catch (re) { console.error('Erreur lors de la restauration des backups:', re); }
 
       db.prepare("UPDATE activity SET status = 'failed', message = ? WHERE id = ?")
         .run(`Erreur: ${error.message}`, activityId);
@@ -480,12 +511,43 @@ export class DeemixService {
 
     const CHUNK_SIZE = 2048;
 
+    // Au-delà, le flux est considéré comme bloqué. `timeout` ne couvre que
+    // l'arrivée des en-têtes : un flux qui se figeait ensuite laissait le
+    // téléchargement « en cours » indéfiniment.
+    const IDLE_TIMEOUT_MS = 60_000;
+
     return new Promise((resolve, reject) => {
+      const source = response.data as NodeJS.ReadableStream & { destroy(error?: Error): void };
       const writer = fs.createWriteStream(filePath);
       let buffer = Buffer.alloc(0);
       let chunkIndex = 0;
+      let settled = false;
+      let idleTimer: NodeJS.Timeout | undefined;
 
-      response.data.on('data', (chunk: Buffer) => {
+      // Une coupure réseau émettait 'error' sur le flux source sans
+      // écouteur : exception non interceptée, promesse jamais résolue, piste
+      // tronquée laissée sur le disque.
+      const fail = (err: Error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(idleTimer);
+        source.destroy();
+        writer.destroy();
+        fs.unlink(filePath, () => {});
+        reject(err);
+      };
+
+      const armIdleTimer = () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(
+          () => fail(new Error(`Flux Deezer interrompu : aucune donnée depuis ${IDLE_TIMEOUT_MS / 1000} s`)),
+          IDLE_TIMEOUT_MS,
+        );
+      };
+      armIdleTimer();
+
+      source.on('data', (chunk: Buffer) => {
+        armIdleTimer();
         buffer = Buffer.concat([buffer, chunk]);
 
         // Traitement des blocs de 2048 bytes
@@ -504,20 +566,26 @@ export class DeemixService {
         }
       });
 
-      response.data.on('end', () => {
+      source.on('end', () => {
+        clearTimeout(idleTimer);
+        if (settled) return;
         if (buffer.length > 0) writer.write(buffer);
         writer.end();
       });
 
+      source.on('error', (err: Error) => fail(err));
+      // Connexion fermée par le serveur avant la fin : pas d'erreur, mais
+      // pas de 'end' non plus.
+      source.on('aborted', () => fail(new Error('Flux Deezer interrompu par le serveur')));
+
       writer.on('finish', () => {
+        if (settled) return;
+        settled = true;
         try { fs.chmodSync(filePath, 0o666); } catch (e) {}
         resolve(filePath);
       });
 
-      writer.on('error', (err) => {
-        fs.unlink(filePath, () => {});
-        reject(err);
-      });
+      writer.on('error', (err) => fail(err));
     });
   }
   private static async finalizeTrack(filePath: string, trackInfo: any, albumData: any, ownership: { uid: number, gid: number }, fallbackDate?: string) {
@@ -575,7 +643,8 @@ export class DeemixService {
     try {
       await runFfmpeg(args);
       if (fs.existsSync(tempPath)) {
-        fs.unlinkSync(filePath);
+        // rename remplace atomiquement l'original : supprimer d'abord laissait,
+        // si le renommage échouait (ou au redémarrage), une piste disparue.
         fs.renameSync(tempPath, filePath);
         
         // Appliquer permissions (666) et proprio (identique au dossier parent)
