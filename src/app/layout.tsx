@@ -15,7 +15,6 @@ export const metadata: Metadata = {
   title: { default: 'Musicarr', template: '%s · Musicarr' },
   description: 'Le bac à disques de la maison : collection, manquants et téléchargements.',
   applicationName: 'Musicarr',
-  manifest: '/manifest.webmanifest',
   appleWebApp: { capable: true, title: 'Musicarr', statusBarStyle: 'black-translucent' },
   icons: {
     icon: [{ url: '/icons/icon.svg', type: 'image/svg+xml' }],
@@ -35,6 +34,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="fr" className={`${display.variable} ${body.variable} ${mono.variable} ${hand.variable}`} suppressHydrationWarning>
+      <head>
+        {/* Déclaré à la main : sans `use-credentials`, le navigateur demande le manifeste
+            sans cookie, et le portail d'authentification placé devant l'application répond
+            par une redirection. L'option `manifest` des métadonnées ne permet pas de le préciser. */}
+        <link rel="manifest" href="/manifest.webmanifest" crossOrigin="use-credentials" />
+      </head>
       <body suppressHydrationWarning>
         <ToastProvider>
           <ConfirmProvider>
