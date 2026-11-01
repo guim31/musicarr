@@ -28,8 +28,30 @@ interface MissingRow {
   image: string | null;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Les compteurs de l'accueil et de la navigation n'ont pas à transporter
+    // les milliers de lignes de la liste.
+    if (new URL(request.url).searchParams.get('summary')) {
+      const summary = db
+        .prepare(
+          `SELECT
+             (SELECT COUNT(*) FROM albums WHERE status IN ('missing', 'wanted')) AS lost,
+             (SELECT COUNT(*) FROM artist_releases WHERE monitored = 1 AND album_id IS NULL) AS neverOwned`,
+        )
+        .get() as { lost: number; neverOwned: number };
+      const majors = db
+        .prepare(
+          `SELECT
+             (SELECT COUNT(*) FROM albums WHERE status IN ('missing', 'wanted') AND type IN ('album', 'ep')) +
+             (SELECT COUNT(*) FROM artist_releases WHERE monitored = 1 AND album_id IS NULL AND type IN ('album', 'ep')) AS count`,
+        )
+        .get() as { count: number };
+      return NextResponse.json({
+        counts: { total: summary.lost + summary.neverOwned, lost: summary.lost, neverOwned: summary.neverOwned, albums: majors.count },
+      });
+    }
+
     const lost = db
       .prepare(
         `SELECT albums.id, albums.name, albums.type, albums.release_date, albums.artist_id,

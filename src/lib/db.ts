@@ -209,7 +209,11 @@ const migrate = () => {
   }
 };
 
-migrate();
+// Sous verrou d'écriture, colonnes relues à l'intérieur : `next build` charge les
+// routes dans plusieurs workers qui ouvrent la même base en même temps. Sans cela,
+// deux d'entre eux voient une colonne absente, le second `ALTER TABLE` échoue et
+// le build casse au hasard.
+db.transaction(migrate).immediate();
 
 // Purge des secrets déjà persistés. Les erreurs Discogs reprenaient l'URL
 // complète, jeton compris, et ce message était enregistré dans

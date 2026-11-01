@@ -1,0 +1,306 @@
+.shell {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+}
+
+.skip {
+  position: fixed;
+  top: -60px;
+  left: 12px;
+  z-index: 100;
+  padding: 10px 14px;
+  background: var(--acid);
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.skip:focus {
+  top: 12px;
+}
+
+.main {
+  min-width: 0;
+  padding-bottom: calc(var(--dock-h) + var(--safe-b) + 24px);
+}
+
+.shell[data-playing='true'] .main {
+  padding-bottom: calc(var(--dock-h) + var(--safe-b) + 90px);
+}
+
+/* --- Marque ---------------------------------------------------------------- */
+
+.wordmark {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 4px;
+  font-size: 1.625rem;
+}
+
+.star {
+  color: var(--acid);
+  font-size: 0.72em;
+  line-height: 1;
+  transform: rotate(14deg);
+}
+
+/* --- Barre du haut, au téléphone ------------------------------------------------- */
+
+.topbar {
+  /* Au-dessus de l'ambiance de la pochette, qui remonte jusqu'en haut de l'écran */
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(10px + var(--safe-t)) var(--page-x) 2px;
+}
+
+.topAction {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  color: var(--paper-2);
+}
+
+.topAction[aria-current='page'] {
+  color: var(--acid);
+}
+
+/* --- Dock ------------------------------------------------------------------------- */
+
+.dock {
+  position: fixed;
+  inset: auto 0 0;
+  z-index: 50;
+  display: grid;
+  grid-template-columns: 1fr 1fr 74px 1fr 1fr;
+  align-items: stretch;
+  height: calc(var(--dock-h) + var(--safe-b));
+  padding-bottom: var(--safe-b);
+  border-top: 2px solid var(--paper);
+  background: var(--ink);
+}
+
+.dockLink {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  color: var(--muted);
+  transition: color 0.15s;
+}
+
+.dockLink[aria-current='page'] {
+  color: var(--acid);
+}
+
+/* Le trait d'adhésif sous l'onglet actif */
+.dockLink[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 22%;
+  right: 22%;
+  height: 4px;
+  background: var(--acid);
+  transform: rotate(-0.8deg);
+}
+
+.dockLink:active .dockIcon {
+  transform: scale(0.86);
+}
+
+.dockIcon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  transition: transform 0.15s var(--ease-punch);
+}
+
+.dockLabel {
+  overflow: hidden;
+  max-width: 100%;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-stretch: 88%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dockBadge {
+  position: absolute;
+  top: -6px;
+  right: -11px;
+  display: grid;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 3px;
+  border-radius: 2px;
+  background: var(--aqua);
+  color: var(--ink);
+  font-size: 0.625rem;
+  transform: rotate(6deg);
+}
+
+.dockPrimary {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--paper);
+}
+
+.dockPrimary .dockIcon {
+  place-self: center;
+  width: 50px;
+  height: 50px;
+  margin-top: -19px;
+  border: 2px solid var(--ink);
+  background: var(--acid);
+  color: var(--ink);
+  box-shadow: 3px 3px 0 var(--hot);
+  transform: rotate(-3deg);
+  transition:
+    transform 0.14s var(--ease-punch),
+    box-shadow 0.14s;
+}
+
+.dockPrimary:active .dockIcon {
+  box-shadow: 0 0 0 var(--hot);
+  transform: rotate(-3deg) translate(3px, 3px);
+}
+
+.dockPrimary .dockLabel {
+  position: absolute;
+  bottom: 6px;
+  color: var(--muted);
+}
+
+.dockPrimary[aria-current='page'] .dockLabel {
+  color: var(--acid);
+}
+
+/* --- Barre latérale, sur grand écran -------------------------------------------- */
+
+.sidebar {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .topbar,
+  .dock {
+    display: none;
+  }
+
+  .main {
+    margin-left: var(--sidebar-w);
+    padding-bottom: 48px;
+  }
+
+  .shell[data-playing='true'] .main {
+    padding-bottom: 48px;
+  }
+
+  .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    display: flex;
+    width: var(--sidebar-w);
+    flex-direction: column;
+    padding: 24px 0 16px;
+    border-right: 2px solid var(--line);
+    background: var(--ink);
+  }
+
+  .sidebar .wordmark {
+    margin: 0 24px 26px;
+    font-size: 2.25rem;
+  }
+
+  .sideNav {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .side {
+    margin: 18px 24px 8px;
+    color: var(--faint);
+    letter-spacing: 0.18em;
+  }
+
+  .sideLink {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 0 24px;
+    color: var(--paper-2);
+    font-weight: 600;
+    transition: color 0.12s;
+  }
+
+  .sideLink:hover {
+    color: var(--acid);
+  }
+
+  /* Coup de surligneur sur la piste en cours */
+  .sideLink[aria-current='page'] {
+    color: var(--ink);
+    font-weight: 800;
+  }
+
+  .sideLink[aria-current='page']::before {
+    content: '';
+    position: absolute;
+    inset: 6px 14px 6px 12px;
+    z-index: -1;
+    background: var(--acid);
+    clip-path: polygon(0 8%, 100% 0, 99% 92%, 1% 100%);
+  }
+
+  .track {
+    width: 22px;
+    color: var(--faint);
+    font-size: 0.6875rem;
+  }
+
+  .sideLink[aria-current='page'] .track {
+    color: var(--ink);
+  }
+
+  .sideLabel {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .sideBadge {
+    color: var(--muted);
+    font-size: 0.6875rem;
+  }
+
+  .sideBadge[data-live='true'] {
+    padding: 1px 6px;
+    background: var(--aqua);
+    color: var(--ink);
+  }
+
+  .sideLink[aria-current='page'] .sideBadge {
+    color: var(--ink);
+  }
+
+  .colophon {
+    margin: 12px 24px 0;
+    color: var(--faint);
+    font-size: 0.625rem;
+  }
+}

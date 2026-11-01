@@ -1,0 +1,74 @@
+.bar {
+  position: fixed;
+  inset: auto 0 calc(var(--dock-h) + var(--safe-b));
+  z-index: 49;
+  display: block;
+  border-top: 2px solid var(--paper);
+  background: var(--ink-2);
+  animation: bar-in 0.35s var(--ease-out) both;
+}
+
+.tape {
+  height: 6px;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  /* Réserve la place du bouton de recherche, qui déborde du dock */
+  padding: 6px var(--page-x) 22px;
+}
+
+.text {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.text strong {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.label {
+  color: var(--muted);
+  font-size: 0.6875rem;
+}
+
+.percent {
+  flex: none;
+  color: var(--acid);
+  font-size: 1.375rem;
+}
+
+.more {
+  flex: none;
+  padding: 2px 6px;
+  background: var(--aqua);
+  color: var(--ink);
+  transform: rotate(4deg);
+}
+
+@keyframes bar-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@media (min-width: 900px) {
+  .bar {
+    inset: auto auto 40px 12px;
+    width: calc(var(--sidebar-w) - 24px);
+    border: 2px solid var(--paper);
+    box-shadow: 3px 3px 0 var(--aqua);
+    animation: none;
+  }
+
+  .row {
+    align-items: center;
+    padding: 6px 10px;
+  }
+}

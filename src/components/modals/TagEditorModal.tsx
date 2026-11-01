@@ -1,589 +1,378 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Save, 
-  RefreshCw, 
-  Edit3, 
-  Layers,
-  Check,
-  AlertTriangle,
-  Music,
-  User,
-  Disc,
-  Calendar,
-  Tag,
-  Upload,
-  Sparkles,
-  Info,
-  Globe,
-  Image as ImageIcon,
-  Search
-} from 'lucide-react';
-import styles from './TagEditorModal.module.css';
+import React, { useEffect, useRef, useState } from 'react';
+import { AlertTriangle, Globe, ImagePlus, Layers, RefreshCw, Save, Search, Sparkles } from 'lucide-react';
+import Sheet from '@/components/ui/Sheet';
+import { useConfirm } from '@/context/ConfirmContext';
 import { useToast } from '@/context/ToastContext';
-import { useEscapeToClose } from '@/hooks/useEscapeToClose';
+import { api, postJson } from '@/lib/ui/api';
+import type { AlbumDetail, TrackRow } from '@/app/library/album/[id]/page';
+import styles from './Modals.module.css';
 
-interface Track {
-  id: number;
+interface TrackEdit {
+  trackId: number | string;
   title: string;
-  artist?: string;
   number: number;
-  track_total?: number;
+  trackTotal?: number | null;
   disc: number;
-  disc_total?: number;
-  quality: string;
-  duration?: number;
-  bpm?: number;
-  isrc?: string;
+  discTotal?: number | null;
   path: string;
+  artist: string;
+  albumArtist: string;
+  album: string;
+  year: string;
+  genre: string;
+  bpm: number | string;
+  isrc: string;
+  barcode: string;
+  label: string;
 }
 
-interface Album {
-  id: number;
-  name: string;
-  artist_name: string;
-  album_artist?: string;
-  release_date?: string;
-  barcode?: string;
-  label?: string;
-  metadata?: {
-    genre?: string;
-  };
-}
+type BulkKey = 'artist' | 'albumArtist' | 'album' | 'year' | 'genre' | 'label';
+
+const BULK_FIELDS: { key: BulkKey; label: string; placeholder: string; hint?: string }[] = [
+  { key: 'artist', label: 'Artiste des pistes', placeholder: 'Artiste commun', hint: 'Sur une compilation, l’artiste propre à chaque titre.' },
+  { key: 'albumArtist', label: 'Artiste de l’album', placeholder: 'VARIOUS ARTISTS…', hint: 'Regroupe le disque, et définit son dossier de stockage.' },
+  { key: 'album', label: 'Album', placeholder: 'Nom de l’album' },
+  { key: 'year', label: 'Année', placeholder: '2024' },
+  { key: 'genre', label: 'Genre', placeholder: 'Punk, ska…' },
+  { key: 'label', label: 'Label', placeholder: 'Fat Wreck…' },
+];
 
 interface TagEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  album: Album;
-  tracks: Track[];
+  album: AlbumDetail;
+  /** Pistes présentes sur le disque : les seules dont on peut écrire les tags. */
+  tracks: TrackRow[];
   onSaveSuccess: () => void;
+}
+
+function toEdits(album: AlbumDetail, tracks: TrackRow[]): TrackEdit[] {
+  const year = album.release_date?.substring(0, 4) || '';
+  return tracks.map(track => ({
+    trackId: track.id,
+    title: track.title,
+    number: track.number ?? 0,
+    trackTotal: track.track_total,
+    disc: track.disc || 1,
+    discTotal: track.disc_total,
+    path: track.path ?? '',
+    artist: track.artist || album.artist_name,
+    albumArtist: album.album_artist || '',
+    album: album.name,
+    year,
+    genre: album.metadata?.genre || '',
+    bpm: track.bpm || '',
+    isrc: track.isrc || '',
+    barcode: album.barcode || '',
+    label: album.label || '',
+  }));
 }
 
 export default function TagEditorModal({ isOpen, onClose, album, tracks, onSaveSuccess }: TagEditorModalProps) {
   const { showToast } = useToast();
-  const [loading, setLoading] = useState(false);
+  const confirm = useConfirm();
+  const [saving, setSaving] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestingCover, setSuggestingCover] = useState(false);
-  const [trackEdits, setTrackEdits] = useState<any[]>([]);
-  const [bulkData, setBulkData] = useState({
-    artist: '',
-    albumArtist: '',
-    album: '',
-    year: '',
-    genre: '',
-    label: '',
-    barcode: ''
-  });
-  const [coverPreview, setCoverPreview] = useState<string>(`/api/albums/${album.id}/cover`);
+  const [edits, setEdits] = useState<TrackEdit[]>([]);
+  const [bulk, setBulk] = useState<Record<BulkKey, string>>({ artist: '', albumArtist: '', album: '', year: '', genre: '', label: '' });
+  const [coverPreview, setCoverPreview] = useState('');
   const [newCover, setNewCover] = useState<string | null>(null);
-
-  // Photo de l'état initial pour détecter les modifications non sauvegardées
-  const initialSnapshot = React.useRef('');
-
-  const requestClose = React.useCallback(() => {
-    const dirty = JSON.stringify(trackEdits) !== initialSnapshot.current || newCover !== null;
-    if (dirty && !confirm('Des modifications non sauvegardées seront perdues. Fermer quand même ?')) {
-      return;
-    }
-    onClose();
-  }, [trackEdits, newCover, onClose]);
-
-  // Pas de fermeture pendant l'écriture des tags
-  useEscapeToClose(isOpen && !loading, requestClose);
+  const [coverUrlDraft, setCoverUrlDraft] = useState('');
+  const snapshot = useRef('');
 
   useEffect(() => {
-    if (isOpen) {
-      const mappedEdits = tracks.map((t: any) => ({
-        trackId: t.id,
-        title: t.title,
-        number: t.number,
-        trackTotal: t.track_total,
-        disc: t.disc || 1,
-        discTotal: t.disc_total,
-        path: t.path,
-        artist: t.artist || album.artist_name,
-        albumArtist: album.album_artist || '',
-        album: album.name,
-        year: album.release_date?.substring(0, 4) || '',
-        genre: album.metadata?.genre || '',
-        bpm: t.bpm || '',
-        isrc: t.isrc || '',
-        barcode: album.barcode || '',
-        label: album.label || ''
-      }));
-      setTrackEdits(mappedEdits);
-      initialSnapshot.current = JSON.stringify(mappedEdits);
-      setBulkData({
-        artist: album.artist_name,
-        albumArtist: album.album_artist || '',
-        album: album.name,
-        year: album.release_date?.substring(0, 4) || '',
-        genre: album.metadata?.genre || '',
-        label: album.label || '',
-        barcode: album.barcode || ''
+    if (!isOpen) return;
+    const initial = toEdits(album, tracks);
+    setEdits(initial);
+    snapshot.current = JSON.stringify(initial);
+    setBulk({
+      artist: album.artist_name,
+      albumArtist: album.album_artist || '',
+      album: album.name,
+      year: album.release_date?.substring(0, 4) || '',
+      genre: album.metadata?.genre || '',
+      label: album.label || '',
+    });
+    setCoverPreview(`/api/albums/${album.id}/cover?t=${Date.now()}`);
+    setNewCover(null);
+    setCoverUrlDraft('');
+  }, [isOpen, album, tracks]);
+
+  const requestClose = async () => {
+    const dirty = JSON.stringify(edits) !== snapshot.current || newCover !== null;
+    if (dirty) {
+      const leave = await confirm({
+        title: 'Abandonner les changements ?',
+        message: 'Les modifications non enregistrées seront perdues.',
+        confirmLabel: 'Abandonner',
+        cancelLabel: 'Continuer',
+        danger: true,
       });
-      setCoverPreview(`/api/albums/${album.id}/cover?t=${Date.now()}`);
-      setNewCover(null);
+      if (!leave) return;
     }
-  }, [isOpen, tracks, album]);
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64 = reader.result as string;
-        setNewCover(base64);
-        setCoverPreview(base64);
-      };
-      reader.readAsDataURL(file);
-    }
+    onClose();
   };
 
-  const handleTrackChange = (index: number, field: string, value: any) => {
-    const newEdits = [...trackEdits];
-    newEdits[index] = { ...newEdits[index], [field]: value };
-    setTrackEdits(newEdits);
+  const updateTrack = <K extends keyof TrackEdit>(index: number, field: K, value: TrackEdit[K]) => {
+    setEdits(current => current.map((edit, position) => (position === index ? { ...edit, [field]: value } : edit)));
   };
 
-  const applyBulk = (field: string) => {
-    let value = (bulkData as any)[field];
-    if (field === 'artist' || field === 'albumArtist') {
-      value = value.toUpperCase();
-    }
-    const newEdits = trackEdits.map(t => ({ ...t, [field]: value }));
-    setTrackEdits(newEdits);
-    showToast(`Appliqué "${value}" à toutes les pistes`, "success");
+  const applyBulk = (field: BulkKey) => {
+    const value = field === 'artist' || field === 'albumArtist' ? bulk[field].toUpperCase() : bulk[field];
+    setEdits(current => current.map(edit => ({ ...edit, [field]: value })));
+    showToast(`« ${value} » appliqué à toutes les pistes.`, 'success');
+  };
+
+  const handleFile = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const base64 = reader.result as string;
+      setNewCover(base64);
+      setCoverPreview(base64);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const applyCoverUrl = () => {
+    const url = coverUrlDraft.trim();
+    if (!url) return;
+    setNewCover(url);
+    setCoverPreview(url);
   };
 
   const cleanTitles = () => {
-    const newEdits = trackEdits.map(t => {
-      let title = t.title;
-      let number = t.number;
-      let disc = t.disc;
+    const cleaned = edits.map(edit => {
+      let { title, number, disc } = edit;
 
-      // 1. Tenter d'extraire depuis le titre actuel de l'UI
-      const titleMatch = title.match(/^([0-9]+)[\s-_.]+(.*)/);
-      if (titleMatch) {
-        number = parseInt(titleMatch[1]);
-        title = titleMatch[2];
+      const inTitle = title.match(/^([0-9]+)[\s\-_.]+(.*)/);
+      if (inTitle) {
+        number = parseInt(inTitle[1], 10);
+        title = inTitle[2];
       }
 
-      // 2. Tenter d'extraire le numéro ET le disque depuis le NOM DU FICHIER / CHEMIN
-      const pathParts = t.path.split('/');
-      const fileName = pathParts.pop() || '';
-      const parentDir = pathParts.pop() || '';
+      const parts = edit.path.split('/');
+      const fileName = parts.pop() || '';
+      const parentDir = parts.pop() || '';
 
-      // Extraction numéro piste depuis nom fichier
-      const fileMatch = fileName.match(/^(?:([0-9]+)\s*-?\s*)?(.+)\.(?:flac|mp3|m4a|wav)$/i);
-      if (fileMatch) {
-         if (!number || number === 0) number = parseInt(fileMatch[1]);
-         if (!title || title === t.title) title = fileMatch[2];
+      const inFile = fileName.match(/^(?:([0-9]+)\s*-?\s*)?(.+)\.(?:flac|mp3|m4a|wav)$/i);
+      if (inFile) {
+        // Sans préfixe numérique dans le nom de fichier, ne pas écrire NaN.
+        if (!number && inFile[1]) number = parseInt(inFile[1], 10);
+        if (!title) title = inFile[2];
       }
 
-      // Extraction numéro disque depuis dossier parent (CD 01, Disc 2, etc.)
-      const discMatch = parentDir.match(/(?:CD|Disc|Disque)\s*([0-9]+)/i);
-      if (discMatch) {
-        disc = parseInt(discMatch[1]);
-      }
+      const inFolder = parentDir.match(/(?:CD|Disc|Disque)\s*([0-9]+)/i);
+      if (inFolder) disc = parseInt(inFolder[1], 10);
 
-      // Nettoyage final du titre : extension et underscores
-      title = title.replace(/\.(flac|mp3|m4a|wav)$/i, '')
-                  .replace(/_/g, ' ')
-                  .replace(/^[0-9]+[\s-_.]+/, '') // Enlever les préfixes numériques résiduels
-                  .trim();
+      title = title
+        .replace(/\.(flac|mp3|m4a|wav)$/i, '')
+        .replace(/_/g, ' ')
+        .replace(/^[0-9]+[\s\-_.]+/, '')
+        .trim();
 
-      return { ...t, title, number, disc };
+      return { ...edit, title, number, disc };
     });
 
-    // Trier pour avoir un affichage cohérent (Disque puis Piste)
-    newEdits.sort((a, b) => {
-      if (a.disc !== b.disc) return a.disc - b.disc;
-      return a.number - b.number;
-    });
-
-    setTrackEdits(newEdits);
-    showToast("Titres, numéros et disques synchronisés !", "success");
+    cleaned.sort((a, b) => (a.disc !== b.disc ? a.disc - b.disc : a.number - b.number));
+    setEdits(cleaned);
+    showToast('Titres, numéros et disques remis d’équerre.', 'success');
   };
-  
-  const handleSuggestTags = async () => {
+
+  const suggestTags = async () => {
     setSuggesting(true);
     try {
-      const res = await fetch(`/api/albums/${album.id}/suggest-tags`);
-      const data = await res.json();
-      
-      if (!res.ok) throw new Error(data.error || "Impossible de récupérer des suggestions.");
-      
-      const suggestions = data.suggestions;
-      const newEdits = [...trackEdits];
-      
-      // Tentative de matching par numéro de piste (plus fiable)
+      const data = await api<{ suggestions: { number: number; title: string; artist?: string }[] }>(`/api/albums/${album.id}/suggest-tags`);
+      const next = [...edits];
       let matches = 0;
-      suggestions.forEach((s: any) => {
-        const trackIdx = newEdits.findIndex(t => t.number === s.number);
-        if (trackIdx !== -1) {
-          newEdits[trackIdx] = { 
-            ...newEdits[trackIdx], 
-            title: s.title,
-            artist: s.artist?.toUpperCase() 
-          };
-          matches++;
-        }
-      });
-
-      // Si pas de match par numéro (ex: fichiers pas encore numérotés), on fait par index
+      // Par numéro de piste d'abord, le plus fiable…
+      for (const suggestion of data.suggestions) {
+        const index = next.findIndex(edit => edit.number === suggestion.number);
+        if (index === -1) continue;
+        next[index] = { ...next[index], title: suggestion.title, artist: suggestion.artist?.toUpperCase() ?? next[index].artist };
+        matches += 1;
+      }
+      // …et par position si les fichiers ne sont pas encore numérotés.
       if (matches === 0) {
-        suggestions.forEach((s: any, idx: number) => {
-          if (newEdits[idx]) {
-            newEdits[idx] = { 
-              ...newEdits[idx], 
-              title: s.title,
-              artist: s.artist?.toUpperCase(),
-              number: s.number 
-            };
-            matches++;
-          }
+        data.suggestions.forEach((suggestion, index) => {
+          if (!next[index]) return;
+          next[index] = { ...next[index], title: suggestion.title, artist: suggestion.artist?.toUpperCase() ?? next[index].artist, number: suggestion.number };
+          matches += 1;
         });
       }
-
-      setTrackEdits(newEdits);
-      showToast(`${matches} pistes pré-remplies via Internet !`, "success");
-    } catch (err: any) {
-      showToast(err.message, "error");
+      setEdits(next);
+      showToast(`${matches} piste${matches > 1 ? 's' : ''} pré-remplie${matches > 1 ? 's' : ''}.`, 'success');
+    } catch (error) {
+      showToast((error as Error).message, 'error');
     } finally {
       setSuggesting(false);
     }
   };
 
-  const handleSuggestCover = async () => {
+  const suggestCover = async () => {
     setSuggestingCover(true);
     try {
-      const res = await fetch(`/api/albums/${album.id}/suggest-cover`);
-      const data = await res.json();
-      
-      if (!res.ok) throw new Error(data.error || "Impossible de trouver une pochette.");
-      
+      const data = await api<{ coverUrl: string }>(`/api/albums/${album.id}/suggest-cover`);
       setNewCover(data.coverUrl);
       setCoverPreview(data.coverUrl);
-      showToast("Pochette trouvée et appliquée !", "success");
-    } catch (err: any) {
-      showToast(err.message, "error");
+      showToast('Pochette trouvée. Enregistrez pour l’appliquer.', 'success');
+    } catch (error) {
+      showToast((error as Error).message, 'error');
     } finally {
       setSuggestingCover(false);
     }
   };
 
-  const handleSave = async () => {
-    setLoading(true);
+  const save = async () => {
+    setSaving(true);
     try {
-      const res = await fetch(`/api/albums/${album.id}/tags`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          tracks: trackEdits,
-          cover: newCover
-        })
-      });
-      
-      const data = await res.json();
-      if (data.success) {
-        showToast("Tags mis à jour avec succès !", "success");
-        onSaveSuccess();
-        onClose();
-      } else {
-        throw new Error(data.message || "Erreur lors de la sauvegarde");
-      }
-    } catch (err: any) {
-      showToast(err.message, "error");
+      await postJson(`/api/albums/${album.id}/tags`, { tracks: edits, cover: newCover });
+      showToast('Tags écrits dans les fichiers.', 'success');
+      onSaveSuccess();
+      onClose();
+    } catch (error) {
+      showToast((error as Error).message, 'error');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div className={styles.overlay} onClick={loading ? undefined : requestClose}>
-      <div className={styles.modal} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Éditeur de tags ID3">
-        <header className={styles.header}>
-          <div className={styles.headerTitle}>
-            <Edit3 size={20} color="var(--accent)" />
-            <h3>Éditeur de Tags ID3</h3>
-          </div>
-          <button className={styles.closeBtn} onClick={requestClose} aria-label="Fermer">
-            <X size={20} />
+    <Sheet
+      open={isOpen}
+      onClose={requestClose}
+      dismissible={!saving}
+      size="full"
+      title="Éditer les tags"
+      subtitle={album.name}
+      footer={
+        <>
+          <span className={styles.footerNote}>
+            <AlertTriangle size={14} />
+            Écrit directement dans les fichiers.
+          </span>
+          <button type="button" className="btn btn-quiet" onClick={requestClose} disabled={saving}>
+            Annuler
           </button>
-        </header>
-
-        <div className={styles.editorBody}>
-          {/* COLONNE GAUCHE: ACTIONS DE MASSE */}
-          <div className={styles.sidePanel}>
-            <div className={styles.bulkActions}>
-              <div className={styles.bulkItem}>
-                <label>
-                  <User size={14} /> Artiste Piste
-                  <div className={styles.tooltipContainer}>
-                    <Info size={12} className={styles.infoIcon} style={{ marginLeft: '4px' }} />
-                    <div className={`${styles.tooltip} ${styles.tooltipRight}`}>
-                      <strong>Compilations :</strong> Mettez ici l'artiste spécifique de chaque chanson.<br/><br/>
-                      <em>Ex : Daft Punk</em>
-                    </div>
-                  </div>
-                </label>
-                <div className={styles.inputGroup}>
-                  <input 
-                    type="text" 
-                    value={bulkData.artist} 
-                    onChange={e => setBulkData({...bulkData, artist: e.target.value})}
-                    placeholder="Artiste commun..."
-                  />
-                  <button onClick={() => applyBulk('artist')} title="Appliquer à tout">
-                    <Layers size={14} />
-                  </button>
-                </div>
+          <button type="button" className="btn btn-primary" onClick={save} disabled={saving}>
+            {saving ? <RefreshCw className="spin" size={18} /> : <Save size={18} />}
+            Enregistrer
+          </button>
+        </>
+      }
+    >
+      <div className={styles.editor}>
+        <div className={styles.editorSide}>
+          <section className={styles.editorGroup}>
+            <h3>Pochette</h3>
+            <div className={styles.coverRow}>
+              <div className={styles.coverPreview}>
+                {coverPreview && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={coverPreview} alt={`Pochette de ${album.name}`} />
+                )}
               </div>
-              <div className={styles.bulkItem}>
-                <label>
-                  <Sparkles size={14} color="var(--accent)" /> Artiste de l'Album
-                  <div className={styles.tooltipContainer}>
-                    <Info size={12} className={styles.infoIcon} style={{ marginLeft: '4px' }} />
-                    <div className={`${styles.tooltip} ${styles.tooltipRight}`}>
-                      <strong>Compilations :</strong> Mettez ici <strong>VARIOUS ARTISTS</strong> pour regrouper l'album.<br/><br/>
-                      C'est ce qui définit le dossier de stockage.
-                    </div>
-                  </div>
-                </label>
-                <div className={styles.inputGroup}>
-                  <input 
-                    type="text" 
-                    value={bulkData.albumArtist} 
-                    onChange={e => setBulkData({...bulkData, albumArtist: e.target.value})}
-                    placeholder="VARIOUS ARTISTS, etc."
-                  />
-                  <button onClick={() => applyBulk('albumArtist')} title="Appliquer à tout">
-                    <Layers size={14} />
-                  </button>
-                </div>
-              </div>
-              <div className={styles.bulkItem}>
-                <label><Disc size={14} /> Album</label>
-                <div className={styles.inputGroup}>
-                  <input 
-                    type="text" 
-                    value={bulkData.album} 
-                    onChange={e => setBulkData({...bulkData, album: e.target.value})}
-                    placeholder="Nom de l'album..."
-                  />
-                  <button onClick={() => applyBulk('album')} title="Appliquer à tout">
-                    <Layers size={14} />
-                  </button>
-                </div>
-              </div>
-              <div className={styles.bulkItem}>
-                <label><Calendar size={14} /> Année</label>
-                <div className={styles.inputGroup}>
-                  <input 
-                    type="text" 
-                    value={bulkData.year} 
-                    onChange={e => setBulkData({...bulkData, year: e.target.value})}
-                    placeholder="2024"
-                  />
-                  <button onClick={() => applyBulk('year')} title="Appliquer à tout">
-                    <Layers size={14} />
-                  </button>
-                </div>
-              </div>
-              <div className={styles.bulkItem}>
-                <label><Tag size={14} /> Genre</label>
-                <div className={styles.inputGroup}>
-                  <input 
-                    type="text" 
-                    value={bulkData.genre} 
-                    onChange={e => setBulkData({...bulkData, genre: e.target.value})}
-                    placeholder="Rock, Jazz..."
-                  />
-                  <button onClick={() => applyBulk('genre')} title="Appliquer à tout">
-                    <Layers size={14} />
-                  </button>
-                </div>
-              </div>
-              <div className={styles.bulkItem}>
-                <label><Music size={14} /> Label</label>
-                <div className={styles.inputGroup}>
-                  <input 
-                    type="text" 
-                    value={bulkData.label} 
-                    onChange={e => setBulkData({...bulkData, label: e.target.value})}
-                    placeholder="Universal, Sony..."
-                  />
-                  <button onClick={() => applyBulk('label')} title="Appliquer à tout">
-                    <Layers size={14} />
-                  </button>
-                </div>
+              <div className={styles.coverTools}>
+                <span className={`btn btn-sm btn-quiet ${styles.fileInput}`}>
+                  <ImagePlus size={15} />
+                  Choisir
+                  <input type="file" accept="image/*" onChange={handleFile} aria-label="Choisir une image de pochette" />
+                </span>
+                <button type="button" className="btn btn-sm btn-quiet" onClick={suggestCover} disabled={suggestingCover}>
+                  {suggestingCover ? <RefreshCw className="spin" size={15} /> : <Search size={15} />}
+                  Chercher
+                </button>
+                <input
+                  className="input"
+                  type="url"
+                  placeholder="ou coller une URL"
+                  aria-label="URL de la pochette"
+                  value={coverUrlDraft}
+                  onChange={event => setCoverUrlDraft(event.target.value)}
+                  onBlur={applyCoverUrl}
+                  onKeyDown={event => {
+                    if (event.key === 'Enter') {
+                      event.preventDefault();
+                      applyCoverUrl();
+                    }
+                  }}
+                />
               </div>
             </div>
-          </div>
+          </section>
 
-          {/* COLONNE MILIEU: TABLEAU */}
-          <div className={styles.scrollArea}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th style={{ width: '40px', textAlign: 'center' }}>CD</th>
-                  <th style={{ width: '70px', textAlign: 'center' }}>#</th>
-                  <th style={{ width: '35%' }}>Titre</th>
-                  <th style={{ width: '30%' }}>
-                    Artiste Piste
-                  </th>
-                  <th style={{ width: '30%' }}>
-                    Artiste Album
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {trackEdits.map((edit, idx) => (
-                  <tr key={edit.trackId}>
-                    <td style={{ textAlign: 'center' }}>
-                      <input 
-                        className={styles.cellInput}
-                        style={{ textAlign: 'center', opacity: 0.7 }}
-                        type="text" 
-                        value={edit.disc || 1} 
-                        onChange={e => handleTrackChange(idx, 'disc', parseInt(e.target.value) || 1)}
-                      />
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <input 
-                        className={styles.cellInput}
-                        style={{ textAlign: 'center', fontWeight: 'bold', color: 'var(--accent)' }}
-                        type="text" 
-                        value={edit.number || ''} 
-                        onChange={e => handleTrackChange(idx, 'number', parseInt(e.target.value) || 0)}
-                      />
-                    </td>
-                    <td>
-                      <input 
-                        className={styles.cellInput}
-                        type="text" 
-                        value={edit.title} 
-                        onChange={e => handleTrackChange(idx, 'title', e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input 
-                        className={styles.cellInput}
-                        type="text" 
-                        value={edit.artist} 
-                        onChange={e => handleTrackChange(idx, 'artist', e.target.value)}
-                      />
-                    </td>
-                    <td>
-                      <input 
-                        className={styles.cellInput}
-                        type="text" 
-                        value={edit.albumArtist} 
-                        onChange={e => handleTrackChange(idx, 'albumArtist', e.target.value)}
-                        placeholder="Artiste Album..."
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* COLONNE DROITE: COVER ET BOUTONS INTELLIGENTS */}
-          <div className={styles.rightPanel}>
-            <div className={styles.coverSection}>
-              <div className={styles.coverWrapper}>
-                <img src={coverPreview} alt="Album Cover" className={styles.previewImage} />
-                <div className={styles.coverOverlay}>
-                  <label className={styles.uploadLabel}>
-                    <Upload size={24} />
-                    <span>Changer</span>
-                    <input type="file" accept="image/*" onChange={handleFileChange} hidden />
-                  </label>
-                </div>
-              </div>
-              
-              <button 
-                className={`${styles.cleanBtn} ${styles.smallBtn}`} 
-                onClick={handleSuggestCover}
-                disabled={suggestingCover}
-              >
-                {suggestingCover ? <RefreshCw className={styles.spin} size={14} /> : <Search size={14} />}
-                Chercher Pochette
+          <section className={styles.editorGroup}>
+            <h3>Automatique</h3>
+            <div className={styles.magic}>
+              <button type="button" className="btn btn-sm" onClick={cleanTitles}>
+                <Sparkles size={15} />
+                Nettoyer les titres
               </button>
+              <button type="button" className="btn btn-sm" onClick={suggestTags} disabled={suggesting}>
+                {suggesting ? <RefreshCw className="spin" size={15} /> : <Globe size={15} />}
+                Suggérer via Internet
+              </button>
+            </div>
+          </section>
 
-              <div className={styles.coverUrlInput}>
-                <label>URL de la pochette</label>
-                <div className={styles.inputGroup}>
+          <section className={styles.editorGroup}>
+            <h3>Pour tout le disque</h3>
+            {BULK_FIELDS.map(field => (
+              <div key={field.key} className={styles.bulkField}>
+                <label className="label" htmlFor={`bulk-${field.key}`}>
+                  {field.label}
+                </label>
+                <div className={styles.bulkRow}>
                   <input
+                    id={`bulk-${field.key}`}
+                    className="input"
                     type="text"
-                    placeholder="https://..."
-                    onBlur={e => {
-                      const url = e.target.value.trim();
-                      if (url) {
-                        setNewCover(url);
-                        setCoverPreview(url);
-                      }
-                    }}
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                    }}
+                    value={bulk[field.key]}
+                    placeholder={field.placeholder}
+                    onChange={event => setBulk(current => ({ ...current, [field.key]: event.target.value }))}
                   />
+                  <button type="button" className="btn btn-icon btn-quiet" onClick={() => applyBulk(field.key)} aria-label={`Appliquer ${field.label} à toutes les pistes`} title="Appliquer à toutes les pistes">
+                    <Layers size={18} />
+                  </button>
                 </div>
+                {field.hint && <p className="hint">{field.hint}</p>}
               </div>
-            </div>
-
-            <div className={styles.magicAction}>
-              <div className={styles.tooltipContainer} style={{ width: '100%' }}>
-                <button className={styles.cleanBtn} onClick={cleanTitles}>
-                  <Sparkles size={16} />
-                  Nettoyer les titres
-                </button>
-                <div className={`${styles.tooltip} ${styles.tooltipRight}`} style={{ bottom: 'auto', top: '100%', left: '0', transform: 'none' }}>
-                  <strong>Action magique :</strong> Analyse les noms de fichiers pour en extraire le numéro de piste et le titre propre.
-                </div>
-              </div>
-            </div>
-
-            <div className={styles.magicAction}>
-              <div className={styles.tooltipContainer} style={{ width: '100%' }}>
-                <button 
-                  className={`${styles.cleanBtn} ${styles.suggestBtn}`} 
-                  onClick={handleSuggestTags}
-                  disabled={suggesting}
-                >
-                  {suggesting ? <RefreshCw className={styles.spin} size={16} /> : <Globe size={16} />}
-                  Suggérer via Internet
-                </button>
-                <div className={`${styles.tooltip} ${styles.tooltipRight}`} style={{ bottom: 'auto', top: '100%', left: '0', transform: 'none' }}>
-                  <strong>Recherche intelligente :</strong> Cherche l'album sur Internet et pré-remplit les titres et artistes officiels.
-                </div>
-              </div>
-            </div>
-          </div>
+            ))}
+          </section>
         </div>
 
-        <footer className={styles.footer}>
-          <div className={styles.info}>
-            <AlertTriangle size={14} color="var(--warning)" />
-            <span>Les modifications sont écrites directement dans les fichiers.</span>
-          </div>
-          <div className={styles.actions}>
-            <button className={styles.cancelBtn} onClick={requestClose} disabled={loading}>
-              Annuler
-            </button>
-            <button className={styles.saveBtn} onClick={handleSave} disabled={loading}>
-              {loading ? <RefreshCw className={styles.spin} size={18} /> : <Save size={18} />}
-              Sauvegarder les tags
-            </button>
-          </div>
-        </footer>
+        <section className={styles.editorGroup}>
+          <h3>Pistes ({edits.length})</h3>
+          {edits.map((edit, index) => (
+            <div key={edit.trackId} className={styles.trackCard}>
+              <div className={styles.cell}>
+                <label htmlFor={`disc-${index}`}>CD</label>
+                <input id={`disc-${index}`} className="input" inputMode="numeric" value={edit.disc || 1} onChange={event => updateTrack(index, 'disc', parseInt(event.target.value, 10) || 1)} />
+              </div>
+              <div className={styles.cell}>
+                <label htmlFor={`number-${index}`}>N°</label>
+                <input id={`number-${index}`} className="input" inputMode="numeric" value={edit.number || ''} onChange={event => updateTrack(index, 'number', parseInt(event.target.value, 10) || 0)} />
+              </div>
+              <div className={`${styles.cell} ${styles.cellTitle}`}>
+                <label htmlFor={`title-${index}`}>Titre</label>
+                <input id={`title-${index}`} className="input" value={edit.title} onChange={event => updateTrack(index, 'title', event.target.value)} />
+              </div>
+              <div className={`${styles.cell} ${styles.cellWide}`}>
+                <label htmlFor={`artist-${index}`}>Artiste de la piste</label>
+                <input id={`artist-${index}`} className="input" value={edit.artist} onChange={event => updateTrack(index, 'artist', event.target.value)} />
+              </div>
+              <div className={`${styles.cell} ${styles.cellWide}`}>
+                <label htmlFor={`album-artist-${index}`}>Artiste de l’album</label>
+                <input id={`album-artist-${index}`} className="input" value={edit.albumArtist} onChange={event => updateTrack(index, 'albumArtist', event.target.value)} />
+              </div>
+            </div>
+          ))}
+        </section>
       </div>
-    </div>
+    </Sheet>
   );
 }

@@ -1,289 +1,340 @@
-.container {
-  max-width: var(--container-width);
-  margin: 0 auto;
-}
-
-.backLink {
-  margin-bottom: 32px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-muted);
-  font-size: 0.875rem;
-  font-weight: 500;
-  transition: var(--transition);
-}
-
-.backLink:hover {
-  color: var(--foreground);
-}
-
-.loadingState {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-  padding: 100px 0;
-  color: var(--text-muted);
-  text-align: center;
-}
-
-.loadingState h2 {
-  color: var(--foreground);
-}
-
-.debugInfo {
-  margin-top: 24px;
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  opacity: 0.5;
-  text-align: center;
-}
-
-.header {
-  margin-bottom: 64px;
-}
-
-.albumHeader {
-  display: flex;
-  align-items: flex-end;
-  gap: 32px;
-}
-
-.albumCover {
-  width: 232px;
-  height: 232px;
-  background-color: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
+.album {
   position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+  isolation: isolate;
+  min-height: 70dvh;
+  overflow-x: clip;
 }
 
-.albumCover img {
+.aura {
+  position: absolute;
+  inset: -40px -40px auto;
+  z-index: -1;
+  height: 560px;
+  overflow: hidden;
+  opacity: 0.5;
+  mask-image: linear-gradient(180deg, #000 30%, transparent 100%);
+  pointer-events: none;
+}
+
+.aura img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  position: absolute;
-  top: 0;
-  left: 0;
-  z-index: 1;
+  filter: blur(46px) saturate(1.7);
+  transform: scale(1.3);
 }
 
-.albumIntro {
-  flex: 1;
+.inner {
+  position: relative;
+  padding: 8px var(--page-x) 32px;
 }
 
-.artistLink {
-  color: var(--accent);
-  text-decoration: none;
-  font-weight: 600;
-  font-size: 0.9375rem;
-  margin-bottom: 8px;
-  display: block;
-}
-
-.artistLink:hover {
-  text-decoration: underline;
-}
-
-.albumIntro h1 {
-  font-size: 3.5rem;
-  margin-bottom: 16px;
-  letter-spacing: -0.03em;
-  font-weight: 800;
-}
-
-.albumMeta {
-  display: flex;
+.back {
+  display: inline-flex;
   align-items: center;
-  gap: 12px;
-  color: var(--text-muted);
-  font-size: 0.9375rem;
-  margin-bottom: 32px;
-}
-
-.dot {
-  opacity: 0.3;
-}
-
-.qualityBadge {
-  background-color: rgba(255, 255, 255, 0.05);
-  padding: 2px 8px;
-  border-radius: 4px;
+  gap: 6px;
+  max-width: 100%;
+  min-height: 40px;
+  color: var(--paper);
+  font-size: 0.875rem;
   font-weight: 700;
-  color: var(--foreground);
-  text-transform: uppercase;
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.sleeve {
+  position: relative;
+  width: min(72vw, 300px);
+  margin: 4px auto 0;
+  box-shadow: 8px 8px 0 rgb(0 0 0 / 0.55);
+  transform: rotate(-1.6deg);
+}
+
+.tapePiece {
+  position: absolute;
+  z-index: 3;
+  width: 74px;
+  height: 22px;
+  background: rgb(231 255 46 / 0.82);
+  clip-path: var(--torn-x);
+}
+
+.tapeA {
+  top: -9px;
+  left: -22px;
+  transform: rotate(-38deg);
+}
+
+.tapeB {
+  top: -8px;
+  right: -22px;
+  transform: rotate(40deg);
+}
+
+.intro {
+  min-width: 0;
+}
+
+.introSkeleton {
+  height: 170px;
+}
+
+.artist {
+  display: block;
+  color: var(--acid);
   font-size: 0.8125rem;
 }
 
-.albumActions {
-  display: flex;
-  gap: 12px;
+.title {
+  margin-top: 6px;
+  overflow-wrap: anywhere;
+  font-size: clamp(2.5rem, 13vw, 5.5rem);
 }
 
-.button {
-  background-color: var(--accent);
-  color: #000000;
-  border: none;
-  padding: 12px 28px;
-  border-radius: var(--radius);
-  font-weight: 700;
-  font-size: 1rem;
-  cursor: pointer;
+.title[data-long='true'] {
+  font-size: clamp(1.875rem, 9.5vw, 4rem);
+}
+
+.meta {
+  margin-top: 10px;
+  color: var(--paper-2);
+}
+
+.badges {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  transition: var(--transition);
+  gap: 8px;
+  margin-top: 12px;
 }
 
-.button:hover {
-  background-color: var(--accent-hover);
-  transform: translateY(-2px);
-}
-
-.outlineButton {
-  background-color: transparent;
-  border: 1px solid var(--border);
-  color: var(--foreground);
-}
-
-.outlineButton:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-  border-color: var(--text-muted);
-}
-
-/* Tracks Table */
-.tracksSection {
-  margin-top: 48px;
-  background-color: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  overflow: hidden;
-}
-
-.tracksTable {
-  width: 100%;
-  border-collapse: collapse;
-  text-align: left;
-}
-
-.tracksTable th {
-  padding: 16px 20px;
-  background-color: var(--background);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
+.badges > :global(.sticker) {
   font-size: 0.75rem;
-  text-transform: uppercase;
+}
+
+.flat {
+  transform: none;
+  border-radius: 2px;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.actions > :global(.btn) {
+  flex: 1 1 auto;
+}
+
+/* --- Setlist : une feuille scotchée au retour de scène -------------------------------- */
+
+.setlist {
+  position: relative;
+  margin-top: 30px;
+  padding: 18px 14px 14px;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 47px, rgb(15 14 12 / 0.07) 47px 48px),
+    var(--paper);
+  color: var(--ink);
+  box-shadow: 5px 6px 0 rgb(0 0 0 / 0.5);
+  clip-path: polygon(
+    0 6px, 7% 0, 16% 5px, 26% 1px, 37% 6px, 48% 0, 59% 5px, 70% 1px, 81% 6px, 92% 1px, 100% 5px,
+    100% 100%, 0 100%
+  );
+}
+
+.tapeC {
+  display: none;
+}
+
+.setlistTitle {
+  font-size: 2rem;
+  line-height: 1.1;
+  transform: rotate(-1.5deg);
+  transform-origin: left;
+}
+
+.setlistEmpty {
+  padding: 22px 0;
+  color: #57503f;
   font-weight: 600;
-  letter-spacing: 0.1em;
 }
 
-.tracksTable td {
-  padding: 12px 20px;
-  border-bottom: 1px solid var(--border);
-  font-size: 0.9375rem;
-  vertical-align: middle;
+.disc + .disc {
+  margin-top: 22px;
 }
 
-.tracksTable tr:last-child td {
-  border-bottom: none;
+.discTitle {
+  margin-top: 10px;
+  color: #c01742;
+  font-size: 1.25rem;
 }
 
-.tracksTable tr:hover td {
-  background-color: rgba(255, 255, 255, 0.03);
+.tracks {
+  margin-top: 6px;
 }
 
-.trackNumber {
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
+.track {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'num name dur'
+    'num tech tech';
+  align-items: baseline;
+  column-gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid rgb(15 14 12 / 0.16);
+}
+
+.track:last-child {
+  border-bottom: 0;
+}
+
+.number {
+  grid-area: num;
+  color: #6c6452;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.8125rem;
+}
+
+.trackName {
+  grid-area: name;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.trackName small {
+  display: block;
+  color: #6c6452;
+  font-size: 0.8125rem;
   font-weight: 500;
 }
 
-.trackTitle {
-  font-weight: 600;
-  color: var(--foreground);
+.trackTech {
+  grid-area: tech;
+  color: #6c6452;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.6875rem;
 }
 
-.trackMeta {
-  color: var(--text-muted);
-  font-size: 0.875rem;
+.duration {
+  grid-area: dur;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.8125rem;
 }
 
-.formatTag {
-  background-color: rgba(255, 255, 255, 0.05);
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 600;
+.tick {
+  display: none;
 }
 
-.remoteTrack {
-  opacity: 0.4;
-  filter: grayscale(0.5);
+/* Barré au marqueur : ce titre n'est pas sur le disque */
+.track[data-missing='true'] .trackName > span {
+  text-decoration: line-through;
+  text-decoration-color: #e01f4f;
+  text-decoration-thickness: 3px;
+  color: #6c6452;
 }
 
-.statusMissing {
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  font-style: italic;
+.track[data-missing='true'] .trackTech {
+  color: #c01742;
 }
 
-@media (max-width: 768px) {
-  .header {
-    margin-bottom: 32px;
+/* --- Fiche technique ------------------------------------------------------------------ */
+
+.tech {
+  margin-top: 22px;
+  border-top: 2px solid var(--line);
+  border-bottom: 2px solid var(--line);
+}
+
+.tech summary {
+  min-height: 46px;
+  padding: 14px 0;
+  color: var(--paper-2);
+  cursor: pointer;
+}
+
+.tech dl {
+  padding-bottom: 12px;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px 0;
+}
+
+.fact dt {
+  color: var(--faint);
+  font-size: 0.6875rem;
+}
+
+.fact dd {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.8125rem;
+}
+
+@media (min-width: 720px) {
+  .hero {
+    flex-direction: row;
+    align-items: flex-end;
+    gap: 36px;
   }
 
-  .albumHeader {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 24px;
+  .sleeve {
+    flex: none;
+    width: clamp(220px, 28vw, 340px);
+    margin: 8px 0 0 8px;
   }
 
-  .albumIntro h1 {
-    font-size: 2rem;
-    margin-bottom: 12px;
+  .intro {
+    flex: 1;
+    padding-bottom: 4px;
   }
 
-  .albumMeta {
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 8px;
-    font-size: 0.85rem;
-    margin-bottom: 24px;
+  .actions > :global(.btn) {
+    flex: 0 0 auto;
   }
 
-  .albumActions {
-    flex-direction: column;
-    width: 100%;
-    gap: 10px;
+  .setlist {
+    max-width: 880px;
+    margin-top: 40px;
+    padding: 24px 28px 18px;
+    transform: rotate(0.25deg);
   }
 
-  .button {
-    width: 100%;
-    justify-content: center;
-    padding: 10px 20px;
-    font-size: 0.9375rem;
+  .track {
+    grid-template-columns: 34px minmax(0, 1fr) auto 64px;
+    grid-template-areas: 'num name tech dur';
+    column-gap: 14px;
+  }
+
+  .duration {
+    text-align: right;
+  }
+
+  .tech {
+    max-width: 880px;
   }
 }
 
-@media (max-width: 600px) {
-  .tracksTable th:nth-child(4),
-  .tracksTable td:nth-child(4),
-  .tracksTable th:nth-child(5),
-  .tracksTable td:nth-child(5) {
-    display: none;
+@media (min-width: 1100px) {
+  .aura {
+    inset: -40px 0 auto;
   }
 
-  .tracksTable th, .tracksTable td {
-    padding: 10px 12px;
-    font-size: 0.85rem;
+  .inner {
+    padding-top: 20px;
   }
 }

@@ -1,37 +1,114 @@
+/*
+ * Musicarr — identité « fanzine »
+ *
+ * Une collection, c'est un mur d'affiches de concert et un bac à disques :
+ * photocopie sur papier de couleur, adhésif, stickers de pochette. Trois
+ * encres, pas une de plus — les pochettes apportent déjà toute la couleur.
+ *
+ *   --acid  : ce qu'on possède, l'action principale
+ *   --hot   : ce qui manque, ce qui est dangereux
+ *   --aqua  : ce qui est en train de se passer
+ *
+ * Les primitives partagées (boutons, adhésif, stickers, champs…) vivent ici ;
+ * chaque écran garde sa mise en page dans son propre module CSS.
+ */
+
 :root {
-  --background: #0a0a0c;
-  --foreground: #f8fafc;
-  --card-bg: #141416;
-  --sidebar-bg: #000000;
-  --accent: #ffffff;
-  --accent-hover: #e2e8f0;
-  --accent-contrast: #0a0a0c;
-  --border: #27272a;
-  --text-muted: #94a3b8;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --radius: 12px;
-  --radius-sm: 8px;
-  --container-width: 1440px;
-  --transition: all 0.15s ease;
+  color-scheme: dark;
+
+  --ink: #0f0e0c;
+  --ink-2: #191714;
+  --ink-3: #25221e;
+  --ink-4: #353029;
+  --line: #3b362f;
+
+  --paper: #f5eddd;
+  --paper-2: #e5d9c0;
+  --muted: #aaa191;
+  --faint: #8f8779;
+
+  --hot: #ff2f63;
+  --acid: #e7ff2e;
+  --aqua: #37e6d6;
+  --orange: #ff8b22;
+
+  --radius: 3px;
+  --sidebar-w: 248px;
+  --dock-h: 62px;
+  --page-x: 16px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-punch: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Bords déchirés de l'adhésif */
+  --torn-x: polygon(
+    0 0, 100% 0, calc(100% - 4px) 20%, 100% 40%, calc(100% - 4px) 60%, 100% 80%, calc(100% - 4px) 100%,
+    0 100%, 4px 80%, 0 60%, 4px 40%, 0 20%
+  );
+
+  /* Grain de photocopie, posé derrière le contenu */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .55 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --halftone: radial-gradient(circle at center, currentColor 28%, transparent 30%);
+}
+
+@media (min-width: 600px) {
+  :root {
+    --page-x: 24px;
+  }
+}
+
+@media (min-width: 1100px) {
+  :root {
+    --page-x: 40px;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
 * {
-  box-sizing: border-box;
-  padding: 0;
   margin: 0;
+  padding: 0;
 }
 
-html,
+html {
+  /* `clip` et non `hidden` : `overflow: hidden` casse `position: sticky`. */
+  overflow-x: clip;
+  background: var(--ink);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  scrollbar-color: var(--ink-4) var(--ink);
+}
+
+html:has(dialog[open]) {
+  overflow: hidden;
+}
+
 body {
-  max-width: 100vw;
-  overflow-x: hidden;
-  font-family: var(--font-sans);
-  background-color: var(--background);
-  color: var(--foreground);
-  line-height: 1.5;
+  min-height: 100dvh;
+  overflow-x: clip;
+  font-family: var(--font-body), system-ui, sans-serif;
+  font-size: 1rem;
+  line-height: 1.45;
+  background: var(--ink);
+  color: var(--paper);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: var(--grain);
+  opacity: 0.07;
 }
 
 a {
@@ -43,84 +120,657 @@ button,
 input,
 select,
 textarea {
-  font-family: inherit;
-  font-size: inherit;
+  font: inherit;
+  color: inherit;
 }
 
 button {
+  background: none;
+  border: 0;
   cursor: pointer;
+  touch-action: manipulation;
 }
 
 button:disabled {
   cursor: not-allowed;
 }
 
-/* Focus visible uniquement à la navigation clavier */
+img {
+  display: block;
+  max-width: 100%;
+}
+
+ul,
+ol {
+  list-style: none;
+}
+
 :focus-visible {
-  outline: 2px solid var(--text-muted);
+  outline: 3px solid var(--aqua);
   outline-offset: 2px;
 }
 
-h1, h2, h3, h4, h5, h6 {
-  font-weight: 600;
-  letter-spacing: -0.025em;
+::selection {
+  background: var(--hot);
+  color: var(--ink);
 }
 
-h1 {
-  font-size: 1.75rem;
+h1,
+h2,
+h3,
+h4 {
+  font-weight: 700;
+  line-height: 1.1;
 }
 
-.scroll-thin::-webkit-scrollbar {
-  width: 6px;
+code {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.9em;
 }
 
-.scroll-thin::-webkit-scrollbar-track {
-  background: transparent;
+/* --- Typographie --------------------------------------------------------- */
+
+.display {
+  font-family: var(--font-display), Impact, sans-serif;
+  font-weight: 400;
+  text-transform: uppercase;
+  line-height: 0.98;
+  letter-spacing: 0.006em;
 }
 
-.scroll-thin::-webkit-scrollbar-thumb {
-  background: var(--border);
-  border-radius: 10px;
+/* Le léger décalage d'une impression en deux passages */
+.misprint {
+  text-shadow: 0.038em 0.038em 0 var(--hot);
 }
 
-.scroll-thin::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
+.mono {
+  font-family: var(--font-mono), ui-monospace, monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
-/* Spinner partagé (utilisé partout via className="animate-spin") */
-@keyframes global-spin {
-  from {
-    transform: rotate(0deg);
+.hand {
+  font-family: var(--font-hand), 'Comic Sans MS', cursive;
+  font-weight: 400;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.clamp-1,
+.clamp-2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.clamp-1 {
+  -webkit-line-clamp: 1;
+}
+
+.clamp-2 {
+  -webkit-line-clamp: 2;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* --- Adhésif --------------------------------------------------------------- */
+
+.tape {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+  background: var(--acid);
+  color: var(--ink);
+  font-family: var(--font-mono), monospace;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  line-height: 1.5;
+  text-transform: uppercase;
+  white-space: nowrap;
+  clip-path: var(--torn-x);
+  transform: rotate(-1.2deg);
+}
+
+.tape-hot {
+  background: var(--hot);
+}
+
+.tape-aqua {
+  background: var(--aqua);
+}
+
+.tape-paper {
+  background: var(--paper);
+}
+
+/* --- Stickers de pochette ----------------------------------------------------- */
+
+.sticker {
+  display: inline-grid;
+  place-items: center;
+  min-width: 2.75em;
+  padding: 0.3em 0.55em;
+  border-radius: 40% 60% 55% 45% / 60% 45% 55% 40%;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-mono), monospace;
+  font-size: 0.625rem;
+  font-weight: 500;
+  letter-spacing: 0.03em;
+  line-height: 1.15;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 1px 2px 0 rgb(0 0 0 / 0.55);
+  transform: rotate(var(--tilt, 6deg));
+}
+
+.sticker-flac {
+  background: var(--acid);
+}
+
+.sticker-hot {
+  background: var(--hot);
+}
+
+.sticker-aqua {
+  background: var(--aqua);
+}
+
+.sticker-flat {
+  background: var(--ink-4);
+  color: var(--paper);
+  box-shadow: none;
+}
+
+/* --- Boutons ---------------------------------------------------------------- */
+
+.btn {
+  --btn-bg: transparent;
+  --btn-fg: var(--paper);
+  --btn-line: var(--paper);
+  --btn-shadow: transparent;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 2px solid var(--btn-line);
+  border-radius: var(--radius);
+  background: var(--btn-bg);
+  color: var(--btn-fg);
+  box-shadow: 3px 3px 0 var(--btn-shadow);
+  font-size: 0.8125rem;
+  font-weight: 800;
+  font-stretch: 88%;
+  letter-spacing: 0.035em;
+  line-height: 1.1;
+  text-align: center;
+  text-transform: uppercase;
+  white-space: nowrap;
+  transition:
+    transform 0.12s var(--ease-out),
+    box-shadow 0.12s var(--ease-out),
+    background-color 0.15s,
+    color 0.15s;
+  user-select: none;
+}
+
+.btn:hover:not(:disabled) {
+  --btn-bg: var(--ink-3);
+}
+
+.btn:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 var(--btn-shadow);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+}
+
+.btn-primary {
+  --btn-bg: var(--acid);
+  --btn-fg: var(--ink);
+  --btn-line: var(--ink);
+  --btn-shadow: var(--hot);
+}
+
+.btn-primary:hover:not(:disabled) {
+  --btn-bg: #f4ff7a;
+}
+
+.btn-danger {
+  --btn-fg: var(--hot);
+  --btn-line: var(--hot);
+}
+
+.btn-danger:hover:not(:disabled) {
+  --btn-bg: var(--hot);
+  --btn-fg: var(--ink);
+}
+
+.btn-danger-solid {
+  --btn-bg: var(--hot);
+  --btn-fg: var(--ink);
+  --btn-line: var(--ink);
+  --btn-shadow: var(--paper);
+}
+
+.btn-danger-solid:hover:not(:disabled) {
+  --btn-bg: #ff5c85;
+}
+
+.btn-quiet {
+  --btn-line: var(--line);
+}
+
+.btn-icon {
+  width: 44px;
+  padding: 0;
+  flex: none;
+}
+
+.btn-sm {
+  min-height: 38px;
+  padding: 0 12px;
+  font-size: 0.75rem;
+}
+
+.btn-sm.btn-icon {
+  width: 38px;
+  padding: 0;
+}
+
+.btn-block {
+  width: 100%;
+}
+
+/* Au téléphone, l'icône seule : le titre garde la ligne */
+@media (max-width: 599px) {
+  .btn-collapse {
+    width: 44px;
+    padding: 0;
   }
+
+  .btn-collapse > span {
+    display: none;
+  }
+}
+
+/* --- Pastilles et rangées défilantes -------------------------------------------- */
+
+.chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin-inline: calc(var(--page-x) * -1);
+  padding: 2px var(--page-x);
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  scroll-padding-inline: var(--page-x);
+}
+
+.chips::-webkit-scrollbar {
+  display: none;
+}
+
+.chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 0 13px;
+  border: 1.5px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--paper-2);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    border-color 0.15s;
+}
+
+.chip:hover {
+  border-color: var(--muted);
+}
+
+.chip[aria-pressed='true'],
+.chip[aria-current='page'],
+.chip[aria-checked='true'] {
+  border-color: var(--paper);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+.chip small {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.6875rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+
+/* --- Champs ------------------------------------------------------------------- */
+
+.label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--paper-2);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.hint {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+.hint a {
+  text-decoration: underline;
+}
+
+.input {
+  display: block;
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 12px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink-2);
+  /* 16 px minimum : en dessous, iOS zoome la page au focus. */
+  font-size: 1rem;
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.input::placeholder {
+  color: var(--faint);
+}
+
+.input:focus {
+  border-color: var(--acid);
+  outline: 0;
+  box-shadow: 3px 3px 0 var(--hot);
+}
+
+select.input {
+  appearance: none;
+  padding-right: 36px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23f5eddd' stroke-width='2.5'%3E%3Cpath d='m3 6 5 5 5-5'/%3E%3C/svg%3E");
+  background-position: right 12px center;
+  background-repeat: no-repeat;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  flex: none;
+  width: 52px;
+  height: 30px;
+}
+
+.switch input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.switch span {
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink-3);
+  pointer-events: none;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.switch span::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 1px;
+  background: var(--muted);
+  transition: transform 0.2s var(--ease-punch), background-color 0.15s;
+}
+
+.switch input:checked + span {
+  border-color: var(--acid);
+  background: var(--acid);
+}
+
+.switch input:checked + span::after {
+  background: var(--ink);
+  transform: translateX(22px);
+}
+
+.switch input:focus-visible + span {
+  outline: 3px solid var(--aqua);
+  outline-offset: 2px;
+}
+
+/* --- Progression : ruban de chantier ---------------------------------------------- */
+
+.tapebar {
+  --p: 0%;
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 8px;
+  overflow: hidden;
+  background: var(--ink-4);
+}
+
+.tapebar > i {
+  display: block;
+  width: var(--p);
+  height: 100%;
+  background: repeating-linear-gradient(-55deg, var(--acid) 0 8px, var(--ink) 8px 14px);
+  background-size: 200% 100%;
+  transition: width 0.5s var(--ease-out);
+  animation: tapebar-march 1.1s linear infinite;
+}
+
+.tapebar[data-indeterminate='true'] > i {
+  width: 100%;
+  background-image: repeating-linear-gradient(-55deg, var(--aqua) 0 8px, var(--ink) 8px 14px);
+}
+
+@keyframes tapebar-march {
+  to {
+    background-position: -17.1px 0;
+  }
+}
+
+/* --- Disque miniature : témoin d'activité ------------------------------------------- */
+
+.mini-record {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--ink) 0 8%, var(--acid) 9% 30%, transparent 31%),
+    repeating-radial-gradient(circle, #000 0 1.5px, #24211d 1.5px 3px);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+  animation: record-spin 1.8s linear infinite;
+}
+
+.mini-record::after {
+  content: '';
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: conic-gradient(from 20deg, transparent 0 12%, rgb(255 255 255 / 0.2) 16%, transparent 22% 62%, rgb(255 255 255 / 0.12) 66%, transparent 72%);
+}
+
+@keyframes record-spin {
   to {
     transform: rotate(360deg);
   }
 }
 
-.animate-spin {
-  animation: global-spin 1s linear infinite;
+/* --- Divers ------------------------------------------------------------------------- */
+
+.page {
+  position: relative;
+  min-width: 0;
+  padding: 16px var(--page-x) 32px;
 }
 
-@keyframes global-pulse {
-  0%, 100% {
-    opacity: 1;
-  }
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 56px 16px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.empty .hand {
+  color: var(--paper);
+  font-size: 1.625rem;
+  line-height: 1.15;
+  transform: rotate(-1.5deg);
+}
+
+.empty p {
+  max-width: 44ch;
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink-2);
+  font-size: 0.875rem;
+}
+
+.notice > svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+.notice-bad {
+  border-color: var(--hot);
+}
+
+.notice-bad > svg {
+  color: var(--hot);
+}
+
+.notice-warn {
+  border-color: var(--orange);
+}
+
+.notice-warn > svg {
+  color: var(--orange);
+}
+
+.notice-ok {
+  border-color: var(--acid);
+}
+
+.notice-ok > svg {
+  color: var(--acid);
+}
+
+.spin {
+  animation: record-spin 1s linear infinite;
+}
+
+.pulse {
+  animation: pulse-fade 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-fade {
   50% {
-    opacity: 0.4;
+    opacity: 0.35;
   }
 }
 
-.animate-pulse {
-  animation: global-pulse 1.5s ease-in-out infinite;
+.skeleton {
+  background: linear-gradient(100deg, var(--ink-2) 30%, var(--ink-3) 50%, var(--ink-2) 70%);
+  background-size: 300% 100%;
+  animation: skeleton-sweep 1.5s linear infinite;
 }
 
-/* Respecter la préférence utilisateur de réduction des animations */
+@keyframes skeleton-sweep {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -50% 0;
+  }
+}
+
+/* Transitions entre écrans : un coup de « cut » franc, pas un fondu mou */
+::view-transition-old(root) {
+  animation: 110ms ease-in both vt-out;
+}
+
+::view-transition-new(root) {
+  animation: 190ms var(--ease-out) both vt-in;
+}
+
+@keyframes vt-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes vt-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+::view-transition-group(*) {
+  animation-duration: 320ms;
+  animation-timing-function: var(--ease-out);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
-  *::after {
+  *::after,
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
   }
 }

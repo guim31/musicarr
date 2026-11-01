@@ -13,22 +13,24 @@ Musicarr est une alternative moderne à Lidarr pour la gestion de votre biblioth
   (téléchargement direct Deezer, FLAC compris).
 - 🏷️ **Édition des tags** — éditeur intégré, suggestions de pochettes et de
   tags, réorganisation physique des fichiers après modification.
-- 📊 **Suivi en direct** — journal d'activité et notifications de progression
-  pour les scans, synchronisations et téléchargements.
-- 🐳 **Docker** — image officielle sur Docker Hub, mises à jour détectées
+- 📊 **Suivi en direct** — mini-lecteur et journal d'activité pour les scans,
+  synchronisations et téléchargements.
+- 📱 **Pensé pour le téléphone** — navigation au pouce, feuilles modales, rail
+  alphabétique, installable sur l'écran d'accueil.
+- 🐳 **Docker** — image publiée sur ghcr.io, mises à jour détectées
   automatiquement par Unraid.
 
 ## Installation rapide
 
-Avec l'image publiée sur Docker Hub
-([`guilhem31/musicarr`](https://hub.docker.com/r/guilhem31/musicarr)) :
+Avec l'image publiée sur ghcr.io
+([`guim31/musicarr`](https://github.com/guim31/musicarr/pkgs/container/musicarr)) :
 
 ```bash
 docker run -d --name musicarr \
   -p 3005:3000 \
   -v /chemin/vers/appdata/musicarr/data:/app/data \
   -v /chemin/vers/votre/musique:/app/music \
-  guilhem31/musicarr:latest
+  ghcr.io/guim31/musicarr:latest
 ```
 
 Sur Unraid, voir `DEPLOIEMENT_NAS.md` : le container s'installe depuis la

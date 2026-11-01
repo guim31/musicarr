@@ -1,0 +1,239 @@
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  margin-inline: calc(var(--page-x) * -1);
+  padding: 12px var(--page-x) 10px;
+  background: var(--ink);
+}
+
+.filters {
+  margin-top: 2px;
+}
+
+.count {
+  margin: 12px 0 6px;
+  color: var(--muted);
+}
+
+.emptyActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.skeleton {
+  height: 60dvh;
+}
+
+.groups {
+  min-width: 0;
+  flex: 1;
+}
+
+.group {
+  scroll-margin-top: 70px;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 10px;
+  font-size: 1.75rem;
+}
+
+.divider span {
+  display: grid;
+  place-items: center;
+  min-width: 42px;
+  height: 42px;
+  padding: 0 8px;
+  background: var(--paper);
+  color: var(--ink);
+  transform: rotate(-2deg);
+}
+
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  background: var(--line);
+}
+
+.wall {
+  display: flex;
+  flex-direction: column;
+}
+
+.artist {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 66px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.art {
+  flex: none;
+  width: 54px;
+  height: 54px;
+}
+
+.art span {
+  display: none;
+}
+
+.artistText {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.artistName {
+  font-size: 1.125rem;
+  font-weight: 400;
+  line-height: 1.12;
+}
+
+.artistMeta {
+  color: var(--muted);
+  font-size: 0.6875rem;
+  text-transform: none;
+}
+
+.artistMeta em {
+  color: var(--hot);
+  font-style: normal;
+}
+
+.artist:active {
+  background: var(--ink-2);
+}
+
+/* --- Rail alphabétique --------------------------------------------------------------- */
+
+.rail {
+  position: sticky;
+  top: 74px;
+  z-index: 10;
+  display: flex;
+  flex: none;
+  max-height: calc(100dvh - var(--dock-h) - var(--safe-b) - 96px);
+  flex-direction: column;
+  align-items: center;
+  margin-right: calc(var(--page-x) * -1 + 2px);
+  padding: 4px 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-right: 0;
+  background: var(--ink-2);
+  touch-action: none;
+  user-select: none;
+}
+
+.rail button {
+  display: block;
+  width: 24px;
+  flex: 0 1 auto;
+  min-height: 0;
+  padding: 1.5px 0;
+  overflow: hidden;
+  color: var(--paper-2);
+  font-family: var(--font-mono), monospace;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.15;
+  touch-action: none;
+}
+
+.rail button:hover,
+.rail button[data-active='true'] {
+  background: var(--acid);
+  color: var(--ink);
+}
+
+.bigLetter {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  border: 3px solid var(--ink);
+  background: var(--acid);
+  box-shadow: 6px 6px 0 var(--hot);
+  color: var(--ink);
+  font-size: 4.5rem;
+  text-shadow: none;
+  pointer-events: none;
+  transform: translate(-50%, -50%) rotate(-4deg);
+}
+
+/* --- Mur d'affiches sur grand écran ------------------------------------------------------ */
+
+@media (min-width: 900px) {
+  .group {
+    scroll-margin-top: 76px;
+  }
+
+  .layout {
+    gap: 20px;
+  }
+
+  .wall {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+    gap: 20px 16px;
+  }
+
+  .artist {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 0;
+    border-bottom: 0;
+  }
+
+  .art {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    transition: transform 0.22s var(--ease-punch);
+  }
+
+  .art span {
+    display: -webkit-box;
+  }
+
+  .artist:hover .art {
+    transform: rotate(-1.5deg) scale(1.02);
+  }
+
+  .artist:hover .artistName {
+    color: var(--acid);
+  }
+
+  .rail {
+    margin-right: -16px;
+    border: 1px solid var(--line);
+    max-height: calc(100dvh - 96px);
+  }
+
+  .rail button {
+    width: 28px;
+    padding: 2px 0;
+  }
+}

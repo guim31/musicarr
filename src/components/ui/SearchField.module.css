@@ -1,0 +1,54 @@
+.field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--ink-2);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s;
+}
+
+.field:focus-within {
+  border-color: var(--acid);
+  box-shadow: 3px 3px 0 var(--hot);
+}
+
+.field > svg {
+  flex: none;
+  margin-left: 12px;
+  color: var(--muted);
+}
+
+.field input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  flex: 1;
+  padding: 8px 10px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  font-size: 1rem;
+  appearance: none;
+}
+
+.field input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.field input::placeholder {
+  color: var(--faint);
+}
+
+.field button {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  color: var(--muted);
+}

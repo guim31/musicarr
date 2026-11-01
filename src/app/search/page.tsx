@@ -1,231 +1,192 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Search as SearchIcon, Download, Loader2, AlertCircle, ExternalLink, HardDrive } from 'lucide-react';
-import styles from './Search.module.css';
+import React, { useMemo, useState } from 'react';
+import Link from 'next/link';
+import { AlertTriangle, Download, ExternalLink, RefreshCw, Search as SearchIcon } from 'lucide-react';
+import Cover from '@/components/ui/Cover';
+import PageHeader from '@/components/ui/PageHeader';
+import { useActivity } from '@/context/ActivityContext';
 import { useToast } from '@/context/ToastContext';
+import { api, postJson } from '@/lib/ui/api';
+import { plural } from '@/lib/ui/format';
+import styles from './Search.module.css';
+
+interface Result {
+  guid?: string;
+  title: string;
+  indexer: string;
+  size: string;
+  publishDate?: string;
+  downloadUrl: string;
+  infoUrl?: string;
+  quality: string;
+  protocol: string;
+  seeders?: number;
+  peers?: number;
+  image?: string | null;
+}
+
+const PROTOCOLS: Record<string, { label: string; tone: string }> = {
+  deemix: { label: 'Deezer', tone: 'sticker-flac' },
+  usenet: { label: 'Usenet', tone: 'sticker-aqua' },
+  torrent: { label: 'Torrent', tone: 'sticker-flat' },
+};
 
 export default function SearchPage() {
   const { showToast } = useToast();
+  const { refresh } = useActivity();
   const [query, setQuery] = useState('');
+  const [submitted, setSubmitted] = useState('');
   const [searching, setSearching] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<Result[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [downloadingItems, setDownloadingItems] = useState<Record<string, boolean>>({});
+  const [protocol, setProtocol] = useState<string>('all');
+  const [downloading, setDownloading] = useState<Record<string, boolean>>({});
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-
+  const handleSearch = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const trimmed = query.trim();
+    if (!trimmed) return;
     setSearching(true);
     setError(null);
     try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Erreur lors de la recherche');
-      }
-      const data = await res.json();
+      const data = await api<Result[]>(`/api/search?q=${encodeURIComponent(trimmed)}`);
       setResults(data);
-      setHasSearched(true);
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message);
+      setSubmitted(trimmed);
+      setProtocol('all');
+    } catch (cause) {
+      setError((cause as Error).message);
     } finally {
       setSearching(false);
     }
   };
 
-  const handleDownload = async (result: any) => {
-    if (result.protocol === 'torrent') {
-      showToast("Le téléchargement de torrents n'est pas encore supporté par Musicarr.", 'warning');
-      return;
-    }
-
-    const itemId = result.guid || result.title;
-    setDownloadingItems(prev => ({ ...prev, [itemId]: true }));
-    setError(null);
-
+  const handleDownload = async (result: Result) => {
+    const key = result.guid || result.title;
+    setDownloading(current => ({ ...current, [key]: true }));
     try {
-      const res = await fetch('/api/download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          url: result.downloadUrl, 
-          title: result.title, 
-          protocol: result.protocol 
-        })
-      });
-      
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.error || 'Erreur lors du téléchargement');
-      }
-      
-      const message = result.protocol === 'deemix'
-        ? `Téléchargement Deezer démarré : ${result.title}`
-        : `Ajouté à SABnzbd : ${result.title}`;
-
-      showToast(message, 'success');
-    } catch (err: any) {
-      console.error(err);
-      showToast(err.message || 'Erreur lors du téléchargement', 'error');
+      await postJson('/api/download', { url: result.downloadUrl, title: result.title, protocol: result.protocol });
+      showToast(result.title.replace(/^\[Deezer\]\s*/, ''), 'info', result.protocol === 'deemix' ? 'Téléchargement lancé' : 'Envoyé à SABnzbd');
+      refresh();
+    } catch (cause) {
+      showToast((cause as Error).message, 'error');
     } finally {
-      setDownloadingItems(prev => ({ ...prev, [itemId]: false }));
+      setDownloading(current => ({ ...current, [key]: false }));
     }
   };
 
-  return (
-    <div>
-      <header style={{ marginBottom: '32px' }}>
-        <h1>Recherche Musicale</h1>
-        <p style={{ color: 'var(--text-muted)' }}>Explorez vos indexeurs pour trouver de nouvelles pépites.</p>
-      </header>
+  const available = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const result of results) counts.set(result.protocol, (counts.get(result.protocol) ?? 0) + 1);
+    return [...counts.entries()];
+  }, [results]);
 
-      <form className={styles.searchHeader} onSubmit={handleSearch}>
-        <div className={styles.searchInputWrapper}>
-          <SearchIcon className={styles.searchIcon} size={20} />
-          <input 
-            type="text" 
-            className={styles.searchInput} 
-            placeholder="Artiste, album ou titre..." 
+  const visible = protocol === 'all' ? results : results.filter(result => result.protocol === protocol);
+
+  return (
+    <div className="page">
+      <PageHeader mark="Face A · Piste 3" title="Recherche" subtitle="Deezer et vos indexeurs, d’un seul coup." />
+
+      <form className={styles.form} onSubmit={handleSearch} role="search">
+        <div className={styles.field}>
+          <SearchIcon size={20} aria-hidden="true" />
+          <input
+            type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={event => setQuery(event.target.value)}
+            placeholder="Artiste, album, titre…"
+            aria-label="Rechercher"
+            autoComplete="off"
+            enterKeyHint="search"
           />
         </div>
-        <button 
-          type="submit" 
-          className={styles.downloadButton}
-          style={{ width: 'auto', padding: '0 24px', height: '48px' }}
-          disabled={searching || !query.trim()}
-        >
-          {searching ? <Loader2 size={20} className="animate-spin" /> : <SearchIcon size={20} />}
-          <span style={{ marginLeft: '8px' }}>{searching ? 'Recherche...' : 'Rechercher'}</span>
+        <button type="submit" className="btn btn-primary" disabled={searching || !query.trim()}>
+          {searching ? <RefreshCw size={18} className="spin" /> : <SearchIcon size={18} />}
+          {searching ? 'On fouille…' : 'Chercher'}
         </button>
       </form>
 
       {error && (
-        <div style={{ 
-          padding: '16px', 
-          backgroundColor: 'rgba(239, 68, 68, 0.1)', 
-          color: 'var(--danger)', 
-          borderRadius: 'var(--radius)',
-          marginBottom: '24px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          border: '1px solid rgba(239, 68, 68, 0.2)'
-        }}>
-          <AlertCircle size={20} />
+        <div className={`notice notice-bad ${styles.notice}`}>
+          <AlertTriangle size={18} />
           {error.includes('configuré') ? (
-            <span>Prowlarr n&apos;est pas configuré. <a href="/settings" style={{ textDecoration: 'underline', fontWeight: 600 }}>Allez dans les réglages</a>.</span>
-          ) : error}
+            <span>
+              Prowlarr n'est pas configuré : <Link href="/settings">allez dans les réglages</Link>.
+            </span>
+          ) : (
+            <span>{error}</span>
+          )}
         </div>
       )}
 
-      {results.length > 0 ? (
-        <div className={styles.resultsTableWrapper}>
-          <table className={styles.resultsTable}>
-            <thead>
-              <tr>
-                <th>Titre / Release</th>
-                <th>Indexer</th>
-                <th>Type</th>
-                <th>Taille</th>
-                <th>Qualité</th>
-                <th style={{ textAlign: 'center' }}>S/P</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {results.map((result, i) => (
-                <tr key={result.guid || i}>
-                  <td className={styles.titleCell} style={{ maxWidth: '400px' }}>
-                    <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={result.title}>
-                      {result.title}
-                    </div>
-                  </td>
-                  <td className={styles.indexerBadge}>{result.indexer}</td>
-                  <td>
-                    <span style={{ 
-                      fontSize: '0.7rem', 
-                      padding: '2px 6px', 
-                      borderRadius: '4px', 
-                      backgroundColor: result.protocol === 'usenet' ? 'rgba(59, 130, 246, 0.1)' : 
-                                      result.protocol === 'deemix' ? 'rgba(168, 85, 247, 0.1)' : 'rgba(234, 179, 8, 0.1)',
-                      color: result.protocol === 'usenet' ? '#60a5fa' : 
-                             result.protocol === 'deemix' ? '#a855f7' : '#facc15',
-                      fontWeight: 600,
-                      textTransform: 'uppercase'
-                    }}>
-                      {result.protocol === 'usenet' ? 'NZB' : 
-                       result.protocol === 'deemix' ? 'DEEZER' : 'Torrent'}
-                    </span>
-                  </td>
-                  <td style={{ color: 'var(--text-muted)' }}>{result.size}</td>
-                  <td>
-                    <span className={`${styles.qualityBadge} ${result.quality === 'FLAC' ? styles.flacBadge : styles.mp3Badge}`}>
-                      {result.quality}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'center' }}>
-                    {result.seeders !== undefined && (
-                      <span className={styles.seeders}>{result.seeders}</span>
-                    )}
-                    <span style={{ color: 'var(--text-muted)', margin: '0 4px' }}>/</span>
-                    <span style={{ color: 'var(--text-muted)' }}>{result.peers || 0}</span>
-                  </td>
-                  <td>
-                    <div className={styles.actions}>
-                      {result.infoUrl && (
-                        <a 
-                          href={result.infoUrl} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className={styles.iconButton}
-                          title="Voir la source"
-                        >
-                          <ExternalLink size={16} />
-                        </a>
-                      )}
-                      <button 
-                        onClick={() => handleDownload(result)}
-                        className={styles.downloadButton}
-                        title={result.protocol === 'torrent' ? "Non supporté" : (result.protocol === 'deemix' ? "Télécharger via Deemix" : "Télécharger via SABnzbd")}
-                        disabled={downloadingItems[result.guid || result.title] || result.protocol === 'torrent'}
-                        style={{ 
-                          opacity: result.protocol === 'torrent' ? 0.5 : 1, 
-                          cursor: result.protocol === 'torrent' ? 'not-allowed' : 'pointer',
-                          backgroundColor: result.protocol === 'deemix' ? 'var(--accent)' : '' 
-                        }}
-                      >
-                        {downloadingItems[result.guid || result.title] ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                        {result.protocol === 'deemix' ? 'Deezer' : 'Télécharger'}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
+      {results.length > 0 && (
+        <>
+          <div className={styles.summary}>
+            <p className={`mono ${styles.count}`}>
+              {plural(results.length, 'résultat')} pour « {submitted} »
+            </p>
+            <div className="chips" role="group" aria-label="Filtrer par origine">
+              <button type="button" className="chip" aria-pressed={protocol === 'all'} onClick={() => setProtocol('all')}>
+                Tout <small>{results.length}</small>
+              </button>
+              {available.map(([key, count]) => (
+                <button key={key} type="button" className="chip" aria-pressed={protocol === key} onClick={() => setProtocol(key)}>
+                  {PROTOCOLS[key]?.label ?? key} <small>{count}</small>
+                </button>
               ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        !searching && !error && (
-          <div style={{ 
-            textAlign: 'center', 
-            padding: '80px 0', 
-            color: 'var(--text-muted)',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: '16px'
-          }}>
-            <HardDrive size={48} strokeWidth={1} />
-            <p>{hasSearched ? 'Aucun résultat trouvé pour cette recherche.' : 'Lancez une recherche pour interroger vos indexeurs Prowlarr.'}</p>
+            </div>
           </div>
-        )
+
+          <ul className={styles.results}>
+            {visible.map((result, index) => {
+              const key = result.guid || result.title;
+              const origin = PROTOCOLS[result.protocol] ?? { label: result.protocol, tone: 'sticker-flat' };
+              const torrent = result.protocol === 'torrent';
+              const title = result.title.replace(/^\[Deezer\]\s*/, '');
+              return (
+                <li key={`${key}-${index}`} className={styles.result}>
+                  {result.protocol === 'deemix' && <Cover src={result.image} name={title} className={styles.thumb} />}
+                  <div className={styles.resultBody}>
+                    <h2 className={styles.resultTitle}>{title}</h2>
+                    <p className={`mono ${styles.resultMeta}`}>
+                      <span className={`sticker ${origin.tone}`}>{origin.label}</span>
+                      {result.indexer !== 'Deezer' && <span>{result.indexer}</span>}
+                      {result.size && result.size !== 'N/A' && <span>{result.size}</span>}
+                      <span className={styles.quality} data-flac={result.quality?.includes('FLAC')}>
+                        {result.quality}
+                      </span>
+                      {result.seeders !== undefined && result.seeders !== null && <span>{result.seeders} seeds</span>}
+                    </p>
+                  </div>
+                  <div className={styles.resultActions}>
+                    {result.infoUrl && (
+                      <a href={result.infoUrl} target="_blank" rel="noopener noreferrer" className="btn btn-sm btn-icon btn-quiet" aria-label={`Voir la source de ${title}`}>
+                        <ExternalLink size={16} />
+                      </a>
+                    )}
+                    <button
+                      type="button"
+                      className={`btn btn-sm ${result.quality?.includes('FLAC') ? 'btn-primary' : ''}`}
+                      onClick={() => handleDownload(result)}
+                      disabled={downloading[key] || torrent}
+                      title={torrent ? 'Aucun client torrent configuré' : undefined}
+                    >
+                      {downloading[key] ? <RefreshCw size={15} className="spin" /> : !torrent && <Download size={15} />}
+                      {torrent ? 'Indisponible' : 'Télécharger'}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
+
+      {results.length === 0 && !searching && !error && (
+        <div className="empty">
+          <p className="hand">{submitted ? 'Chou blanc.' : 'Quel disque te manque ?'}</p>
+          <p>{submitted ? `Rien trouvé pour « ${submitted} ». Essayez juste le nom de l’artiste.` : 'Un nom d’artiste ou d’album suffit.'}</p>
+        </div>
       )}
     </div>
   );
