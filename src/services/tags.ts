@@ -1,8 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import axios from 'axios';
 import db from '@/lib/db';
 import { runFfmpeg, metadataArgs } from '@/lib/ffmpeg';
+import { fetchPublicImage } from '@/lib/publicFetch';
 import { DeemixService } from './DeemixService';
 
 export interface TrackTagUpdate {
@@ -228,18 +228,9 @@ export class TagService {
       throw new Error("Dossier de l'album non trouvé");
     }
 
-    let buffer: Buffer;
-    if (typeof coverSource === 'string') {
-      const res = await axios.get(coverSource, { 
-        responseType: 'arraybuffer',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-      });
-      buffer = Buffer.from(res.data);
-    } else {
-      buffer = coverSource;
-    }
+    // URL fournie par le client : adresses publiques uniquement (voir
+    // `fetchPublicImage`).
+    const buffer = typeof coverSource === 'string' ? await fetchPublicImage(coverSource) : coverSource;
 
     const coverPath = path.join(album.path, 'folder.jpg');
     fs.writeFileSync(coverPath, buffer);
