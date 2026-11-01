@@ -1,23 +1,14 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Search, 
-  Download, 
-  RefreshCw, 
-  CheckCircle2, 
-  XCircle,
-  HardDrive,
-  FileAudio,
-  Activity,
-  ChevronRight,
-  ShieldCheck, 
-  Disc
-} from 'lucide-react';
-import styles from './SearchModal.module.css';
+import React, { useState } from 'react';
+import { AlertTriangle, ArrowUpCircle, Download, RefreshCw } from 'lucide-react';
+import Sheet from '@/components/ui/Sheet';
 import { useToast } from '@/context/ToastContext';
-import { useEscapeToClose } from '@/hooks/useEscapeToClose';
+import { useActivity } from '@/context/ActivityContext';
+import { useApi } from '@/hooks/useApi';
+import { postJson } from '@/lib/ui/api';
+import { formatBytes } from '@/lib/ui/format';
+import styles from './Modals.module.css';
 
 interface SearchResult {
   title: string;
@@ -27,7 +18,6 @@ interface SearchResult {
   downloadUrl: string;
   protocol: string;
   guid: string;
-  age: number;
   ageInDays: number;
   infoUrl?: string;
   isUpgrade?: boolean;
@@ -41,179 +31,112 @@ interface SearchModalProps {
   albumId?: number;
 }
 
+/** Un torrent n'est pas téléchargeable : Musicarr n'a pas de client torrent. */
+const isTorrent = (result: SearchResult) => result.protocol?.toLowerCase() === 'torrent';
+
+const PROTOCOLS: Record<string, { label: string; tone: string }> = {
+  deemix: { label: 'Deezer', tone: 'sticker-flac' },
+  usenet: { label: 'Usenet', tone: 'sticker-aqua' },
+  torrent: { label: 'Torrent', tone: 'sticker-flat' },
+};
+
 export default function SearchModal({ isOpen, onClose, query, albumId }: SearchModalProps) {
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [loading, setLoading] = useState(false);
+  const url = isOpen && query ? `/api/search/download?query=${encodeURIComponent(query)}${albumId ? `&albumId=${albumId}` : ''}` : null;
+  const { data, loading, error, reload } = useApi<SearchResult[]>(url);
   const [downloading, setDownloading] = useState<string | null>(null);
-  const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
   const { showToast } = useToast();
-  useEscapeToClose(isOpen, onClose);
-
-  // Déclaré avant l'effet qui l'appelle, pour éviter l'accès en zone morte.
-  const handleSearch = async () => {
-    setLoading(true);
-    setStatus(null);
-    try {
-      const url = `/api/search/download?query=${encodeURIComponent(query)}${albumId ? `&albumId=${albumId}` : ''}`;
-      const res = await fetch(url);
-      if (!res.ok) throw new Error('Erreur lors de la recherche');
-      const data = await res.json();
-      setResults(data);
-    } catch (err: any) {
-      setStatus({ type: 'error', message: err.message });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isOpen && query) {
-      handleSearch();
-    }
-  }, [isOpen, query]);
+  const { refresh } = useActivity();
 
   const handleDownload = async (result: SearchResult) => {
     setDownloading(result.guid);
+    setFailure(null);
     try {
-      const res = await fetch('/api/search/download', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          url: result.downloadUrl,
-          title: result.title,
-          protocol: result.protocol,
-          albumId
-        })
+      await postJson('/api/search/download', {
+        url: result.downloadUrl,
+        title: result.title,
+        protocol: result.protocol,
+        albumId,
       });
-      const data = await res.json();
-      if (data.success) {
-        const isDeemix = result.protocol?.toLowerCase() === 'deemix';
-        const message = isDeemix 
-          ? `Préparation du téléchargement : ${result.title}`
-          : `Ajout à SABnzbd : ${result.title}`;
-        
-        // On affiche un toast de type download immédiatement avec l'ID du backend
-        showToast(message, 'download', `dl-${data.activityId}`);
-        onClose();
-      } else {
-        throw new Error(data.error || 'Erreur lors de l’envoi au client de téléchargement');
-      }
-    } catch (err: any) {
-      setStatus({ type: 'error', message: err.message });
+      showToast(result.title, 'info', result.protocol?.toLowerCase() === 'deemix' ? 'Téléchargement lancé' : 'Envoyé à SABnzbd');
+      refresh();
+      onClose();
+    } catch (cause) {
+      setFailure((cause as Error).message);
     } finally {
       setDownloading(null);
     }
   };
 
-  /** Un torrent n'est pas téléchargeable : Musicarr n'a pas de client torrent. */
-  const isTorrent = (result: SearchResult) => result.protocol?.toLowerCase() === 'torrent';
-
-  const formatSize = (bytes: number) => {
-    if (!bytes) return 'N/A';
-    const mb = bytes / (1024 * 1024);
-    if (mb > 1024) return (mb / 1024).toFixed(2) + ' GB';
-    return mb.toFixed(1) + ' MB';
-  };
-
-  if (!isOpen) return null;
+  const results = data ?? [];
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
-      <div className={styles.modal} onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Résultats de recherche">
-        <header className={styles.header}>
-          <div className={styles.headerTitle}>
-            <Search size={20} color="var(--accent)" />
-            <h3>Résultats de recherche pour "{query}"</h3>
-          </div>
-          <button className={styles.closeBtn} onClick={onClose} aria-label="Fermer">
-            <X size={20} />
+    <Sheet open={isOpen} onClose={onClose} title="Chercher ce disque" subtitle={query} size="large">
+      {(failure || error) && (
+        <div className="notice notice-bad">
+          <AlertTriangle size={18} />
+          <span>{failure || error}</span>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="empty">
+          <span className="mini-record" aria-hidden="true" />
+          <p>On fouille Deezer et les indexeurs…</p>
+        </div>
+      ) : results.length === 0 && !error ? (
+        <div className="empty">
+          <p className="hand">Chou blanc.</p>
+          <p>Aucune version trouvée pour cette recherche.</p>
+          <button type="button" className="btn" onClick={reload}>
+            <RefreshCw size={18} />
+            Réessayer
           </button>
-        </header>
-
-        <div className={styles.content}>
-          {status && (
-            <div className={`${styles.status} ${status.type === 'success' ? styles.success : styles.error}`}>
-              {status.type === 'success' ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
-              {status.message}
-            </div>
-          )}
-
-          {loading ? (
-            <div className={styles.loading}>
-              <RefreshCw className="animate-spin" size={40} color="var(--accent)" />
-              <p>Recherche sur Deezer, Usenet & Torrent...</p>
-            </div>
-          ) : results.length === 0 ? (
-            <div className={styles.noResults}>
-              <Activity size={48} strokeWidth={1} />
-              <p>Aucun résultat trouvé pour cette recherche.</p>
-              <button className={styles.retryBtn} onClick={handleSearch}>Réessayer</button>
-            </div>
-          ) : (
-            <div className={styles.resultsList}>
-              {results.map((res) => (
-                <div key={res.guid} className={styles.resultItem}>
-                  <div className={styles.resultMain}>
-                    <div className={styles.resultHeader}>
-                      <span className={styles.protocolBadge} data-protocol={res.protocol.toLowerCase()}>
-                        {res.protocol === 'deemix' ? 'DEEZER' : res.protocol}
+        </div>
+      ) : (
+        <ul className={styles.results}>
+          {results.map(result => {
+            const protocol = PROTOCOLS[result.protocol?.toLowerCase()] ?? { label: result.protocol, tone: 'sticker-flat' };
+            return (
+              <li key={result.guid} className={styles.result}>
+                <div className={styles.resultHead}>
+                  <span className={`sticker ${protocol.tone}`}>{protocol.label}</span>
+                  <span className="mono muted clamp-1">
+                    {result.indexer}
+                    {result.protocol !== 'deemix' && result.ageInDays ? ` · ${result.ageInDays} j` : ''}
+                  </span>
+                </div>
+                <h3 className={styles.resultTitle}>{result.title}</h3>
+                <div className={styles.resultFoot}>
+                  <span className={`mono ${styles.resultMeta}`}>
+                    {formatBytes(result.size) && <span>{formatBytes(result.size)}</span>}
+                    {result.qualities?.map(quality => (
+                      <span key={quality} className={styles.resultQuality}>
+                        {quality}
                       </span>
-                      <span className={styles.indexerName}>{res.indexer}</span>
-                      {res.protocol !== 'deemix' && <span className={styles.ageBadge}>{res.ageInDays}j</span>}
-                    </div>
-                    <h4 className={styles.resultTitle} title={res.title}>{res.title}</h4>
-                    <div className={styles.resultMeta}>
-                      <span className={styles.metaItem}>
-                        <HardDrive size={14} />
-                        {formatSize(res.size)}
+                    ))}
+                    {result.isUpgrade && (
+                      <span className={styles.resultUpgrade}>
+                        <ArrowUpCircle size={13} /> Mieux
                       </span>
-                      {res.qualities && res.qualities.length > 0 && (
-                        <div className={styles.qualityContainer}>
-                          {res.qualities.map(q => (
-                            <span key={q} className={styles.qualityBadge} data-quality={q.toLowerCase()}>
-                              {q}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                      {res.isUpgrade && (
-                        <span className={`${styles.metaItem} ${styles.upgradeBadge}`}>
-                          <RefreshCw size={14} className="animate-spin-slow" />
-                          Mise à niveau
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {/* Prowlarr renvoie aussi des torrents, qu'aucun client
-                      configuré ne sait prendre en charge. Les proposer comme
-                      téléchargeables menait droit à une erreur. */}
-                  <button
-                    className={`${styles.downloadBtn} ${res.isUpgrade ? styles.upgradeBtn : ''}`}
-                    onClick={() => handleDownload(res)}
-                    disabled={downloading === res.guid || isTorrent(res)}
-                    title={
-                      isTorrent(res)
-                        ? 'Aucun client torrent configuré'
-                        : 'Envoyer au client de téléchargement'
-                    }
-                  >
-                    {downloading === res.guid ? (
-                      <RefreshCw size={18} className="animate-spin" />
-                    ) : isTorrent(res) ? (
-                      <span>Indisponible</span>
-                    ) : (
-                      <>
-                        <Download size={18} />
-                        <span>Télécharger</span>
-                      </>
                     )}
+                  </span>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${result.isUpgrade ? 'btn-primary' : ''}`}
+                    onClick={() => handleDownload(result)}
+                    disabled={downloading !== null || isTorrent(result)}
+                    title={isTorrent(result) ? 'Aucun client torrent configuré' : undefined}
+                  >
+                    {downloading === result.guid ? <RefreshCw size={15} className="spin" /> : !isTorrent(result) && <Download size={15} />}
+                    {isTorrent(result) ? 'Indisponible' : 'Télécharger'}
                   </button>
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </Sheet>
   );
 }

@@ -1,304 +1,228 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  Activity, 
-  History, 
-  RefreshCw, 
-  Trash2, 
-  Download, 
-  Search, 
-  CheckCircle2, 
-  XCircle,
-  Clock,
-  ArrowRight,
-  Database,
-  Move,
-  ChevronLeft,
-  ChevronRight
-} from 'lucide-react';
-import styles from './Activity.module.css';
+import React, { useCallback, useEffect, useState } from 'react';
+import Link from 'next/link';
+import { AlertTriangle, Check, Clock, Database, Download, Move, RefreshCw, Trash2, X, type LucideIcon } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
+import ProgressTape from '@/components/ui/ProgressTape';
+import { useActivity } from '@/context/ActivityContext';
+import { useConfirm } from '@/context/ConfirmContext';
 import { useToast } from '@/context/ToastContext';
+import { useActivityFinished } from '@/hooks/useApi';
+import { ACTIVITY_LABELS, STATUS_LABELS, type ActiveView, type HistoryEntry } from '@/lib/ui/activity';
+import { api, postJson } from '@/lib/ui/api';
+import { formatDateTime, plural, timeAgo } from '@/lib/ui/format';
+import styles from './Activity.module.css';
+
+const ICONS: Record<string, LucideIcon> = { download: Download, scan: Database, sync: RefreshCw, move: Move };
+
+const FILTERS: { key: string; label: string }[] = [
+  { key: '', label: 'Tout' },
+  { key: 'download', label: 'Téléchargements' },
+  { key: 'sync', label: 'Synchronisations' },
+  { key: 'scan', label: 'Scans' },
+  { key: 'failed', label: 'Échecs' },
+];
+
+const PAGE_SIZE = 30;
+
+const SOURCE_TONE: Record<ActiveView['source'], string> = {
+  deezer: 'sticker-flac',
+  usenet: 'sticker-aqua',
+  sync: 'sticker-hot',
+  scan: '',
+  move: '',
+  other: '',
+};
 
 export default function ActivityPage() {
-  const [active, setActive] = useState<any[]>([]);
-  const [history, setHistory] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const pageSize = 20;
+  const { active, refresh } = useActivity();
   const { showToast } = useToast();
+  const confirm = useConfirm();
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [filter, setFilter] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  const fetchActivity = async (showLoading = true, targetPage = page) => {
-    if (showLoading) setLoading(true);
-    try {
-      const res = await fetch(`/api/activity?page=${targetPage}&pageSize=${pageSize}`);
-      const data = await res.json();
-      setActive(data.active || []);
-      setHistory(data.history || []);
-      setTotal(data.total || 0);
-    } catch (err) {
-      console.error('Failed to fetch activity:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const load = useCallback(
+    async (targetPage: number, replace: boolean) => {
+      setLoading(true);
+      try {
+        const data = await api<{ history: HistoryEntry[]; total: number }>(
+          `/api/activity?page=${targetPage}&pageSize=${PAGE_SIZE}${filter ? `&type=${filter}` : ''}`,
+        );
+        setHistory(current => {
+          if (replace) return data.history;
+          const known = new Set(current.map(entry => entry.id));
+          return [...current, ...data.history.filter(entry => !known.has(entry.id))];
+        });
+        setTotal(data.total);
+        setPage(targetPage);
+      } catch (error) {
+        showToast((error as Error).message, 'error');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [filter, showToast],
+  );
 
   useEffect(() => {
-    fetchActivity(true, page);
-    // Poll only for ACTIVE section if we are on page 1 of history, otherwise we might 
-    // keep refreshing history while someone is looking at old logs.
-    // Actually, it's simpler to poll everything but only show loading on first fetch.
-    const interval = setInterval(() => fetchActivity(false, page), 3000);
-    return () => clearInterval(interval);
-  }, [page]);
+    load(1, true);
+  }, [load]);
 
-  const handleClearHistory = async () => {
-    if (!confirm('Voulez-vous vraiment effacer tout l\'historique ?')) return;
+  useActivityFinished(() => load(1, true));
+
+  const clearHistory = async () => {
+    const accepted = await confirm({
+      title: 'Effacer l’historique ?',
+      message: 'Toutes les opérations passées seront oubliées. Les fichiers ne sont pas touchés.',
+      confirmLabel: 'Effacer',
+      danger: true,
+    });
+    if (!accepted) return;
     try {
-      const res = await fetch('/api/activity', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete_history' })
-      });
-      if (res.ok) {
-        showToast('Historique effacé.', 'success');
-        setPage(1);
-        fetchActivity(true, 1);
-      }
-    } catch (err) {
-      showToast('Erreur lors de l\'effacement.', 'error');
+      await postJson('/api/activity', { action: 'delete_history' });
+      showToast('Historique effacé.', 'success');
+      load(1, true);
+    } catch (error) {
+      showToast((error as Error).message, 'error');
     }
   };
 
-  const handleDeleteActivity = async (id: string) => {
-    if (!confirm('Voulez-vous supprimer cette activité ?')) return;
+  const removeActive = async (item: ActiveView) => {
+    const accepted = await confirm({
+      title: 'Retirer de la liste ?',
+      message: 'L’opération disparaît du suivi, mais ne s’interrompt pas si elle tourne encore.',
+      confirmLabel: 'Retirer',
+    });
+    if (!accepted) return;
     try {
-      const numericId = id.startsWith('local-') ? id.replace('local-', '') : id;
-      const res = await fetch('/api/activity', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'delete_history', id: numericId })
-      });
-      if (res.ok) {
-        showToast('Activité supprimée.', 'success');
-        fetchActivity(false);
-      }
-    } catch (err) {
-      showToast('Erreur lors de la suppression.', 'error');
+      await postJson('/api/activity', { action: 'delete_history', id: item.id.replace('local-', '') });
+      refresh();
+    } catch (error) {
+      showToast((error as Error).message, 'error');
     }
   };
 
-  const getIcon = (type: string) => {
-    switch (type) {
-      case 'download': return <Download size={18} />;
-      case 'scan': return <Database size={18} />;
-      case 'sync': return <RefreshCw size={18} />;
-      case 'move': return <Move size={18} />;
-      default: return <Activity size={18} />;
+  const removeEntry = async (entry: HistoryEntry) => {
+    // Pas de confirmation : une ligne d'historique ne vaut pas une question.
+    setHistory(current => current.filter(item => item.id !== entry.id));
+    setTotal(count => Math.max(0, count - 1));
+    try {
+      await postJson('/api/activity', { action: 'delete_history', id: entry.id });
+    } catch (error) {
+      showToast((error as Error).message, 'error');
+      load(1, true);
     }
   };
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed': return <CheckCircle2 size={16} color="var(--success)" />;
-      case 'failed': return <XCircle size={16} color="var(--danger)" />;
-      case 'downloading': return <RefreshCw size={16} className="animate-spin" color="var(--accent)" />;
-      default: return <Clock size={16} color="var(--text-muted)" />;
-    }
-  };
-
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'completed': return 'Terminé';
-      case 'failed': return 'Échec';
-      case 'downloading': return 'En cours';
-      case 'pending': return 'En attente';
-      default: return status;
-    }
-  };
-
-  if (loading && history.length === 0) {
-    return (
-      <div className={styles.loading}>
-        <RefreshCw className="animate-spin" size={48} color="var(--accent)" />
-      </div>
-    );
-  }
 
   return (
-    <div className={styles.container}>
-      <header className={styles.header}>
-        <div className={styles.titleArea}>
-          <h1>Activité</h1>
-          <p>Suivez les téléchargements et les opérations en cours.</p>
-        </div>
-        <div className={styles.actions}>
-          <button className={styles.button} onClick={handleClearHistory}>
+    <div className="page">
+      <PageHeader
+        mark="Face A · Piste 4"
+        title="Activité"
+        actions={
+          <button type="button" className="btn btn-quiet btn-collapse" onClick={clearHistory} aria-label="Effacer l’historique" disabled={total === 0}>
             <Trash2 size={18} />
-            Effacer l'historique
+            <span>Effacer l’historique</span>
           </button>
-        </div>
-      </header>
+        }
+      />
 
-      {/* ACTIVE SECTION */}
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <Activity size={20} color="var(--accent)" />
-          <h2>En cours</h2>
-          {active.length > 0 && <span className={styles.activeBadge}>{active.length}</span>}
-        </div>
-        
+      <section className={styles.now} aria-labelledby="en-ce-moment">
+        <h2 id="en-ce-moment" className="tape tape-aqua">
+          En ce moment {active.length > 0 && `· ${active.length}`}
+        </h2>
         {active.length === 0 ? (
-          <div className={styles.emptyState}>
-            <p>Aucun téléchargement actif.</p>
-          </div>
+          <p className={`hand ${styles.quiet}`}>Calme plat. Le bac dort.</p>
         ) : (
-          <div className={styles.activeGrid}>
-            {active.map((item) => {
-              const details = JSON.parse(item.details || '{}');
-              const isDeemix = item.id.startsWith('local-') && item.type === 'download';
-              
-              let progressPercent = 0;
-              let statusLabel = "";
-              
-              if (isDeemix) {
-                progressPercent = details.total > 0 ? (details.current / details.total) * 100 : 0;
-                statusLabel = `${details.current} / ${details.total} titres`;
-              } else if (item.type === 'sync') {
-                progressPercent = details.progress || 0;
-                statusLabel = details.provider ? `${details.provider} : ${details.current || 0} / ${details.total || '?'}` : item.message;
-              } else {
-                progressPercent = details.percentage || 0;
-                statusLabel = `${details.speed || '0 KB/s'} / ${details.timeleft || 'calcul...'}`;
-              }
-
-              return (
-                <div key={item.id} className={styles.activeCard} data-type={isDeemix ? 'deemix' : 'sabnzbd'}>
-                  <div className={styles.activeHeader}>
-                    <Download size={20} color={isDeemix ? "#a238ff" : "var(--accent)"} />
-                    <div className={styles.activeTitle}>
-                      <h4 title={item.title}>{item.title}</h4>
-                      <span>{statusLabel}</span>
-                    </div>
-                    <button 
-                      className={styles.deleteBtn}
-                      onClick={() => handleDeleteActivity(item.id)}
-                      title="Supprimer l'activité"
-                    >
-                      <XCircle size={16} />
+          <ul className={styles.activeList}>
+            {active.map(item => (
+              <li key={item.id} className={styles.activeCard}>
+                <div className={styles.activeHead}>
+                  <span className="mini-record" aria-hidden="true" />
+                  <div className={styles.activeText}>
+                    <h3 className="clamp-2">{item.title}</h3>
+                    <p className="mono muted">{item.label}</p>
+                  </div>
+                  {item.removable && (
+                    <button type="button" className="btn btn-sm btn-icon btn-quiet" onClick={() => removeActive(item)} aria-label={`Retirer ${item.title} de la liste`}>
+                      <X size={16} />
                     </button>
-                  </div>
-                  <div className={styles.progressArea}>
-                    <div className={styles.progressBar}>
-                      <div 
-                        className={styles.progressFill} 
-                        style={{ 
-                          width: `${progressPercent}%`,
-                          background: isDeemix ? 'linear-gradient(90deg, #a238ff, #ff3bce)' : 'var(--accent)'
-                        }}
-                      ></div>
-                    </div>
-                    <div className={styles.progressLabels}>
-                      <span>{Math.round(progressPercent)}%</span>
-                      {!isDeemix && <span>{details.mbleft} MB restants</span>}
-                      {isDeemix && <span>Titre en cours...</span>}
-                    </div>
-                  </div>
+                  )}
                 </div>
-              );
-            })}
-          </div>
+                <ProgressTape percent={item.percent} label={item.title} className={styles.tape} />
+                <div className={`mono ${styles.activeFoot}`}>
+                  <span className={`sticker ${SOURCE_TONE[item.source]}`}>{item.aside || 'En cours'}</span>
+                  {item.percent !== null && <span className={`display ${styles.percent}`}>{Math.round(item.percent)}%</span>}
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
-      {/* HISTORY SECTION */}
-      <section className={styles.section}>
-        <div className={styles.sectionHeader}>
-          <History size={20} color="var(--accent)" />
-          <h2>Historique récent</h2>
+      <section className={styles.history} aria-labelledby="historique">
+        <h2 id="historique" className={`display ${styles.heading}`}>
+          Historique
+        </h2>
+        <div className="chips" role="group" aria-label="Filtrer l’historique">
+          {FILTERS.map(item => (
+            <button key={item.key} type="button" className="chip" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}>
+              {item.label}
+            </button>
+          ))}
         </div>
 
-        <div className={styles.tableWrapper}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Opération</th>
-                <th>Message</th>
-                <th>Date</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((entry) => (
-                <tr key={entry.id}>
-                  <td className={styles.typeCell}>
-                    <div className={styles.iconBox} data-type={entry.type}>
-                      {getIcon(entry.type)}
-                    </div>
-                  </td>
-                  <td className={styles.titleCell}>
-                    <div className={styles.titleContent}>
-                      <span className={styles.operationTitle}>{entry.title}</span>
-                      {entry.artist_name && <span className={styles.subtext}>{entry.artist_name}</span>}
-                    </div>
-                  </td>
-                  <td className={styles.messageCell}>
-                    <p title={entry.message}>{entry.message}</p>
-                  </td>
-                  <td className={styles.dateCell}>
-                    {new Date(entry.timestamp).toLocaleString('fr-FR', {
-                      day: '2-digit',
-                      month: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </td>
-                  <td className={styles.statusCell}>
-                    <div className={styles.statusBox}>
-                      {getStatusIcon(entry.status)}
-                      <span>{getStatusLabel(entry.status)}</span>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {history.length === 0 && (
-                <tr>
-                  <td colSpan={5} className={styles.emptyTable}>Aucun historique pour le moment.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-          
-          {history.length > 0 && (
-            <div className={styles.pagination}>
-              <button
-                className={styles.paginationBtn}
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page === 1}
-                aria-label="Page précédente"
-              >
-                <ChevronLeft size={20} />
-              </button>
-              
-              <div className={styles.pageInfo}>
-                Page <strong>{page}</strong> sur <strong>{Math.ceil(total / pageSize) || 1}</strong>
-                <span className={styles.totalCount}> ({total} opérations)</span>
-              </div>
+        {!loading && history.length === 0 ? (
+          <div className="empty">
+            <p className="hand">Page blanche.</p>
+            <p>{filter ? 'Rien de ce type pour le moment.' : 'Les téléchargements, scans et synchronisations s’inscriront ici.'}</p>
+          </div>
+        ) : (
+          <ol className={styles.timeline}>
+            {history.map(entry => (
+              <HistoryRow key={entry.id} entry={entry} onRemove={removeEntry} />
+            ))}
+          </ol>
+        )}
 
-              <button
-                className={styles.paginationBtn}
-                onClick={() => setPage(p => p + 1)}
-                disabled={page >= Math.ceil(total / pageSize)}
-                aria-label="Page suivante"
-              >
-                <ChevronRight size={20} />
-              </button>
-            </div>
-          )}
-        </div>
+        {history.length < total && (
+          <button type="button" className={`btn btn-quiet btn-block ${styles.more}`} onClick={() => load(page + 1, false)} disabled={loading}>
+            {loading ? 'Chargement…' : `Voir plus (${(total - history.length).toLocaleString('fr-FR')} restantes)`}
+          </button>
+        )}
+        {history.length > 0 && <p className={`mono ${styles.total}`}>{plural(total, 'opération')} au registre</p>}
       </section>
     </div>
+  );
+}
+
+function HistoryRow({ entry, onRemove }: { entry: HistoryEntry; onRemove: (entry: HistoryEntry) => void }) {
+  const failed = entry.status === 'failed';
+  const pending = entry.status === 'pending';
+  const Icon = failed ? AlertTriangle : pending ? Clock : (ICONS[entry.type] ?? Check);
+  return (
+    <li className={styles.entry} data-status={entry.status}>
+      <span className={styles.entryIcon}>
+        <Icon size={15} aria-hidden="true" />
+      </span>
+      <div className={styles.entryBody}>
+        <h3 className={styles.entryTitle}>
+          {entry.artist_id ? <Link href={`/library/artist/${entry.artist_id}`}>{entry.title}</Link> : entry.title}
+        </h3>
+        {entry.message && <p className={styles.entryMessage}>{entry.message}</p>}
+        <p className={`mono ${styles.entryMeta}`}>
+          <span title={formatDateTime(entry.timestamp)}>{timeAgo(entry.timestamp)}</span>
+          <span>{ACTIVITY_LABELS[entry.type] ?? entry.type}</span>
+          <span className={styles.entryStatus}>{STATUS_LABELS[entry.status] ?? entry.status}</span>
+        </p>
+      </div>
+      <button type="button" className={styles.entryRemove} onClick={() => onRemove(entry)} aria-label={`Retirer ${entry.title} de l’historique`}>
+        <X size={15} />
+      </button>
+    </li>
   );
 }

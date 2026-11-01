@@ -1,236 +1,172 @@
 'use client';
 
 import React, { useState } from 'react';
-import { 
-  Search, 
-  Plus, 
-  ArrowLeft,
-  Loader2,
-  Check,
-  Music,
-  UserPlus,
-  ChevronRight
-} from 'lucide-react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { ArrowLeft, ArrowRight, Check, Plus, RefreshCw, Search } from 'lucide-react';
+import ArtistArt from '@/components/ui/ArtistArt';
+import PageHeader from '@/components/ui/PageHeader';
+import { useToast } from '@/context/ToastContext';
+import { api, postJson } from '@/lib/ui/api';
 import styles from './AddArtist.module.css';
 
+interface ArtistResult {
+  name: string;
+  mbid?: string;
+  deezerId?: string;
+  discogsId?: string;
+  image?: string;
+  country?: string;
+  genre?: string;
+}
+
+const PROVIDERS = [
+  { id: 'musicbrainz', label: 'MusicBrainz' },
+  { id: 'deezer', label: 'Deezer' },
+  { id: 'discogs', label: 'Discogs' },
+  { id: 'itunes', label: 'iTunes' },
+];
+
+const keyFor = (artist: ArtistResult) => artist.mbid || artist.deezerId || artist.discogsId || artist.name;
+
 export default function AddArtistPage() {
-  const router = useRouter();
+  const { showToast } = useToast();
   const [query, setQuery] = useState('');
+  const [submitted, setSubmitted] = useState('');
   const [searching, setSearching] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
+  const [results, setResults] = useState<ArtistResult[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [addingArtists, setAddingArtists] = useState<Record<string, boolean>>({});
-  const [addedArtists, setAddedArtists] = useState<Record<string, number | boolean>>({});
-  const [selectedProvider, setSelectedProvider] = useState<string>('musicbrainz'); // 'musicbrainz' by default
+  const [adding, setAdding] = useState<Record<string, boolean>>({});
+  const [added, setAdded] = useState<Record<string, number>>({});
+  const [provider, setProvider] = useState('musicbrainz');
 
-  const providers = [
-    { id: 'musicbrainz', label: 'MusicBrainz' },
-    { id: 'deezer', label: 'Deezer' },
-    { id: 'discogs', label: 'Discogs' },
-    { id: 'itunes', label: 'iTunes' },
-  ];
-
-  const handleSearch = async (e?: React.FormEvent, forceProvider?: string) => {
-    if (e) e.preventDefault();
-    if (!query.trim()) return;
-
-    const providerToUse = forceProvider !== undefined ? forceProvider : selectedProvider;
-
+  const runSearch = async (term: string, source: string) => {
+    if (!term.trim()) return;
     setSearching(true);
     setError(null);
     try {
-      const url = `/api/artists/search?q=${encodeURIComponent(query)}${providerToUse ? `&provider=${providerToUse}` : ''}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || 'Erreur lors de la recherche');
-      }
-      const data = await res.json();
+      const data = await api<ArtistResult[]>(`/api/artists/search?q=${encodeURIComponent(term)}&provider=${source}`);
       setResults(data);
-      setHasSearched(true);
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message);
+      setSubmitted(term);
+    } catch (cause) {
+      setError((cause as Error).message);
     } finally {
       setSearching(false);
     }
   };
 
-  const handleProviderChange = (providerId: string) => {
-    setSelectedProvider(providerId);
-    if (query.trim()) {
-      handleSearch(undefined, providerId);
-    }
+  const chooseProvider = (next: string) => {
+    setProvider(next);
+    runSearch(query, next);
   };
 
-  const handleAddArtist = async (artist: any) => {
-    const artistKey = artist.mbid || artist.deezerId || artist.discogsId || artist.name;
-    setAddingArtists(prev => ({ ...prev, [artistKey]: true }));
-    setError(null);
-
+  const addArtist = async (artist: ArtistResult) => {
+    const key = keyFor(artist);
+    setAdding(current => ({ ...current, [key]: true }));
     try {
-      const res = await fetch('/api/artists', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          name: artist.name,
-          mbid: artist.mbid,
-          discogsId: artist.discogsId,
-          deezerId: artist.deezerId,
-          image: artist.image,
-          country: artist.country,
-          genre: artist.genre
-        })
+      const data = await postJson<{ id: number }>('/api/artists', {
+        name: artist.name,
+        mbid: artist.mbid,
+        discogsId: artist.discogsId,
+        deezerId: artist.deezerId,
+        image: artist.image,
+        country: artist.country,
+        genre: artist.genre,
       });
-      
-      const data = await res.json();
-      
-      if (!res.ok) {
-        throw new Error(data.error || 'Erreur lors de l\'ajout de l\'artiste');
-      }
-      
-      setAddedArtists(prev => ({ ...prev, [artistKey]: data.id || true }));
-      // Optional: Show a toast here
-    } catch (err: any) {
-      console.error(err);
-      setError(err.message);
+      setAdded(current => ({ ...current, [key]: data.id }));
+      showToast(`${artist.name} rejoint la collection.`, 'success');
+    } catch (cause) {
+      showToast((cause as Error).message, 'error');
     } finally {
-      setAddingArtists(prev => ({ ...prev, [artistKey]: false }));
+      setAdding(current => ({ ...current, [key]: false }));
     }
   };
 
   return (
-    <div className={styles.container}>
-      <header className={styles.header}>
-        <div className={styles.titleWrapper}>
-          <Link href="/library" className={styles.backButton}>
-            <ArrowLeft size={20} />
-          </Link>
-          <div>
-            <h1>Ajouter un Artiste</h1>
-            <p style={{ color: 'var(--text-muted)' }}>Recherchez et ajoutez des artistes à votre collection.</p>
-          </div>
-        </div>
-      </header>
+    <div className="page">
+      <Link href="/library/artists" className={styles.back}>
+        <ArrowLeft size={16} />
+        Artistes
+      </Link>
+      <PageHeader mark="Nouveau venu" title="Ajouter un artiste" />
 
-      <form className={styles.searchHeader} onSubmit={handleSearch}>
-        <div className={styles.searchInputWrapper}>
-          <Search className={styles.searchIcon} size={20} />
-          <input 
-            type="text" 
-            className={styles.searchInput} 
-            placeholder="Nom de l'artiste..." 
+      <form
+        className={styles.form}
+        role="search"
+        onSubmit={event => {
+          event.preventDefault();
+          runSearch(query, provider);
+        }}
+      >
+        <div className={styles.field}>
+          <Search size={20} aria-hidden="true" />
+          <input
+            type="search"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={event => setQuery(event.target.value)}
+            placeholder="Nom de l’artiste…"
+            aria-label="Nom de l’artiste"
+            autoComplete="off"
+            enterKeyHint="search"
             autoFocus
           />
         </div>
-        <button 
-          type="submit" 
-          className={styles.button}
-          disabled={searching || !query.trim()}
-        >
-          {searching ? <Loader2 size={20} className="animate-spin" /> : <Search size={20} />}
-          <span>Rechercher</span>
+        <button type="submit" className="btn btn-primary" disabled={searching || !query.trim()}>
+          {searching ? <RefreshCw size={18} className="spin" /> : <Search size={18} />}
+          Chercher
         </button>
       </form>
 
-      <div className={styles.providerTabs}>
-        {providers.map(p => (
-          <button
-            key={p.id}
-            className={`${styles.providerTab} ${selectedProvider === p.id ? styles.active : ''}`}
-            onClick={() => handleProviderChange(p.id)}
-          >
-            {p.label}
+      <div className={`chips ${styles.providers}`} role="group" aria-label="Source de la recherche">
+        {PROVIDERS.map(item => (
+          <button key={item.id} type="button" className="chip" aria-pressed={provider === item.id} onClick={() => chooseProvider(item.id)}>
+            {item.label}
           </button>
         ))}
       </div>
 
-      {error && (
-        <div style={{ 
-          padding: '16px', 
-          backgroundColor: 'rgba(239, 68, 68, 0.1)', 
-          color: 'var(--danger)', 
-          borderRadius: 'var(--radius)',
-          marginBottom: '24px',
-          border: '1px solid rgba(239, 68, 68, 0.2)'
-        }}>
-          {error}
-        </div>
-      )}
+      {error && <div className={`notice notice-bad ${styles.notice}`}>{error}</div>}
+
       {searching ? (
-        <div className={styles.loadingState}>
-          <Loader2 size={48} className="animate-spin" color="var(--accent)" />
-          <p>Recherche d'artistes en cours...</p>
+        <div className="empty">
+          <span className="mini-record" aria-hidden="true" />
+          <p>On passe un coup de fil à {PROVIDERS.find(item => item.id === provider)?.label}…</p>
         </div>
       ) : results.length > 0 ? (
-        <div className={styles.resultsGrid}>
-          {results.map((artist, idx) => {
-            const artistKey = artist.mbid || artist.deezerId || artist.discogsId || artist.name;
-            const isAdding = addingArtists[artistKey];
-            const isAdded = addedArtists[artistKey];
-            
+        <ul className={styles.results}>
+          {results.map((artist, index) => {
+            const key = keyFor(artist);
+            const isAdded = added[key];
             return (
-              <div key={artistKey + idx} className={styles.artistCard}>
-                {artist.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={artist.image} alt={artist.name} className={styles.artistImage} loading="lazy" />
-                ) : (
-                  <div className={styles.artistImage} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Music size={32} color="var(--text-muted)" />
-                  </div>
-                )}
-                
-                <div className={styles.artistInfo}>
-                  <div className={styles.artistName} title={artist.name}>
-                    {artist.name}
-                  </div>
-                  <div className={styles.artistGenre}>
-                    {artist.genre} {artist.country && `(${artist.country})`}
-                  </div>
-                  
-                  {isAdded && typeof isAdded === 'number' ? (
-                    <Link 
-                      href={`/library/artist/${isAdded}`}
-                      className={`${styles.addButton} ${styles.viewButton}`}
-                    >
-                      <ChevronRight size={16} /> Voir la fiche
-                    </Link>
-                  ) : (
-                    <button 
-                      onClick={() => handleAddArtist(artist)}
-                      className={`${styles.addButton} ${isAdded ? styles.added : ''}`}
-                      disabled={isAdding || !!isAdded}
-                    >
-                      {isAdding ? (
-                        <><Loader2 size={16} className="animate-spin" /> Ajout...</>
-                      ) : isAdded ? (
-                        <><Check size={16} /> Ajouté !</>
-                      ) : (
-                        <><Plus size={16} /> Ajouter</>
-                      )}
-                    </button>
-                  )}
+              <li key={`${key}-${index}`} className={styles.result}>
+                <ArtistArt name={artist.name} image={artist.image} className={styles.art} />
+                <div className={styles.text}>
+                  <h2 className={`display clamp-2 ${styles.name}`}>{artist.name}</h2>
+                  {(artist.genre || artist.country) && <p className={`mono ${styles.meta}`}>{[artist.genre, artist.country].filter(Boolean).join(' · ')}</p>}
                 </div>
-              </div>
+                {isAdded ? (
+                  <Link href={`/library/artist/${isAdded}`} className={`btn btn-sm ${styles.action}`}>
+                    <Check size={15} />
+                    Voir
+                    <ArrowRight size={15} />
+                  </Link>
+                ) : (
+                  <button type="button" className={`btn btn-sm btn-primary ${styles.action}`} onClick={() => addArtist(artist)} disabled={adding[key]}>
+                    {adding[key] ? <RefreshCw size={15} className="spin" /> : <Plus size={15} />}
+                    Ajouter
+                  </button>
+                )}
+              </li>
             );
           })}
-        </div>
-      ) : hasSearched && !error ? (
-        <div className={styles.emptyState}>
-          <UserPlus size={64} strokeWidth={1} />
-          <p>Aucun artiste trouvé pour "{query}".</p>
-        </div>
-      ) : !hasSearched && !error ? (
-        <div className={styles.emptyState}>
-          <Search size={64} strokeWidth={1} style={{ opacity: 0.5 }} />
-          <p>Entrez le nom d'un artiste pour lancer la recherche.</p>
-        </div>
-      ) : null}
+        </ul>
+      ) : (
+        !error && (
+          <div className="empty">
+            <p className="hand">{submitted ? 'Inconnu au bataillon.' : 'Qui veux-tu suivre ?'}</p>
+            <p>{submitted ? `Personne à « ${submitted} » chez ${PROVIDERS.find(item => item.id === provider)?.label}. Tentez une autre source.` : 'Cherchez un groupe pour l’ajouter à la collection et suivre ses sorties.'}</p>
+          </div>
+        )
+      )}
     </div>
   );
 }

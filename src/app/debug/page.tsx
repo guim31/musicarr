@@ -1,129 +1,122 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
-import { Terminal, Trash2, RefreshCw, Download } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Download, Pause, Play, Trash2 } from 'lucide-react';
+import PageHeader from '@/components/ui/PageHeader';
+import { useConfirm } from '@/context/ConfirmContext';
+import { useToast } from '@/context/ToastContext';
+import { api } from '@/lib/ui/api';
 import styles from './Debug.module.css';
 
-export default function DebugPage() {
-  const [logs, setLogs] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const scrollRef = useRef<HTMLDivElement>(null);
+interface LogLine {
+  timestamp: string;
+  level: string;
+  message: string;
+}
 
-  const fetchLogs = async () => {
-    try {
-      const res = await fetch('/api/logs');
-      const data = await res.json();
-      if (data.logs) {
-        setLogs(data.logs);
+const LEVELS = ['all', 'error', 'warn', 'info'] as const;
+const LEVEL_LABELS: Record<(typeof LEVELS)[number], string> = { all: 'Tout', error: 'Erreurs', warn: 'Avertissements', info: 'Infos' };
+
+export default function DebugPage() {
+  const [logs, setLogs] = useState<LogLine[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [live, setLive] = useState(true);
+  const [level, setLevel] = useState<(typeof LEVELS)[number]>('all');
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const hasScrolled = useRef(false);
+  const confirm = useConfirm();
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const fetchLogs = async () => {
+      if (document.hidden) return;
+      try {
+        const data = await api<{ logs: LogLine[] }>('/api/logs');
+        setLogs(data.logs ?? []);
+      } catch {
+        // Un journal injoignable se voit à l'absence de nouvelles lignes.
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Failed to fetch logs:', err);
-    } finally {
-      setLoading(false);
+    };
+    fetchLogs();
+    if (live) timer = setInterval(fetchLogs, 2000);
+    return () => clearInterval(timer);
+  }, [live]);
+
+  const visible = useMemo(() => (level === 'all' ? logs : logs.filter(log => log.level === level)), [logs, level]);
+
+  // Rester collé au bas du terminal, sauf si l'on a remonté pour lire.
+  useEffect(() => {
+    const element = scrollRef.current;
+    if (!element || visible.length === 0) return;
+    const nearBottom = element.scrollHeight - element.scrollTop - element.clientHeight < 120;
+    if (!hasScrolled.current || nearBottom) {
+      element.scrollTop = element.scrollHeight;
+      hasScrolled.current = true;
     }
-  };
+  }, [visible]);
 
   const clearLogs = async () => {
-    if (!confirm('Effacer les logs de la session ?')) return;
+    const accepted = await confirm({ title: 'Effacer le journal ?', message: 'Les lignes de cette session seront supprimées.', confirmLabel: 'Effacer', danger: true });
+    if (!accepted) return;
     try {
-      await fetch('/api/logs', { method: 'DELETE' });
+      await api('/api/logs', { method: 'DELETE' });
       setLogs([]);
-    } catch (err) {
-      console.error('Failed to clear logs:', err);
+    } catch (error) {
+      showToast((error as Error).message, 'error');
     }
   };
 
-  useEffect(() => {
-    fetchLogs();
-    let interval: NodeJS.Timeout;
-    if (autoRefresh) {
-      interval = setInterval(fetchLogs, 2000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [autoRefresh]);
-
-  // Suivre les nouveaux logs : coller au bas du terminal, sauf si
-  // l'utilisateur a remonté pour lire d'anciens messages
-  const prevCount = useRef(0);
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || logs.length === 0) return;
-    const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-    if (prevCount.current === 0 || nearBottom) {
-      el.scrollTop = el.scrollHeight;
-    }
-    prevCount.current = logs.length;
-  }, [logs]);
-
   const downloadLogs = () => {
-    const text = logs.map(l => `[${l.timestamp}] [${l.level.toUpperCase()}] ${l.message}`).join('\n');
-    const blob = new Blob([text], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `musicarr-logs-${new Date().toISOString()}.txt`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    const text = logs.map(log => `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}`).join('\n');
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `musicarr-journal-${new Date().toISOString().slice(0, 19).replaceAll(':', '-')}.txt`;
+    anchor.click();
     URL.revokeObjectURL(url);
   };
 
   return (
-    <div className={styles.container}>
-      <header className={styles.header}>
-        <div className={styles.titleArea}>
-          <h1>Debug & Logs</h1>
-          <p>Visualisation des logs serveur en temps réel.</p>
-        </div>
-        <div className={styles.actions}>
-          <div className={styles.toggleArea}>
-            <label className={styles.switch}>
-              <input 
-                type="checkbox" 
-                checked={autoRefresh} 
-                onChange={(e) => setAutoRefresh(e.target.checked)} 
-              />
-              <span className={styles.slider}></span>
-            </label>
-            <span>Auto-refresh</span>
-          </div>
-          <button className={styles.button} onClick={fetchLogs} title="Actualiser" aria-label="Actualiser les logs">
-            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-          </button>
-          <button className={styles.button} onClick={downloadLogs} title="Télécharger" aria-label="Télécharger les logs" disabled={logs.length === 0}>
-            <Download size={18} />
-          </button>
-          <button className={`${styles.button} ${styles.danger}`} onClick={clearLogs} title="Effacer" aria-label="Effacer les logs" disabled={logs.length === 0}>
-            <Trash2 size={18} />
-          </button>
-        </div>
-      </header>
+    <div className="page">
+      <PageHeader
+        mark="Face B · Piste 3"
+        title="Journal"
+        actions={
+          <>
+            <button type="button" className="btn btn-icon btn-quiet" onClick={() => setLive(value => !value)} aria-pressed={live} aria-label={live ? 'Mettre en pause' : 'Reprendre le suivi'}>
+              {live ? <Pause size={18} /> : <Play size={18} />}
+            </button>
+            <button type="button" className="btn btn-icon btn-quiet" onClick={downloadLogs} disabled={logs.length === 0} aria-label="Télécharger le journal">
+              <Download size={18} />
+            </button>
+            <button type="button" className="btn btn-icon btn-danger" onClick={clearLogs} disabled={logs.length === 0} aria-label="Effacer le journal">
+              <Trash2 size={18} />
+            </button>
+          </>
+        }
+      />
 
-      <div className={styles.terminalContainer}>
-        <div className={styles.terminalHeader}>
-          <Terminal size={16} />
-          <span>server_stdout.log</span>
-        </div>
-        <div className={styles.terminalContent} ref={scrollRef}>
-          {logs.length === 0 && !loading && (
-            <div className={styles.empty}>Aucun log capturé pour le moment.</div>
-          )}
-          {logs.map((log, i) => (
-            <div key={i} className={styles.logEntry} data-level={log.level}>
-              <span className={styles.timestamp}>
-                {new Date(log.timestamp).toLocaleTimeString()}
-              </span>
-              <span className={styles.level}>[{log.level.toUpperCase()}]</span>
-              <span className={styles.message}>{log.message}</span>
-            </div>
-          ))}
-          {loading && logs.length === 0 && (
-            <div className={styles.loading}>Chargement des logs...</div>
-          )}
-        </div>
+      <div className="chips" role="group" aria-label="Niveau">
+        {LEVELS.map(item => (
+          <button key={item} type="button" className="chip" aria-pressed={level === item} onClick={() => setLevel(item)}>
+            {LEVEL_LABELS[item]}
+          </button>
+        ))}
+      </div>
+
+      <div className={styles.terminal} ref={scrollRef} tabIndex={0} role="log" aria-label="Journal du serveur">
+        {loading && logs.length === 0 && <p className={styles.note}>Lecture du journal…</p>}
+        {!loading && visible.length === 0 && <p className={styles.note}>Rien pour le moment.</p>}
+        {visible.map((log, index) => (
+          <div key={index} className={styles.line} data-level={log.level}>
+            <time className={styles.time}>{new Date(log.timestamp).toLocaleTimeString('fr-FR')}</time>
+            <span className={styles.level}>{log.level}</span>
+            <span className={styles.message}>{log.message}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -1,438 +1,315 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Search,
-  Plus,
-  Music,
-  Disc, 
-  ChevronRight,
-  ChevronLeft,
-  ChevronsLeft,
-  ChevronsRight,
-  LayoutGrid,
-  List,
-  ArrowUpDown,
-  SortAsc,
-  SortDesc,
-  Calendar,
-  Type,
-  User
-} from 'lucide-react';
+import React, { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { ArrowDown, ArrowUp, Disc3, LayoutGrid, List, Plus } from 'lucide-react';
+import CollectionHeader from '@/components/library/CollectionTabs';
+import Cover from '@/components/ui/Cover';
+import SearchField from '@/components/ui/SearchField';
+import { useActivityFinished } from '@/hooks/useApi';
+import { recall, remember, useScrollMemory } from '@/hooks/useListMemory';
+import { api } from '@/lib/ui/api';
+import { formatQuality, formatYear, isLossless, plural, tiltFor } from '@/lib/ui/format';
 import styles from './Library.module.css';
 
+interface AlbumRow {
+  id: number;
+  name: string;
+  artist_id: number;
+  artist_name: string;
+  album_artist?: string | null;
+  release_date?: string | null;
+  quality?: string | null;
+  track_count: number;
+}
+
+type SortKey = 'recent' | 'date' | 'title' | 'artist';
+type Order = 'asc' | 'desc';
+type FormatFilter = '' | 'lossless' | 'lossy';
+
+interface Query {
+  search: string;
+  sortBy: SortKey;
+  order: Order;
+  format: FormatFilter;
+}
+
+interface Snapshot extends Query {
+  albums: AlbumRow[];
+  page: number;
+  total: number;
+  view: 'grid' | 'list';
+}
+
+const MEMORY_KEY = 'library:albums';
+const PAGE_SIZE = 48;
+
+const SORTS: { key: SortKey; label: string; first: Order }[] = [
+  { key: 'recent', label: 'Derniers arrivés', first: 'desc' },
+  { key: 'artist', label: 'Artiste', first: 'asc' },
+  { key: 'title', label: 'Titre', first: 'asc' },
+  { key: 'date', label: 'Année', first: 'desc' },
+];
+
+const FORMATS: { key: FormatFilter; label: string }[] = [
+  { key: '', label: 'Tous' },
+  { key: 'lossless', label: 'Sans perte' },
+  { key: 'lossy', label: 'À améliorer' },
+];
+
 export default function AlbumsPage() {
-  const [albums, setAlbums] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
-  
-  // Pagination & Sorting states
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(40);
-  const [sortBy, setSortBy] = useState('date');
-  const [order, setOrder] = useState<'asc' | 'desc'>('desc');
-  const [total, setTotal] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
+  // `useSearchParams` impose une frontière Suspense au prérendu.
+  return (
+    <Suspense>
+      <Albums />
+    </Suspense>
+  );
+}
 
-  const fetchAlbums = useCallback(async (isSearch = false) => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: (isSearch ? 1 : page).toString(),
-        limit: limit.toString(),
-        sortBy,
-        order,
-        search: filter
-      });
-      const res = await fetch(`/api/albums?${params.toString()}`);
-      const data = await res.json();
-      setAlbums(data.albums || []);
-      setTotal(data.total || 0);
-      setTotalPages(data.totalPages || 0);
-      if (isSearch) setPage(1);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, limit, sortBy, order, filter]);
+function Albums() {
+  const params = useSearchParams();
+  const formatParam = params.get('format');
+  const initialFormat: FormatFilter | null = formatParam === 'lossy' || formatParam === 'lossless' ? formatParam : null;
 
-  // Initial fetch and on param changes (except search which has its own effect)
+  const [restored] = useState(() => recall<Snapshot>(MEMORY_KEY));
+  const [search, setSearch] = useState(restored?.search ?? '');
+  const [sortBy, setSortBy] = useState<SortKey>(restored?.sortBy ?? 'recent');
+  const [order, setOrder] = useState<Order>(restored?.order ?? 'desc');
+  const [format, setFormat] = useState<FormatFilter>(initialFormat ?? restored?.format ?? '');
+  const [view, setView] = useState<'grid' | 'list'>(restored?.view ?? 'grid');
+
+  const reusable = Boolean(restored && (initialFormat === null || initialFormat === restored.format));
+  const [albums, setAlbums] = useState<AlbumRow[]>(reusable ? restored!.albums : []);
+  const [page, setPage] = useState(reusable ? restored!.page : 1);
+  const [total, setTotal] = useState(reusable ? restored!.total : 0);
+  const [loading, setLoading] = useState(!reusable);
+  const [error, setError] = useState<string | null>(null);
+
+  const controller = useRef<AbortController | null>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
+
+  useScrollMemory(MEMORY_KEY, albums.length > 0);
+
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchAlbums();
-    }, 50); // Small tiny delay to avoid double trigger on mount
-    return () => clearTimeout(timer);
-  }, [page, limit, sortBy, order]);
+    const saved = localStorage.getItem('musicarr:view');
+    if (!restored && (saved === 'grid' || saved === 'list')) setView(saved);
+  }, [restored]);
 
-  // Debounced search
+  const fetchPage = useCallback(
+    async (query: Query, targetPage: number, replace: boolean) => {
+      controller.current?.abort();
+      const current = new AbortController();
+      controller.current = current;
+      setLoading(true);
+      try {
+        const data = await api<{ albums: AlbumRow[]; total: number }>(
+          `/api/albums?${new URLSearchParams({
+            page: String(targetPage),
+            limit: String(PAGE_SIZE),
+            sortBy: query.sortBy,
+            order: query.order,
+            search: query.search,
+            format: query.format,
+          })}`,
+          { signal: current.signal },
+        );
+        if (current.signal.aborted) return;
+        setAlbums(previous => (replace ? data.albums : [...previous, ...data.albums]));
+        setTotal(data.total);
+        setPage(targetPage);
+        setError(null);
+      } catch (cause) {
+        if (current.signal.aborted) return;
+        setError((cause as Error).message);
+      } finally {
+        if (!current.signal.aborted) setLoading(false);
+      }
+    },
+    [],
+  );
+
+  // Toute modification de la requête repart de la première page. La saisie est
+  // temporisée pour ne pas interroger le serveur à chaque lettre. La requête n'est
+  // tenue pour appliquée qu'une fois lancée : le double passage des effets de
+  // StrictMode annule la minuterie du premier, le second doit donc la relancer.
+  const signature = JSON.stringify({ search, sortBy, order, format });
+  const applied = useRef(reusable ? signature : null);
   useEffect(() => {
-    const timer = setTimeout(() => {
-      fetchAlbums(true);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [filter]);
+    if (applied.current === signature) return;
+    const previous = applied.current ? (JSON.parse(applied.current) as Query) : null;
+    const typing = previous !== null && previous.search !== search;
+    const timeout = setTimeout(() => {
+      applied.current = signature;
+      fetchPage({ search, sortBy, order, format }, 1, true);
+    }, typing ? 300 : 0);
+    return () => clearTimeout(timeout);
+  }, [signature, search, sortBy, order, format, fetchPage]);
 
-  // Écouter les événements de fin d'activité pour rafraîchir la liste
   useEffect(() => {
-    const handleRefresh = () => {
-      console.log('[Library] Activity finished, refreshing list...');
-      fetchAlbums();
-    };
+    remember(MEMORY_KEY, { search, sortBy, order, format, albums, page, total, view } satisfies Snapshot);
+  }, [search, sortBy, order, format, albums, page, total, view]);
 
-    window.addEventListener('musicarr:activity-finished', handleRefresh);
-    return () => window.removeEventListener('musicarr:activity-finished', handleRefresh);
-  }, [fetchAlbums]);
+  useActivityFinished(() => fetchPage({ search, sortBy, order, format }, 1, true));
 
-  const handleSortChange = (newSortBy: string) => {
-    if (sortBy === newSortBy) {
-      setOrder(order === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortBy(newSortBy);
-      setOrder(newSortBy === 'date' ? 'desc' : 'asc');
-    }
-    setPage(1);
-  };
+  const hasMore = albums.length < total;
 
-  const renderPagination = () => {
-    if (totalPages <= 1) return null;
-
-    const pages = [];
-    const maxVisible = 5;
-    let start = Math.max(1, page - Math.floor(maxVisible / 2));
-    const end = Math.min(totalPages, start + maxVisible - 1);
-
-    if (end - start + 1 < maxVisible) {
-      start = Math.max(1, end - maxVisible + 1);
-    }
-
-    for (let i = start; i <= end; i++) {
-      pages.push(i);
-    }
-
-    return (
-      <div className={styles.pagination}>
-        <button 
-          onClick={() => setPage(1)} 
-          disabled={page === 1}
-          className={styles.pageButton}
-          title="Première page"
-        >
-          <ChevronsLeft size={16} />
-        </button>
-        <button 
-          onClick={() => setPage(prev => Math.max(1, prev - 1))} 
-          disabled={page === 1}
-          className={styles.pageButton}
-          title="Page précédente"
-        >
-          <ChevronLeft size={16} />
-        </button>
-
-        {start > 1 && <span style={{ color: 'var(--text-muted)' }}>...</span>}
-
-        {pages.map(p => (
-          <button
-            key={p}
-            onClick={() => setPage(p)}
-            className={`${styles.pageButton} ${page === p ? styles.pageButtonActive : ''}`}
-          >
-            {p}
-          </button>
-        ))}
-
-        {end < totalPages && <span style={{ color: 'var(--text-muted)' }}>...</span>}
-
-        <button 
-          onClick={() => setPage(prev => Math.min(totalPages, prev + 1))} 
-          disabled={page === totalPages}
-          className={styles.pageButton}
-          title="Page suivante"
-        >
-          <ChevronRight size={16} />
-        </button>
-        <button 
-          onClick={() => setPage(totalPages)} 
-          disabled={page === totalPages}
-          className={styles.pageButton}
-          title="Dernière page"
-        >
-          <ChevronsRight size={16} />
-        </button>
-      </div>
+  useEffect(() => {
+    const element = sentinel.current;
+    if (!element || !hasMore || loading) return;
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting) fetchPage({ search, sortBy, order, format }, page + 1, false);
+      },
+      { rootMargin: '600px' },
     );
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [hasMore, loading, page, search, sortBy, order, format, fetchPage]);
+
+  const chooseSort = (key: SortKey, first: Order) => {
+    if (sortBy === key) {
+      setOrder(current => (current === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(key);
+      setOrder(first);
+    }
   };
+
+  const chooseView = (next: 'grid' | 'list') => {
+    setView(next);
+    localStorage.setItem('musicarr:view', next);
+  };
+
+  const OrderIcon = order === 'asc' ? ArrowUp : ArrowDown;
 
   return (
-    <div className={styles.container}>
-      <header className={styles.header}>
-        <div>
-          <h1>Ma Collection</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Gérez vos artistes et albums favoris.</p>
-        </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <Link href="/library/add" className={styles.button}>
-            <Plus size={20} />
-            Ajouter un artiste
-          </Link>
-        </div>
-      </header>
+    <div className="page">
+      <CollectionHeader section="albums" />
 
-      {/* TABS NAVIGATION */}
-      <nav className={styles.tabs} aria-label="Sections de la collection">
-        <span className={`${styles.tab} ${styles.tabActive}`} aria-current="page">
-          Albums
-        </span>
-        <Link href="/library/artists" className={styles.tab}>
-          Artistes
-        </Link>
-      </nav>
-
-      <div className={styles.searchHeader}>
-        <div className={styles.searchInputWrapper}>
-          <Search size={18} className={styles.searchIcon} />
-          <input 
-            type="text" 
-            placeholder="Rechercher un album ou artiste..." 
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className={styles.searchInput}
-          />
-        </div>
-        <div className={styles.viewToggle} role="group" aria-label="Mode d'affichage">
-          <button
-             onClick={() => setViewMode('grid')}
-             className={`${styles.viewToggleButton} ${viewMode === 'grid' ? styles.viewToggleActive : ''}`}
-             title="Vue grille"
-             aria-pressed={viewMode === 'grid'}
-          >
-            <LayoutGrid size={18} />
-          </button>
-          <button
-             onClick={() => setViewMode('list')}
-             className={`${styles.viewToggleButton} ${viewMode === 'list' ? styles.viewToggleActive : ''}`}
-             title="Vue liste"
-             aria-pressed={viewMode === 'list'}
-          >
-            <List size={18} />
-          </button>
+      <div className={styles.searchRow}>
+        <SearchField value={search} onChange={setSearch} placeholder="Un disque, un artiste…" />
+          <div className={styles.viewSwitch} role="group" aria-label="Affichage">
+            <button type="button" onClick={() => chooseView('grid')} aria-pressed={view === 'grid'} aria-label="Affichage en pochettes">
+              <LayoutGrid size={18} />
+            </button>
+            <button type="button" onClick={() => chooseView('list')} aria-pressed={view === 'list'} aria-label="Affichage en liste">
+              <List size={18} />
+            </button>
+          </div>
+      </div>
+      <div className={styles.filters}>
+        <div className="chips" role="group" aria-label="Tri et format">
+          {SORTS.map(sort => (
+            <button key={sort.key} type="button" className="chip" aria-pressed={sortBy === sort.key} onClick={() => chooseSort(sort.key, sort.first)}>
+              {sort.label}
+              {sortBy === sort.key && <OrderIcon size={14} aria-label={order === 'asc' ? 'croissant' : 'décroissant'} />}
+            </button>
+          ))}
+          <span className={styles.chipGap} aria-hidden="true" />
+          {FORMATS.map(item => (
+            <button key={item.key} type="button" className="chip" aria-pressed={format === item.key} onClick={() => setFormat(item.key)}>
+              {item.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      <div className={styles.controlsRow}>
-        <div style={{ display: 'flex', gap: '16px' }}>
-          <div className={styles.selectWrapper}>
-            <ArrowUpDown size={14} />
-            <select 
-              className={styles.select} 
-              value={sortBy} 
-              onChange={(e) => {
-                setSortBy(e.target.value);
-                setPage(1);
-              }}
-            >
-              <option value="date">Date d'ajout</option>
-              <option value="title">Titre</option>
-              <option value="artist">Artiste</option>
-            </select>
-          </div>
-          <div className={styles.selectWrapper}>
-            {order === 'asc' ? <SortAsc size={14} /> : <SortDesc size={14} />}
-            <select 
-              className={styles.select} 
-              value={order} 
-              onChange={(e) => {
-                setOrder(e.target.value as 'asc' | 'desc');
-                setPage(1);
-              }}
-            >
-              <option value="desc">Décroissant</option>
-              <option value="asc">Croissant</option>
-            </select>
-          </div>
-        </div>
+      <p className={`mono ${styles.count}`} aria-live="polite">
+        {loading && albums.length === 0 ? 'Fouille du bac…' : plural(total, 'disque')}
+      </p>
 
-        <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            {total} album{total > 1 ? 's' : ''}
-          </div>
-          <div className={styles.selectWrapper}>
-            <span style={{ fontSize: '0.85rem' }}>Afficher :</span>
-            <select 
-              className={styles.select} 
-              value={limit} 
-              onChange={(e) => {
-                setLimit(parseInt(e.target.value));
-                setPage(1);
-              }}
-            >
-              <option value="20">20</option>
-              <option value="40">40</option>
-              <option value="100">100</option>
-            </select>
-          </div>
+      {error && albums.length === 0 ? (
+        <div className="empty">
+          <p className="hand">Le bac est coincé.</p>
+          <p>{error}</p>
         </div>
-      </div>
-
-      {loading ? (
-        <div className={styles.loadingState}>
-          <Disc className={styles.spin} size={48} color="var(--accent)" />
-          <p>Chargement de votre collection...</p>
-        </div>
-      ) : albums.length === 0 ? (
-        <div className={styles.emptyState}>
-          <Disc size={64} strokeWidth={1} />
-          <div>
-            <h2>Aucun album trouvé</h2>
-            <p>
-              {filter
-                ? 'Aucun résultat pour cette recherche. Essayez d\'autres mots-clés.'
-                : 'Ajoutez un artiste ou scannez votre bibliothèque pour commencer.'}
-            </p>
-          </div>
-          {!filter && (
-            <Link href="/library/add" className={styles.button}>
+      ) : !loading && albums.length === 0 ? (
+        <div className="empty">
+          <Disc3 size={56} strokeWidth={1.25} />
+          <p className="hand">{search || format ? 'Rien dans ce bac.' : 'Le bac est vide.'}</p>
+          <p>{search || format ? 'Essayez d’autres mots, ou un autre filtre.' : 'Ajoutez un artiste, ou scannez votre bibliothèque depuis les réglages.'}</p>
+          {!search && !format && (
+            <Link href="/library/add" className="btn btn-primary">
               <Plus size={18} />
               Ajouter un artiste
             </Link>
           )}
         </div>
-      ) : viewMode === 'grid' ? (
-        <>
-          <div className={styles.albumGrid}>
-            {albums.map((album) => (
-              <Link 
-                key={album.id} 
-                href={`/library/album/${album.id}`}
-                className={styles.albumCard}
-              >
-                <div className={styles.coverWrapper}>
-                  <div className={styles.coverImage} style={{ backgroundImage: `url(/api/albums/${album.id}/cover?v=${new Date(album.release_date).getTime()})` }}>
-                      {!album.metadata?.includes('hasCover":true') && !album.path && (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', backgroundColor: 'rgba(0,0,0,0.2)' }}>
-                            <Disc size={40} color="var(--text-muted)" opacity={0.3} />
-                        </div>
-                      )}
-                  </div>
-                  {album.quality && album.quality !== 'Unknown' && (
-                      <div className={styles.qualityBadge}>{album.quality}</div>
-                  )}
-                </div>
-                <div className={styles.albumInfo}>
-                  <div className={styles.albumCardTitle}>{album.name}</div>
-                  <div className={styles.albumCardArtist}>{album.album_artist || album.artist_name}</div>
-                  <div className={styles.albumCardMeta}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Calendar size={12} />
-                        {album.release_date || '-'}
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        {album.track_count} <Music size={12} />
-                      </span>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
-          {renderPagination()}
-        </>
+      ) : view === 'grid' ? (
+        <ul className={styles.grid}>
+          {albums.map(album => (
+            <li key={album.id}>
+              <AlbumCard album={album} />
+            </li>
+          ))}
+          {loading && albums.length === 0 && Array.from({ length: 8 }, (_, index) => (
+            <li key={index}>
+              <div className={`skeleton ${styles.skeleton}`} />
+            </li>
+          ))}
+        </ul>
       ) : (
-        <>
-          <div className={styles.tableWrapper}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th onClick={() => handleSortChange('title')} style={{ cursor: 'pointer' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Type size={14} />
-                      Album
-                      {sortBy === 'title' && (order === 'asc' ? <SortAsc size={14} /> : <SortDesc size={14} />)}
-                    </div>
-                  </th>
-                  <th onClick={() => handleSortChange('artist')} style={{ cursor: 'pointer' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <User size={14} />
-                      Artiste
-                      {sortBy === 'artist' && (order === 'asc' ? <SortAsc size={14} /> : <SortDesc size={14} />)}
-                    </div>
-                  </th>
-                  <th onClick={() => handleSortChange('date')} style={{ cursor: 'pointer', textAlign: 'center' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
-                      <Calendar size={14} />
-                      Année
-                      {sortBy === 'date' && (order === 'asc' ? <SortAsc size={14} /> : <SortDesc size={14} />)}
-                    </div>
-                  </th>
-                  <th>Format</th>
-                  <th style={{ textAlign: 'right' }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {albums.map((album) => (
-                  <tr key={album.id}>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                        <div style={{ 
-                          width: '40px', 
-                          height: '40px', 
-                          borderRadius: '4px', 
-                          backgroundColor: 'var(--background)',
-                          backgroundImage: `url(/api/albums/${album.id}/cover?v=${new Date(album.release_date).getTime()})`,
-                          backgroundSize: 'cover',
-                          backgroundPosition: 'center',
-                          border: '1px solid var(--border)'
-                        }}>
-                          {!album.metadata?.includes('hasCover":true') && !album.path && (
-                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                                <Disc size={20} color="var(--text-muted)" />
-                            </div>
-                          )}
-                        </div>
-                        <Link href={`/library/album/${album.id}`} className={styles.artistLink}>
-                          <span className={styles.artistName}>{album.name}</span>
-                        </Link>
-                      </div>
-                    </td>
-                    <td>
-                      <Link href={`/library/artist/${album.artist_id}`} style={{ textDecoration: 'none' }}>
-                        <span style={{ color: 'var(--foreground)', opacity: 0.9 }}>{album.album_artist || album.artist_name}</span>
-                      </Link>
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      <span style={{ color: 'var(--text-muted)' }}>{album.release_date || '-'}</span>
-                    </td>
-                    <td>
-                      <span style={{ 
-                        fontSize: '0.7rem', 
-                        backgroundColor: 'rgba(255, 255, 255, 0.05)', 
-                        padding: '2px 6px', 
-                        borderRadius: '4px',
-                        color: 'var(--text-muted)',
-                        fontWeight: 600
-                      }}>
-                        {album.quality || 'N/A'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className={styles.actions}>
-                        <Link href={`/library/album/${album.id}`}>
-                          <button className={`${styles.button} ${styles.outlineButton}`} style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
-                            Détails
-                            <ChevronRight size={14} />
-                          </button>
-                        </Link>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {renderPagination()}
-        </>
+        <ul className={styles.list}>
+          {albums.map(album => (
+            <li key={album.id}>
+              <AlbumRowItem album={album} />
+            </li>
+          ))}
+        </ul>
       )}
+
+      <div ref={sentinel} className={styles.sentinel}>
+        {loading && albums.length > 0 && <span className="mini-record" aria-label="Chargement" />}
+      </div>
     </div>
+  );
+}
+
+function QualitySticker({ album, className }: { album: AlbumRow; className?: string }) {
+  const quality = formatQuality(album.quality);
+  if (!quality) return null;
+  return (
+    <span
+      className={`sticker ${isLossless(album.quality) ? 'sticker-flac' : ''} ${className ?? ''}`}
+      style={{ '--tilt': tiltFor(album.name, 12) } as React.CSSProperties}
+    >
+      {quality}
+    </span>
+  );
+}
+
+function AlbumCard({ album }: { album: AlbumRow }) {
+  const artist = album.album_artist || album.artist_name;
+  return (
+    <Link href={`/library/album/${album.id}`} className={styles.card}>
+      <div className={styles.sleeve}>
+        {/* Le disque qui dépasse de la pochette au survol */}
+        <span className={styles.vinyl} aria-hidden="true" />
+        <Cover albumId={album.id} name={album.name} artist={artist} sizes="(max-width: 599px) 50vw, (max-width: 899px) 33vw, 200px" morph className={styles.cover}>
+          <QualitySticker album={album} className={styles.sticker} />
+        </Cover>
+      </div>
+      <span className={`clamp-2 ${styles.title}`}>{album.name}</span>
+      <span className={`mono clamp-1 ${styles.artist}`}>{artist}</span>
+      <span className={`mono ${styles.meta}`}>
+        {[formatYear(album.release_date), album.track_count ? plural(album.track_count, 'titre') : ''].filter(Boolean).join(' · ')}
+      </span>
+    </Link>
+  );
+}
+
+function AlbumRowItem({ album }: { album: AlbumRow }) {
+  const artist = album.album_artist || album.artist_name;
+  return (
+    <Link href={`/library/album/${album.id}`} className={styles.row}>
+      <Cover albumId={album.id} name={album.name} sizes="54px" className={styles.rowCover} />
+      <span className={styles.rowText}>
+        <strong className="clamp-1">{album.name}</strong>
+        <span className="mono muted clamp-1">{artist}</span>
+      </span>
+      <span className={`mono ${styles.rowYear}`}>{formatYear(album.release_date)}</span>
+      <QualitySticker album={album} />
+    </Link>
   );
 }

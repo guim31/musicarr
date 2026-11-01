@@ -1,0 +1,454 @@
+.home {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* --- Une : le mur de pochettes photocopiées -------------------------------------- */
+
+.hero {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  margin-top: 6px;
+  padding: 44px var(--page-x) 34px;
+  background: var(--hot);
+  color: var(--paper);
+  clip-path: polygon(
+    0 0, 100% 0, 100% calc(100% - 7px),
+    92% 100%, 84% calc(100% - 6px), 76% calc(100% - 1px), 67% calc(100% - 8px), 58% 100%, 49% calc(100% - 5px),
+    40% calc(100% - 1px), 31% calc(100% - 7px), 22% calc(100% - 2px), 13% calc(100% - 8px), 5% calc(100% - 2px), 0 calc(100% - 6px)
+  );
+}
+
+.wall {
+  position: absolute;
+  inset: -22% -14%;
+  z-index: -1;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  align-content: start;
+  gap: 3px;
+  background: var(--hot);
+  transform: rotate(-6deg);
+}
+
+.wall img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  filter: grayscale(1) contrast(1.5) brightness(0.92);
+  mix-blend-mode: multiply;
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, rgb(15 14 12 / 0) 10%, rgb(15 14 12 / 0.55) 100%);
+}
+
+.heroInner {
+  position: relative;
+}
+
+.issue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.issueDate {
+  padding: 2px 6px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.6875rem;
+}
+
+.count {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.18em;
+  margin-top: 14px;
+  color: var(--paper);
+  font-size: clamp(5.25rem, 28vw, 10rem);
+  line-height: 0.92;
+  text-shadow: 0.03em 0.03em 0 var(--ink);
+}
+
+.countUnit {
+  font-size: 0.42em;
+  color: var(--acid);
+}
+
+.ticker {
+  margin-top: 12px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 3px 8px;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.75rem;
+}
+
+.ticker span {
+  color: var(--acid);
+}
+
+/* --- En ce moment --------------------------------------------------------------- */
+
+.live {
+  margin-inline: var(--page-x);
+  padding: 16px 14px 12px;
+  border: 2px solid var(--aqua);
+  position: relative;
+}
+
+.live > h2 {
+  position: absolute;
+  top: -11px;
+  left: 10px;
+}
+
+.liveRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.liveText {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* --- Bac à disques ---------------------------------------------------------------- */
+
+.sectionHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-inline: var(--page-x);
+}
+
+.sectionHead h2 {
+  font-size: 1.875rem;
+}
+
+.more {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 3px;
+  color: var(--acid);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.crateSection {
+  min-width: 0;
+}
+
+.crate {
+  --item: min(62vw, 250px);
+  display: flex;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 8px var(--page-x) 12px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.crate::-webkit-scrollbar {
+  display: none;
+}
+
+.crateItem {
+  position: relative;
+  display: block;
+  flex: 0 0 var(--item);
+  scroll-snap-align: center;
+}
+
+.crateSkeleton {
+  aspect-ratio: 1;
+}
+
+.crateSticker {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  font-size: 0.6875rem;
+}
+
+.crateCaption {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: 8px;
+}
+
+.crateCaption strong {
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.crateCaption span {
+  font-size: 0.6875rem;
+}
+
+/* On feuillette : les disques basculent à mesure qu'ils quittent le centre du bac. */
+@supports (animation-timeline: view()) {
+  .crate {
+    perspective: 1100px;
+    padding-inline: calc(50% - var(--item) / 2);
+    gap: 0;
+  }
+
+  .crateItem {
+    margin-inline: -8px;
+    animation: crate-flip linear both;
+    animation-timeline: view(inline);
+    transform-origin: center 60%;
+  }
+
+  @keyframes crate-flip {
+    0% {
+      z-index: 1;
+      transform: rotateY(48deg) scale(0.8);
+      filter: brightness(0.6);
+    }
+    46%,
+    54% {
+      z-index: 10;
+      transform: none;
+      filter: none;
+    }
+    100% {
+      z-index: 1;
+      transform: rotateY(-48deg) scale(0.8);
+      filter: brightness(0.6);
+    }
+  }
+}
+
+/* --- Tuiles --------------------------------------------------------------------------- */
+
+.columns {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+  padding-inline: var(--page-x);
+}
+
+.wanted {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 16px;
+  background: var(--hot);
+  color: var(--ink);
+  transform: rotate(-0.6deg);
+  transition: transform 0.2s var(--ease-punch);
+}
+
+.wanted:hover {
+  transform: rotate(0.4deg) scale(1.01);
+}
+
+.wantedTop,
+.formatTop {
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+}
+
+.wantedCount {
+  margin-top: 4px;
+  font-size: 4.75rem;
+  line-height: 1;
+}
+
+.wantedLabel {
+  margin-top: 2px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.wantedArrow {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.format {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 16px 16px;
+  border: 2px solid var(--line);
+}
+
+.formatTop {
+  color: var(--muted);
+}
+
+.formatValue {
+  margin-top: 4px;
+  color: var(--acid);
+  font-size: 4rem;
+  line-height: 1;
+}
+
+.formatLabel {
+  margin-top: 2px;
+  color: var(--paper-2);
+  font-size: 0.9375rem;
+}
+
+.formatBar {
+  display: block;
+  height: 10px;
+  margin-top: 12px;
+  background: repeating-linear-gradient(90deg, var(--ink-4) 0 3px, transparent 3px 6px);
+}
+
+.formatBar i {
+  display: block;
+  height: 100%;
+  background: var(--acid);
+  transition: width 0.8s var(--ease-out);
+}
+
+.formatLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  width: fit-content;
+  min-height: 40px;
+  margin-top: 4px;
+  color: var(--acid);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+/* --- Fil d'activité ------------------------------------------------------------------- */
+
+.feedList {
+  display: flex;
+  flex-direction: column;
+  margin-top: 10px;
+  padding-inline: var(--page-x);
+}
+
+.feedRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.feedIcon {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  background: var(--ink-3);
+  color: var(--acid);
+  transform: rotate(-3deg);
+}
+
+.feedRow[data-failed='true'] .feedIcon {
+  background: var(--hot);
+  color: var(--ink);
+}
+
+.feedText {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  font-size: 0.875rem;
+}
+
+.feedText strong {
+  font-weight: 700;
+}
+
+.feedText span {
+  font-size: 0.8125rem;
+}
+
+.feedTime {
+  flex: none;
+  color: var(--faint);
+  font-size: 0.625rem;
+  text-transform: none;
+}
+
+@media (min-width: 600px) {
+  /* Sur grand écran tout tient d'un regard : pas besoin de feuilleter. */
+  .crate {
+    --item: 200px;
+    gap: 18px;
+    padding-inline: var(--page-x);
+    perspective: none;
+  }
+
+  .crateItem {
+    margin-inline: 0;
+    animation: none;
+    transition: transform 0.22s var(--ease-punch);
+  }
+
+  .crateItem:hover {
+    transform: rotate(-1.5deg) translateY(-4px);
+  }
+}
+
+@media (min-width: 900px) {
+  .home {
+    gap: 36px;
+  }
+
+  .hero {
+    margin-top: 0;
+    padding: 56px var(--page-x) 44px;
+  }
+
+  .wall {
+    inset: -60% -6%;
+    grid-template-columns: repeat(8, 1fr);
+  }
+
+  .columns {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    align-items: start;
+    gap: 36px;
+    padding-inline: var(--page-x);
+  }
+
+  .tiles,
+  .feedList,
+  .feed .sectionHead {
+    padding-inline: 0;
+  }
+}

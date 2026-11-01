@@ -37,6 +37,14 @@ Musicarr est une alternative moderne à Lidarr, conçue avec la stack **Next.js 
 - `Dockerfile` / `docker-compose.yml` : Configuration de l'environnement conteneurisé.
 - `musicarr.db` : Fichier de base de données SQLite local.
 
+## 🎨 Interface
+- **Identité « fanzine »** : photocopie sur papier de couleur, adhésif, stickers de pochette. Trois encres : `--acid` (ce qu'on possède, l'action principale), `--hot` (ce qui manque, le danger), `--aqua` (ce qui se passe). Les pochettes apportent le reste de la couleur.
+- **Primitives partagées** dans `src/app/globals.css` (`.btn`, `.chip`, `.tape`, `.sticker`, `.input`, `.switch`, `.tapebar`…) ; chaque écran garde sa mise en page dans son module CSS. Une taille imposée à `Cover` doit passer par un sélecteur plus spécifique que `Cover.module.css` (`.row .cover`) : l'ordre de chargement des modules n'est pas garanti.
+- **Mobile d'abord** : dock à moins de 900 px, barre latérale au-delà. Cibles tactiles de 38 px au moins, champs en 16 px au moins (sinon iOS zoome), `overflow-x: clip` et jamais `hidden` (qui casse `position: sticky`).
+- **Modales** : toujours `components/ui/Sheet` (`<dialog>` natif, feuille au téléphone, bouton Retour géré). Jamais `confirm()` : `useConfirm()`.
+- **Suivi du serveur** : un seul fil interroge l'API, `context/ActivityContext.tsx`. Les écrans écoutent l'événement `musicarr:activity-finished` via `useActivityFinished`, ils n'ajoutent pas leur propre minuterie.
+- **Pochettes** : passer `sizes` à `Cover` pour servir une vignette (`?w=160|320|640`, générée par ffmpeg et gardée dans `data/covers/thumbs`).
+
 ## 🔗 Intégrations Externes
 - **Prowlarr** : Recherche multi-indexeurs.
 - **SABnzbd** : Téléchargement Usenet.

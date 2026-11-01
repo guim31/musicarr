@@ -1,175 +1,212 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import {
-  Search,
-  Plus,
-  Disc,
-  Users,
-  ChevronRight,
-  Monitor,
-  RefreshCw
-} from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import styles from '../Library.module.css';
+import { Plus, Settings2 } from 'lucide-react';
+import CollectionHeader from '@/components/library/CollectionTabs';
+import ArtistArt from '@/components/ui/ArtistArt';
+import SearchField from '@/components/ui/SearchField';
+import { useActivityFinished, useApi } from '@/hooks/useApi';
+import { recall, remember, useScrollMemory } from '@/hooks/useListMemory';
+import { CompareUtils } from '@/lib/CompareUtils';
+import { dividerFor, plural } from '@/lib/ui/format';
+import styles from './Artists.module.css';
 
-export default function LibraryPage() {
-  const [artists, setArtists] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState('');
+interface ArtistRow {
+  id: number;
+  name: string;
+  image?: string | null;
+  cover_album_id?: number | null;
+  album_count: number;
+  downloaded_count: number;
+  missing_count: number;
+}
 
-  // Déclaré avant l'effet qui l'appelle, pour éviter l'accès en zone morte.
-  const fetchArtists = async () => {
-    try {
-      const res = await fetch('/api/artists');
-      const data = await res.json();
-      setArtists(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+type Filter = 'owned' | 'all' | 'wanted';
+
+const FILTER_KEY = 'library:artists:filter';
+const SEARCH_KEY = 'library:artists:search';
+const SCROLL_KEY = 'library:artists';
+
+const FILTERS: { key: Filter; label: string }[] = [
+  { key: 'all', label: 'Tous' },
+  { key: 'owned', label: 'En collection' },
+  { key: 'wanted', label: 'À compléter' },
+];
+
+export default function ArtistsPage() {
+  const { data, error, loading, reload } = useApi<ArtistRow[]>('/api/artists');
+  const [filter, setFilter] = useState<Filter>(() => recall<Filter>(FILTER_KEY) ?? 'all');
+  const [search, setSearch] = useState(() => recall<string>(SEARCH_KEY) ?? '');
+  const [activeLetter, setActiveLetter] = useState('');
+  const sections = useRef(new Map<string, HTMLElement>());
+  const letterTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  useActivityFinished(reload);
+  useScrollMemory(SCROLL_KEY, Boolean(data));
 
   useEffect(() => {
-    fetchArtists();
-  }, []);
+    remember(FILTER_KEY, filter);
+    remember(SEARCH_KEY, search);
+  }, [filter, search]);
 
-  const filteredArtists = artists.filter(a => 
-    a.name.toLowerCase().includes(filter.toLowerCase())
+  const artists = useMemo(() => data ?? [], [data]);
+
+  const counts = useMemo(
+    () => ({
+      owned: artists.filter(artist => artist.downloaded_count > 0).length,
+      wanted: artists.filter(artist => artist.missing_count > 0).length,
+      all: artists.length,
+    }),
+    [artists],
   );
 
+  const groups = useMemo(() => {
+    // Recherche normalisée : « ska p » doit trouver « SKA-P ».
+    const needle = CompareUtils.normalize(search);
+    const matching = artists.filter(artist => {
+      if (filter === 'owned' && artist.downloaded_count === 0) return false;
+      if (filter === 'wanted' && artist.missing_count === 0) return false;
+      return !needle || CompareUtils.normalize(artist.name).includes(needle);
+    });
+    const byLetter = new Map<string, ArtistRow[]>();
+    for (const artist of matching) {
+      const letter = dividerFor(artist.name);
+      const list = byLetter.get(letter);
+      if (list) list.push(artist);
+      else byLetter.set(letter, [artist]);
+    }
+    return [...byLetter.entries()]
+      .sort(([a], [b]) => (a === '#' ? -1 : b === '#' ? 1 : a.localeCompare(b)))
+      .map(([letter, items]) => ({ letter, items }));
+  }, [artists, filter, search]);
+
+  const total = groups.reduce((sum, group) => sum + group.items.length, 0);
+
+  const jumpTo = (letter: string) => {
+    sections.current.get(letter)?.scrollIntoView({ block: 'start' });
+    setActiveLetter(letter);
+    clearTimeout(letterTimer.current);
+    letterTimer.current = setTimeout(() => setActiveLetter(''), 900);
+  };
+
+  /** Glisser le pouce le long du rail fait défiler les lettres, comme les intercalaires d'un bac. */
+  const onRailMove = (event: React.PointerEvent<HTMLElement>) => {
+    if (event.buttons === 0 && event.pointerType === 'mouse') return;
+    const target = document.elementFromPoint(event.clientX, event.clientY) as HTMLElement | null;
+    const letter = target?.dataset.letter;
+    if (letter && letter !== activeLetter) jumpTo(letter);
+  };
+
   return (
-    <div className={styles.container}>
-      <header className={styles.header}>
-        <div>
-          <h1>Ma Collection</h1>
-          <p style={{ color: 'var(--text-muted)' }}>Gérez vos artistes et albums favoris.</p>
-        </div>
-        <Link href="/library/add" className={styles.button}>
-          <Plus size={20} />
-          Ajouter un artiste
-        </Link>
-      </header>
+    <div className="page">
+      <CollectionHeader section="artists" />
 
-      {/* TABS NAVIGATION */}
-      <nav className={styles.tabs} aria-label="Sections de la collection">
-        <Link href="/library" className={styles.tab}>
-          Albums
-        </Link>
-        <span className={`${styles.tab} ${styles.tabActive}`} aria-current="page">
-          Artistes
-        </span>
-      </nav>
-
-      <div className={styles.searchHeader}>
-        <div className={styles.searchInputWrapper}>
-          <Search size={18} className={styles.searchIcon} />
-          <input
-            type="text"
-            placeholder="Filtrer ma collection..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className={styles.searchInput}
-          />
+      <div className={styles.toolbar}>
+        <SearchField value={search} onChange={setSearch} placeholder="Un artiste, un groupe…" />
+      </div>
+      <div className={styles.filters}>
+        <div className="chips" role="group" aria-label="Filtrer les artistes">
+          {FILTERS.map(item => (
+            <button key={item.key} type="button" className="chip" aria-pressed={filter === item.key} onClick={() => setFilter(item.key)}>
+              {item.label} <small>{counts[item.key]}</small>
+            </button>
+          ))}
         </div>
       </div>
 
-      {loading ? (
-        <div className={styles.loadingState}>
-          <Disc className="animate-spin" size={48} color="var(--accent)" />
-          <p>Chargement de vos artistes...</p>
+      <p className={`mono ${styles.count}`} aria-live="polite">
+        {loading ? 'Fouille du bac…' : plural(total, 'artiste')}
+      </p>
+
+      {error ? (
+        <div className="empty">
+          <p className="hand">Le bac est coincé.</p>
+          <p>{error}</p>
         </div>
-      ) : artists.length === 0 ? (
-        <div className={styles.emptyState}>
-          <Users size={64} strokeWidth={1} />
-          <div>
-            <h2>Votre collection est vide</h2>
-            <p>Commencez par ajouter des artistes ou scannez votre bibliothèque locale.</p>
-          </div>
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
-            <Link href="/library/add" className={styles.button}>
+      ) : !loading && artists.length === 0 ? (
+        <div className="empty">
+          <p className="hand">Aucun artiste pour l'instant.</p>
+          <p>Ajoutez-en un, ou indiquez le dossier de votre musique pour lancer un scan.</p>
+          <div className={styles.emptyActions}>
+            <Link href="/library/add" className="btn btn-primary">
               <Plus size={18} />
               Ajouter un artiste
             </Link>
-            <Link href="/settings" className={`${styles.button} ${styles.outlineButton}`}>
-              Configurer le dossier musique
+            <Link href="/settings" className="btn">
+              <Settings2 size={18} />
+              Réglages
             </Link>
           </div>
         </div>
+      ) : !loading && total === 0 ? (
+        <div className="empty">
+          <p className="hand">Personne à ce nom.</p>
+          <p>Vérifiez l'orthographe, ou cherchez parmi tous les artistes.</p>
+        </div>
       ) : (
-        <div className={styles.tableWrapper}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Artiste</th>
-                <th>Albums</th>
-                <th>Collecté</th>
-                <th>Statut</th>
-                <th style={{ textAlign: 'right' }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredArtists.map((artist) => (
-                <tr key={artist.id}>
-                  <td>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <Link href={`/library/artist/${artist.id}`} className={styles.artistLink}>
-                        <span className={styles.artistName}>{artist.name}</span>
-                      </Link>
-                    </div>
-                  </td>
-                  <td>
-                    <span style={{ color: 'var(--text-muted)' }}>{artist.album_count} album{artist.album_count > 1 ? 's' : ''}</span>
-                  </td>
-                  <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                      <div className={`${styles.statusBadge} ${artist.downloaded_count === artist.album_count ? styles.downloadedBadge : ''}`}>
-                        {artist.downloaded_count} collecté{artist.downloaded_count > 1 ? 's' : ''}
-                      </div>
-                      {artist.missing_count > 0 && (
-                        <span style={{ fontSize: '0.75rem', color: 'var(--warning)', fontWeight: 600 }}>
-                          {artist.missing_count} manquant{artist.missing_count > 1 ? 's' : ''}
+        <div className={styles.layout}>
+          <div className={styles.groups}>
+            {loading && <div className={`skeleton ${styles.skeleton}`} />}
+            {groups.map(group => (
+              <section
+                key={group.letter}
+                ref={element => {
+                  if (element) sections.current.set(group.letter, element);
+                  else sections.current.delete(group.letter);
+                }}
+                className={styles.group}
+                aria-label={group.letter === '#' ? 'Chiffres et symboles' : `Lettre ${group.letter}`}
+              >
+                <h2 className={`display ${styles.divider}`}>
+                  <span>{group.letter}</span>
+                </h2>
+                <ul className={styles.wall}>
+                  {group.items.map(artist => (
+                    <li key={artist.id}>
+                      <Link href={`/library/artist/${artist.id}`} className={styles.artist}>
+                        <ArtistArt name={artist.name} image={artist.image} coverAlbumId={artist.cover_album_id} variant="tile" sizes="(max-width: 899px) 54px, 200px" className={styles.art} />
+                        <span className={styles.artistText}>
+                          <strong className={`display clamp-2 ${styles.artistName}`}>{artist.name}</strong>
+                          <span className={`mono ${styles.artistMeta}`}>
+                            {plural(artist.downloaded_count, 'disque')}
+                            {artist.missing_count > 0 && <em> · {artist.missing_count} manquant{artist.missing_count > 1 ? 's' : ''}</em>}
+                          </span>
                         </span>
-                      )}
-                    </div>
-                  </td>
-                  <td>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', color: 'var(--success)' }}>
-                      <Monitor size={14} />
-                      Surveillé
-                    </span>
-                  </td>
-                  <td>
-                    <div className={styles.actions}>
-                      <button 
-                        className={`${styles.button} ${styles.outlineButton}`} 
-                        style={{ padding: '6px' }}
-                        onClick={async () => {
-                          try {
-                            const res = await fetch(`/api/artists/${artist.id}/scan`, { method: 'POST' });
-                            const data = await res.json();
-                            if (data.success) {
-                              fetchArtists(); // Re-fetch data
-                            }
-                          } catch (e) { console.error(e); }
-                        }}
-                        title="Scanner le dossier de cet artiste"
-                      >
-                        <RefreshCw size={14} />
-                      </button>
-                      <Link href={`/library/artist/${artist.id}`}>
-                        <button className={`${styles.button} ${styles.outlineButton}`} style={{ padding: '6px 12px', fontSize: '0.75rem' }}>
-                          Détails
-                          <ChevronRight size={14} />
-                        </button>
                       </Link>
-                    </div>
-                  </td>
-                </tr>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+
+          {groups.length > 3 && (
+            <nav
+              className={styles.rail}
+              aria-label="Aller à une lettre"
+              onPointerDown={onRailMove}
+              onPointerMove={onRailMove}
+            >
+              {groups.map(group => (
+                <button
+                  key={group.letter}
+                  type="button"
+                  data-letter={group.letter}
+                  data-active={activeLetter === group.letter}
+                  onClick={() => jumpTo(group.letter)}
+                >
+                  {group.letter}
+                </button>
               ))}
-            </tbody>
-          </table>
+            </nav>
+          )}
+        </div>
+      )}
+
+      {activeLetter && (
+        <div className={`display misprint ${styles.bigLetter}`} aria-hidden="true">
+          {activeLetter}
         </div>
       )}
     </div>

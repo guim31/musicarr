@@ -1,33 +1,47 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
-import Sidebar from "@/components/Sidebar";
-import styles from "./layout.module.css";
+import type { Metadata, Viewport } from 'next';
+import { Anton, Archivo, DM_Mono, Permanent_Marker } from 'next/font/google';
+import './globals.css';
+import AppShell from '@/components/shell/AppShell';
+import { ActivityProvider } from '@/context/ActivityContext';
+import { ConfirmProvider } from '@/context/ConfirmContext';
+import { ToastProvider } from '@/context/ToastContext';
 
-import { ToastProvider } from "@/context/ToastContext";
-
-const inter = Inter({ subsets: ["latin"] });
+const display = Anton({ weight: '400', subsets: ['latin'], variable: '--font-display', display: 'swap' });
+const body = Archivo({ subsets: ['latin'], axes: ['wdth'], variable: '--font-body', display: 'swap' });
+const mono = DM_Mono({ weight: ['400', '500'], subsets: ['latin'], variable: '--font-mono', display: 'swap' });
+const hand = Permanent_Marker({ weight: '400', subsets: ['latin'], variable: '--font-hand', display: 'swap' });
 
 export const metadata: Metadata = {
-  title: "Musicarr - Gestion de Bibliothèque Musicale",
-  description: "Alternative moderne à Lidarr pour la gestion de votre musique.",
+  title: { default: 'Musicarr', template: '%s · Musicarr' },
+  description: 'Le bac à disques de la maison : collection, manquants et téléchargements.',
+  applicationName: 'Musicarr',
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, title: 'Musicarr', statusBarStyle: 'black-translucent' },
+  icons: {
+    icon: [{ url: '/icons/icon.svg', type: 'image/svg+xml' }],
+    apple: '/icons/apple-touch-icon.png',
+  },
+  robots: { index: false, follow: false },
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export const viewport: Viewport = {
+  themeColor: '#0f0e0c',
+  colorScheme: 'dark',
+  viewportFit: 'cover',
+  width: 'device-width',
+  initialScale: 1,
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="fr" suppressHydrationWarning>
-      <body className={inter.className} suppressHydrationWarning>
+    <html lang="fr" className={`${display.variable} ${body.variable} ${mono.variable} ${hand.variable}`} suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <ToastProvider>
-          <div className={styles.layoutContainer}>
-            <Sidebar />
-            <main className={styles.mainContent}>
-              {children}
-            </main>
-          </div>
+          <ConfirmProvider>
+            <ActivityProvider>
+              <AppShell>{children}</AppShell>
+            </ActivityProvider>
+          </ConfirmProvider>
         </ToastProvider>
       </body>
     </html>
